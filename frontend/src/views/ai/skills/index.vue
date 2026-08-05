@@ -10,11 +10,11 @@
       <div class="toolbar-actions">
         <el-button type="success" @click="openEditDialog()">新建 Skill</el-button>
         <el-button type="primary" @click="openGitDialog">Git 导入</el-button>
-        <el-button @click="openUploadDialog">本地导入</el-button>
+        <el-button @click="openUploadDialog('zip')">上传 ZIP 包</el-button>
+        <el-button @click="openUploadDialog('folder')">上传文件夹</el-button>
         <el-button type="danger" plain :disabled="!selectedIds.length" @click="onBatchDelete">
           批量删除{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
         </el-button>
-        <el-button type="danger" :disabled="!rows.length" @click="onDeleteAll">删除全部</el-button>
       </div>
     </div>
 
@@ -108,30 +108,65 @@
       />
     </div>
 
-    <el-dialog v-model="gitDialogVisible" title="Git 导入 Skill" width="560px">
-      <el-form label-width="90px">
-        <el-form-item label="仓库地址">
-          <el-input v-model="gitForm.repo_url" placeholder="https://github.com/... 或 https://gitee.com/..." />
-        </el-form-item>
-        <el-form-item label="技能名">
-          <el-input v-model="gitForm.name" placeholder="可选，不填自动生成" />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-input v-model="gitForm.scenario_category" placeholder="如 agent-browser-skill" />
-        </el-form-item>
-      </el-form>
+    <el-dialog v-model="gitDialogVisible" :title="gitStep === 1 ? 'Git 导入 Skill' : '选择要导入的 Skill'" width="640px">
+      <template v-if="gitStep === 1">
+        <el-form label-width="90px">
+          <el-form-item label="仓库地址" required>
+            <el-input v-model="gitForm.repo_url" placeholder="https://github.com/... 或 https://gitee.com/..." />
+          </el-form-item>
+          <el-form-item label="分类">
+            <el-input v-model="gitForm.scenario_category" placeholder="如 superpowers，可不填" />
+          </el-form-item>
+          <el-form-item label="分支">
+            <el-input v-model="gitForm.branch" placeholder="默认主分支，可不填" />
+          </el-form-item>
+        </el-form>
+      </template>
+
+      <template v-else>
+        <div class="preview-tip">
+          仓库 <code>{{ gitForm.repo_url }}</code> 共发现 {{ previewSkills.length }} 个 Skill，请勾选要导入的项：
+        </div>
+        <div v-loading="gitSubmitting" class="preview-list">
+          <el-checkbox-group v-model="selectedSkillNames">
+            <div v-for="s in previewSkills" :key="s.name" class="preview-item">
+              <el-checkbox :value="s.name">
+                <div class="preview-item__head">
+                  <span class="preview-item__name">{{ s.display_name }}</span>
+                  <el-tag v-if="s.already_imported" size="small" type="warning">已导入</el-tag>
+                </div>
+                <div class="preview-item__desc">{{ s.description || '暂无描述' }}</div>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+          <div v-if="!previewSkills.length" class="preview-empty">未扫描到任何 Skill</div>
+        </div>
+      </template>
+
       <template #footer>
-        <el-button @click="gitDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="gitSubmitting" @click="submitGitImport">导入</el-button>
+        <template v-if="gitStep === 1">
+          <el-button @click="gitDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="gitPreviewing" @click="previewGitImport">预览</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="gitStep = 1">上一步</el-button>
+          <el-button type="primary" :loading="gitSubmitting" @click="submitGitImport">导入选中</el-button>
+        </template>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialogVisible" title="本地导入 Skill" width="520px" @closed="resetUploadForm">
+    <el-dialog v-model="uploadDialogVisible" title="本地导入 Skill" width="560px" @closed="resetUploadForm">
       <el-form label-width="90px">
+        <el-form-item label="方式">
+          <el-radio-group v-model="uploadMode">
+            <el-radio-button label="zip">上传 ZIP 包</el-radio-button>
+            <el-radio-button label="folder">上传文件夹</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="分类" required>
           <el-input v-model="uploadForm.scenario_category" placeholder="请选择或填写场景分类" />
         </el-form-item>
-        <el-form-item label="ZIP 文件" required>
+        <el-form-item v-if="uploadMode === 'zip'" label="ZIP 文件" required>
           <el-upload
             ref="uploadRef"
             :key="uploadKey"
@@ -144,6 +179,22 @@
           >
             <el-button>选择 ZIP</el-button>
           </el-upload>
+        </el-form-item>
+        <el-form-item v-else label="文件夹" required>
+          <input
+            ref="folderInputRef"
+            type="file"
+            webkitdirectory
+            directory
+            multiple
+            style="display: none"
+            @change="onFolderChange"
+          />
+          <div class="folder-upload">
+            <el-button @click="folderInputRef?.click()">选择文件夹</el-button>
+            <span v-if="folderName" class="folder-name">{{ folderName }}（{{ folderFiles.length }} 个文件）</span>
+            <span v-else class="folder-placeholder">请选择包含 SKILL.md 或 skills/ 子目录的文件夹</span>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -246,17 +297,26 @@ const isIndeterminate = computed(() => {
 });
 
 const gitDialogVisible = ref(false);
+const gitStep = ref(1);
+const gitPreviewing = ref(false);
 const gitSubmitting = ref(false);
 const gitForm = reactive({
   repo_url: '',
   name: '',
   scenario_category: '',
+  branch: '',
 });
+const previewSkills = ref<any[]>([]);
+const selectedSkillNames = ref<string[]>([]);
 
 const uploadDialogVisible = ref(false);
 const uploadSubmitting = ref(false);
 const uploadRef = ref<any>(null);
 const uploadKey = ref(0);
+const uploadMode = ref<'zip' | 'folder'>('zip');
+const folderInputRef = ref<HTMLInputElement | null>(null);
+const folderName = ref('');
+const folderFiles = ref<File[]>([]);
 const uploadForm = reactive<{ scenario_category: string; file: File | null }>({
   scenario_category: '',
   file: null,
@@ -338,24 +398,59 @@ const openGitDialog = () => {
   gitForm.repo_url = '';
   gitForm.name = '';
   gitForm.scenario_category = '';
+  gitForm.branch = '';
+  gitStep.value = 1;
+  previewSkills.value = [];
+  selectedSkillNames.value = [];
   gitDialogVisible.value = true;
 };
 
-const submitGitImport = async () => {
+const previewGitImport = async () => {
   if (!projectId.value) return;
   if (!gitForm.repo_url.trim()) {
     ElMessage.warning('请填写仓库地址');
     return;
   }
+  gitPreviewing.value = true;
+  try {
+    const res: any = await skillsApi.importGitPreview(projectId.value, {
+      repo_url: gitForm.repo_url.trim(),
+      branch: gitForm.branch.trim() || undefined,
+    });
+    previewSkills.value = res?.data?.skills || [];
+    selectedSkillNames.value = previewSkills.value.map((s: any) => s.name);
+    if (!previewSkills.value.length) {
+      ElMessage.warning('该仓库未扫描到任何 Skill');
+      return;
+    }
+    gitStep.value = 2;
+  } catch (e: any) {
+    ElMessage.error(e?.message || '拉取仓库失败');
+  } finally {
+    gitPreviewing.value = false;
+  }
+};
+
+const submitGitImport = async () => {
+  if (!projectId.value) return;
+  if (!selectedSkillNames.value.length) {
+    ElMessage.warning('请至少选择一个 Skill');
+    return;
+  }
   gitSubmitting.value = true;
   try {
-    const res: any = await skillsApi.importGit(projectId.value, gitForm);
+    const res: any = await skillsApi.importGitSelected(projectId.value, {
+      repo_url: gitForm.repo_url.trim(),
+      scenario_category: gitForm.scenario_category.trim(),
+      branch: gitForm.branch.trim() || undefined,
+      selected: selectedSkillNames.value,
+    });
     const count = res?.data?.count ?? 0;
-    ElMessage.success(`导入成功（创建 ${count} 个 skill）`);
+    ElMessage.success(res?.message || `导入成功（创建 ${count} 个 skill）`);
     gitDialogVisible.value = false;
     await loadSkills();
   } catch (e: any) {
-    ElMessage.error(e?.message || '导入失败（同名技能不允许重复导入）');
+    ElMessage.error(e?.message || '导入失败');
   } finally {
     gitSubmitting.value = false;
   }
@@ -364,17 +459,37 @@ const submitGitImport = async () => {
 const resetUploadForm = () => {
   uploadForm.scenario_category = '';
   uploadForm.file = null;
+  uploadMode.value = 'zip';
+  folderName.value = '';
+  folderFiles.value = [];
   uploadKey.value += 1;
   uploadRef.value?.clearFiles?.();
+  if (folderInputRef.value) {
+    folderInputRef.value.value = '';
+  }
 };
 
-const openUploadDialog = () => {
+const openUploadDialog = (mode: 'zip' | 'folder' = 'zip') => {
   resetUploadForm();
+  uploadMode.value = mode;
   uploadDialogVisible.value = true;
 };
 
 const onUploadFileChange = (file: UploadFile) => {
   uploadForm.file = (file.raw as File) || null;
+};
+
+const onFolderChange = (e: Event) => {
+  const files = Array.from((e.target as HTMLInputElement).files || []);
+  if (!files.length) {
+    folderName.value = '';
+    folderFiles.value = [];
+    return;
+  }
+  const firstRel = files[0].webkitRelativePath || '';
+  const root = firstRel.split('/')[0] || files[0].name;
+  folderName.value = root;
+  folderFiles.value = files;
 };
 
 const submitUploadImport = async () => {
@@ -383,17 +498,33 @@ const submitUploadImport = async () => {
     ElMessage.warning('请填写场景分类');
     return;
   }
-  if (!uploadForm.file) {
-    ElMessage.warning('请选择 ZIP 文件');
-    return;
-  }
   uploadSubmitting.value = true;
   try {
-    const res: any = await skillsApi.importUpload(projectId.value, uploadForm.file, {
-      scenario_category: uploadForm.scenario_category.trim(),
-    });
+    let res: any;
+    if (uploadMode.value === 'zip') {
+      if (!uploadForm.file) {
+        ElMessage.warning('请选择 ZIP 文件');
+        return;
+      }
+      res = await skillsApi.importUpload(projectId.value, uploadForm.file, {
+        scenario_category: uploadForm.scenario_category.trim(),
+      });
+    } else {
+      if (!folderFiles.value.length) {
+        ElMessage.warning('请选择文件夹');
+        return;
+      }
+      const fd = new FormData();
+      folderFiles.value.forEach((f) => {
+        fd.append('files', f);
+        fd.append('paths', f.webkitRelativePath || f.name);
+      });
+      res = await skillsApi.importUploadFolder(projectId.value, fd, {
+        scenario_category: uploadForm.scenario_category.trim(),
+      });
+    }
     const count = res?.data?.count ?? 0;
-    ElMessage.success(`导入成功（创建 ${count} 个 skill）`);
+    ElMessage.success(res?.message || `导入成功（创建 ${count} 个 skill）`);
     uploadDialogVisible.value = false;
     resetUploadForm();
     await loadSkills();
@@ -491,20 +622,6 @@ const onBatchDelete = async () => {
   const res: any = await skillsApi.batchRemove(projectId.value, { skill_ids: selectedIds.value });
   selectedIds.value = [];
   ElMessage.success(res?.message || '批量删除成功');
-  await loadSkills();
-};
-
-const onDeleteAll = async () => {
-  if (!projectId.value) return;
-  await ElMessageBox.confirm(
-    '确认删除当前项目下全部 Skill？将同时删除所有本地技能目录，且不可恢复。',
-    '删除全部',
-    { type: 'warning', confirmButtonText: '全部删除', cancelButtonText: '取消' }
-  );
-  const res: any = await skillsApi.batchRemove(projectId.value, { delete_all: true });
-  selectedIds.value = [];
-  ElMessage.success(res?.message || '已删除全部技能');
-  query.page = 1;
   await loadSkills();
 };
 
@@ -697,6 +814,59 @@ onMounted(async () => {
 .foot-delete {
   flex-shrink: 0;
 }
+.preview-tip {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  line-height: 1.6;
+}
+.preview-tip code {
+  padding: 1px 6px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  font-size: 12px;
+  word-break: break-all;
+}
+.preview-list {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+.preview-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+.preview-item:last-child {
+  border-bottom: none;
+}
+.preview-item :deep(.el-checkbox) {
+  width: 100%;
+  height: auto;
+  white-space: normal;
+}
+.preview-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-item__name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.preview-item__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+.preview-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
 .pager {
   margin-top: 16px;
   display: flex;
@@ -742,5 +912,19 @@ onMounted(async () => {
   .skill-grid {
     grid-template-columns: 1fr;
   }
+}
+.folder-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.folder-name {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+.folder-placeholder {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 </style>

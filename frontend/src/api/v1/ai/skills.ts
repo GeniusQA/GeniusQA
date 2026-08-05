@@ -77,6 +77,18 @@ export function useSkillsApi() {
         method: 'POST',
         data,
       }),
+    importGitPreview: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/import/git/preview`,
+        method: 'POST',
+        data,
+      }),
+    importGitSelected: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/import/git/selected`,
+        method: 'POST',
+        data,
+      }),
     importUpload: (projectId: number, file: File, params?: { scenario_category?: string; entry_command?: string }) => {
       const fd = new FormData();
       fd.append('file', file);
@@ -88,6 +100,38 @@ export function useSkillsApi() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
+    importUploadFolder: (projectId: number, fd: FormData, params?: { scenario_category?: string; entry_command?: string }) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/import/upload-folder`,
+        method: 'POST',
+        params,
+        data: fd,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    // ===== 外部编程 Agent 集成（Claude Code / Codex / OpenCode 驱动 Playwright Test Agents / agent-device）=====
+    detectHarness: (projectId: number) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/external-agent/harness`,
+        method: 'GET',
+      }),
+    scaffoldPwTestAgents: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/pw-test-agents/scaffold`,
+        method: 'POST',
+        data,
+      }),
+    registerAgentDevice: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/agent-device/register`,
+        method: 'POST',
+        data,
+      }),
+    runExternalAgent: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/external-agent/run`,
+        method: 'POST',
+        data,
+      }),
   };
 }
 

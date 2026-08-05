@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -137,48 +137,19 @@ async def run_skill_job_worker(job_id: int) -> None:
                 if wd.exists():
                     cwd = wd
 
-            def _run() -> subprocess.CompletedProcess:
-                return subprocess.run(
-                    cmd,
-                    cwd=str(cwd),
-                    env=env,
-                    shell=True,
-                    capture_output=True,
-                    text=False,
-                    timeout=timeout_s,
-                )
+            # 实时流式执行：用 asyncio 子进程逐行读取 stdout/stderr 并写入事件流，
+            # 使外部 Agent（Claude Code / Codex / OpenCode 等）的思考/工具流可在前端 SSE 实时呈现。
+            out_text, err_text, rc = await _run_streaming(
+                job_id=job_id,
+                cmd=cmd,
+                cwd=str(cwd),
+                env=env,
+                user_id=job.user_id,
+                db=db,
+                timeout_s=timeout_s,
+            )
 
-            try:
-                cp = await asyncio.to_thread(_run)
-            except subprocess.TimeoutExpired:
-                await db.execute(
-                    update(SkillExecutionJobModel)
-                    .where(SkillExecutionJobModel.id == job_id)
-                    .values(
-                        status="failed",
-                        finished_at=datetime.now(),
-                        return_code=-1,
-                        error_message=f"执行超时（>{timeout_s}s）",
-                        updated_by=job.user_id,
-                    )
-                )
-                await db.commit()
-                await _append_event(db, job_id, "error", f"超时 >{timeout_s}s", job.user_id)
-                return
-            except Exception as e:
-                logger.exception("skill job subprocess error job_id={}", job_id)
-                await db.execute(
-                    update(SkillExecutionJobModel)
-                    .where(SkillExecutionJobModel.id == job_id)
-                    .values(status="failed", finished_at=datetime.now(), error_message=str(e)[:2000], updated_by=job.user_id)
-                )
-                await db.commit()
-                await _append_event(db, job_id, "error", str(e)[:4000], job.user_id)
-                return
-
-            out_text = _smart_decode(cp.stdout).strip()[:24000]
-            err_text = _smart_decode(cp.stderr).strip()[:12000]
-            ok = cp.returncode == 0
+            ok = rc == 0
             final_status = "succeeded" if ok else "failed"
 
             await db.execute(
@@ -187,39 +158,23 @@ async def run_skill_job_worker(job_id: int) -> None:
                 .values(
                     status=final_status,
                     finished_at=datetime.now(),
-                    return_code=cp.returncode,
-                    stdout=out_text,
-                    stderr=err_text,
+                    return_code=rc,
+                    stdout=(out_text or "").strip()[:24000],
+                    stderr=(err_text or "").strip()[:12000],
                     updated_by=job.user_id,
                 )
             )
             await db.commit()
 
-            tail_lines = [ln.strip() for ln in (out_text or "").splitlines() if ln.strip()][-80:]
-            if tail_lines:
-                blob = "\n".join(tail_lines)[:12000]
-                await _append_event(db, job_id, "info", f"[stdout 摘要]\n{blob}", job.user_id)
-            if err_text:
-                await _append_event(db, job_id, "error", err_text[:8000], job.user_id)
-
             _ingest_saved_outputs(out_text, err_text, cwd, screenshots_dir)
 
-            # 产物索引（与下载接口路径一致）
+            # 产物索引（与下载接口路径一致）；外部 Agent 还会在 cwd 产出 specs/tests/.ad 等，也一并复制进产物目录
+            _collect_external_outputs(Path(str(cwd)), artifacts_dir)
             for kind, base in (("screenshots", screenshots_dir), ("artifacts", artifacts_dir)):
                 for it in _collect_files(base):
-                    db.add(
-                        SkillExecutionArtifactModel(
-                            job_id=job_id,
-                            kind=kind,
-                            name=it["name"],
-                            relative_path=it["relative_path"],
-                            size=it.get("size"),
-                            created_by=job.user_id,
-                            updated_by=job.user_id,
-                        )
-                    )
+                    db.add(_artifact_row(job_id, kind, it, job.user_id))
             await db.commit()
-            await _append_event(db, job_id, "info", f"任务结束: {final_status} rc={cp.returncode}", job.user_id)
+            await _append_event(db, job_id, "info", f"任务结束: {final_status} rc={rc}", job.user_id)
         except Exception as e:
             logger.exception("run_skill_job_worker fatal job_id={}", job_id)
             try:
@@ -231,6 +186,155 @@ async def run_skill_job_worker(job_id: int) -> None:
                 await db.commit()
             except Exception:
                 await db.rollback()
+
+
+def _artifact_row(job_id: int, kind: str, it: dict, user_id: int) -> SkillExecutionArtifactModel:
+    return SkillExecutionArtifactModel(
+        job_id=job_id,
+        kind=kind,
+        name=it["name"],
+        relative_path=it["relative_path"],
+        size=it.get("size"),
+        created_by=user_id,
+        updated_by=user_id,
+    )
+
+
+MAX_EXT_ARTIFACT_BYTES = 2_000_000
+EXT_ARTIFACT_DIRS = {"specs", "tests", "e2e", "playwright-report", "test-results"}
+
+
+def _collect_external_outputs(cwd: Path, artifacts_dir: Path) -> None:
+    """
+    将外部 Agent 在 cwd 产出的关键文件（specs/*.md、tests/*.spec.ts、*.ad 录制脚本、
+    Playwright 报告等）复制到 artifacts_dir，使它们可被现有产物下载接口检索。
+    """
+    if not cwd.exists():
+        return
+    count = 0
+    for root, dirs, files in os.walk(cwd):
+        rel_root = Path(root).relative_to(cwd)
+        if len(rel_root.parts) > 4:
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "coverage", ".next"}]
+        for f in files:
+            if count >= 400:
+                return
+            fp = Path(root) / f
+            low = f.lower()
+            in_allowed = bool(rel_root.parts) and rel_root.parts[0] in EXT_ARTIFACT_DIRS
+            keep = in_allowed and (
+                low.endswith(".md") or low.endswith(".spec.ts") or low.endswith(".ad") or low.endswith(".ts")
+            )
+            if not keep:
+                continue
+            try:
+                if fp.stat().st_size > MAX_EXT_ARTIFACT_BYTES:
+                    continue
+            except Exception:
+                continue
+            dest = artifacts_dir / rel_root / f
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(fp, dest)
+            except Exception:
+                continue
+            count += 1
+
+
+async def _flush_pending(db, job_id: int, user_id: int, pending: list) -> None:
+    for level, text in pending:
+        await _append_event(db, job_id, level, text[:8000], user_id)
+
+
+async def _run_streaming(
+    *, job_id: int, cmd: str, cwd: str, env: dict, user_id: int, db, timeout_s: int
+) -> tuple:
+    """
+    asyncio 子进程逐行流式执行。返回 (stdout, stderr, return_code)。
+    每个 Agent 输出行实时写入事件表，供前端 SSE 轮询实时呈现（替代原 capture_output 全缓冲）。
+    """
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except Exception as e:  # 命令无法启动（如二进制不存在）
+        logger.exception("external agent subprocess spawn failed job_id={}", job_id)
+        await db.execute(
+            update(SkillExecutionJobModel)
+            .where(SkillExecutionJobModel.id == job_id)
+            .values(status="failed", finished_at=datetime.now(), error_message=f"进程启动失败: {e}", updated_by=user_id)
+        )
+        await db.commit()
+        await _append_event(db, job_id, "error", f"进程启动失败: {e}", user_id)
+        return "", str(e), -1
+
+    out_chunks: list = []
+    err_chunks: list = []
+    pending: list = []
+
+    async def _pump(stream, sink, level):
+        try:
+            while True:
+                raw = await stream.readline()
+                if not raw:
+                    break
+                text = _smart_decode(raw).rstrip("\n").rstrip("\r")
+                sink.append(text)
+                pending.append((level, text))
+                if len(pending) >= 25:
+                    await _flush_pending(db, job_id, user_id, pending)
+                    pending.clear()
+        except Exception:
+            pass
+
+    t_out = asyncio.create_task(_pump(proc.stdout, out_chunks, "info"))
+    t_err = asyncio.create_task(_pump(proc.stderr, err_chunks, "error"))
+    timed_out = False
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        timed_out = True
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            await proc.wait()
+        except Exception:
+            pass
+    await t_out
+    await t_err
+    if pending:
+        await _flush_pending(db, job_id, user_id, pending)
+        pending.clear()
+
+    rc = int(proc.returncode)
+    out_text = "\n".join(out_chunks)
+    err_text = "\n".join(err_chunks)
+
+    if timed_out:
+        await db.execute(
+            update(SkillExecutionJobModel)
+            .where(SkillExecutionJobModel.id == job_id)
+            .values(
+                status="failed",
+                finished_at=datetime.now(),
+                return_code=-1,
+                error_message=f"执行超时（>{timeout_s}s）",
+                updated_by=user_id,
+            )
+        )
+        await db.commit()
+        await _append_event(db, job_id, "error", f"超时 >{timeout_s}s", user_id)
+        return out_text, err_text, -1
+
+    return out_text, err_text, rc
 
 
 def schedule_skill_job(job_id: int) -> None:
