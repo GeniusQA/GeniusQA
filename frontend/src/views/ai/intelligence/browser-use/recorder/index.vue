@@ -1,0 +1,278 @@
+<template>
+  <div class="recorder-container">
+    <el-row :gutter="16">
+      <!-- 左侧：录制配置 -->
+      <el-col :span="10">
+        <el-card shadow="never" header="录制配置">
+          <el-form :model="form" label-width="90px" size="default">
+            <el-form-item label="UI 项目">
+              <el-select v-model="form.projectId" placeholder="选择 UI 项目" filterable style="width:100%">
+                <el-option v-for="p in projects" :key="p.id" :label="p.name" :value="p.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="用例名称">
+              <el-input v-model="form.name" placeholder="留空自动命名" />
+            </el-form-item>
+            <el-form-item label="起始 URL">
+              <el-input v-model="form.url" placeholder="https://example.com" />
+            </el-form-item>
+            <el-form-item label="浏览器">
+              <el-select v-model="form.browserType" style="width:100%">
+                <el-option label="Chromium" value="chromium" />
+                <el-option label="Firefox" value="firefox" />
+                <el-option label="WebKit" value="webkit" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="视口">
+              <el-input-number v-model="form.viewportWidth" :min="320" :max="4000" controls-position="right" />
+              <span class="sep">×</span>
+              <el-input-number v-model="form.viewportHeight" :min="320" :max="4000" controls-position="right" />
+            </el-form-item>
+            <el-form-item label="配色">
+              <el-select v-model="form.colorScheme" clearable placeholder="默认" style="width:100%">
+                <el-option label="浅色" value="light" />
+                <el-option label="深色" value="dark" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="语言">
+              <el-input v-model="form.locale" placeholder="如 zh-CN / en-US" clearable />
+            </el-form-item>
+            <el-form-item label="时区">
+              <el-input v-model="form.timezone" placeholder="如 Asia/Shanghai" clearable />
+            </el-form-item>
+          </el-form>
+
+          <el-divider />
+
+          <div class="actions">
+            <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="startRecord">
+              <el-icon><VideoCamera /></el-icon> 开始录制
+            </el-button>
+            <el-button v-else type="danger" @click="stopRecord">
+              <el-icon><VideoCameraFilled /></el-icon> 停止录制
+            </el-button>
+          </div>
+
+          <template v-if="running">
+            <el-divider>断言 / 拾取工具栏</el-divider>
+            <div class="assert-bar">
+              <el-button size="small" @click="setAssert('visible')">断言-可见性</el-button>
+              <el-button size="small" @click="setAssert('text')">断言-文本</el-button>
+              <el-button size="small" @click="setAssert('value')">断言-值</el-button>
+              <el-button size="small" @click="startPick">拾取定位器</el-button>
+            </div>
+            <el-alert
+              v-if="pickResult"
+              type="success"
+              :closable="true"
+              show-icon
+              :title="'已拾取定位器'"
+              :description="pickText"
+              style="margin-top:10px"
+            />
+            <el-alert type="info" :closable="false" show-icon title="提示"
+              description="在弹出的浏览器中操作后，点击下方断言/拾取按钮，再点击页面元素即可捕获。录制步骤会实时显示到右侧。" />
+          </template>
+        </el-card>
+
+        <el-card shadow="never" header="导入已有脚本" style="margin-top:16px">
+          <el-tabs v-model="importTab">
+            <el-tab-pane label="Playwright codegen" name="codegen">
+              <el-input v-model="importCode" type="textarea" :rows="5"
+                placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
+              <el-button type="primary" size="small" style="margin-top:8px"
+                :disabled="!form.projectId || !importCode" @click="doImport('codegen')">导入为用例</el-button>
+            </el-tab-pane>
+            <el-tab-pane label="Selenium IDE .side" name="side">
+              <el-input v-model="importSide" type="textarea" :rows="5"
+                placeholder="粘贴 Selenium IDE 导出的 .side 文件内容（JSON）" />
+              <el-button type="primary" size="small" style="margin-top:8px"
+                :disabled="!form.projectId || !importSide" @click="doImport('side')">导入为用例</el-button>
+            </el-tab-pane>
+          </el-tabs>
+        </el-card>
+      </el-col>
+
+      <!-- 右侧：实时步骤 -->
+      <el-col :span="14">
+        <el-card shadow="never" :header="running ? `录制中（会话 ${sessionId}）` : '录制步骤'">
+          <el-empty v-if="steps.length === 0" description="尚未录制到步骤" />
+          <el-timeline v-else>
+            <el-timeline-item
+              v-for="s in steps"
+              :key="s.id"
+              :type="stepColor(s.actionType)"
+              :timestamp="`#${s.stepNumber} ${s.actionType}`"
+            >
+              <div class="step-line">
+                <el-tag size="small" effect="plain">{{ stepLabel(s.actionType) }}</el-tag>
+                <span class="desc">{{ s.description || s.actionValue || s.assertionValue || '-' }}</span>
+              </div>
+              <div v-if="s.assertionType" class="assert-info">
+                断言类型：{{ s.assertionType }} ｜ 期望值：{{ s.assertionValue || '（无）' }}
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </el-card>
+      </el-col>
+    </el-row>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
+import { uiRecordApi, uiProjectApi } from '/@/api/v1/testing/uiAutomation'
+
+const projects = ref<any[]>([])
+const running = ref(false)
+const sessionId = ref<number | null>(null)
+const steps = ref<any[]>([])
+const pickResult = ref<any>(null)
+const importTab = ref('codegen')
+const importCode = ref('')
+const importSide = ref('')
+let pollTimer: any = null
+
+const form = reactive({
+  projectId: null as number | null,
+  name: '',
+  url: '',
+  browserType: 'chromium',
+  viewportWidth: 1280,
+  viewportHeight: 720,
+  colorScheme: '',
+  locale: '',
+  timezone: '',
+})
+
+const pickText = ref('')
+
+onMounted(async () => {
+  try {
+    const res: any = await uiProjectApi.list({ page: 1, page_size: 200 })
+    projects.value = res.data?.items || res.data || []
+  } catch (e) {
+    ElMessage.error('加载 UI 项目失败')
+  }
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
+
+function stepLabel(t: string) {
+  return { navigate: '导航', click: '点击', fill: '输入', assert: '断言', waitFor: '等待' }[t] || t
+}
+function stepColor(t: string) {
+  return { navigate: 'info', click: 'primary', fill: 'warning', assert: 'success', waitFor: 'info' }[t] || ''
+}
+
+async function startRecord() {
+  if (!form.projectId) return
+  const payload = {
+    url: form.url || undefined,
+    name: form.name || undefined,
+    browser_type: form.browserType,
+    viewport_width: form.viewportWidth,
+    viewport_height: form.viewportHeight,
+    color_scheme: form.colorScheme || undefined,
+    locale: form.locale || undefined,
+    timezone: form.timezone || undefined,
+  }
+  try {
+    const res: any = await uiRecordApi.start(form.projectId, payload)
+    sessionId.value = res.data.session_id
+    running.value = true
+    pickResult.value = null
+    steps.value = []
+    startPolling()
+    ElMessage.success('录制已启动，请在弹出的浏览器中操作')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '启动录制失败')
+  }
+}
+
+async function stopRecord() {
+  if (sessionId.value == null) return
+  try {
+    const res: any = await uiRecordApi.stop(sessionId.value)
+    running.value = false
+    if (pollTimer) clearInterval(pollTimer)
+    await refreshSteps()
+    ElMessage.success(`录制完成，已生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '停止录制失败')
+  }
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = setInterval(refreshSteps, 1000)
+}
+
+async function refreshSteps() {
+  if (sessionId.value == null) return
+  try {
+    const res: any = await uiRecordApi.steps(sessionId.value)
+    steps.value = res.data.steps || []
+  } catch (e) {
+    /* 忽略轮询错误 */
+  }
+}
+
+async function setAssert(mode: string) {
+  if (sessionId.value == null) return
+  await uiRecordApi.assertMode(sessionId.value, { mode })
+  ElMessage.info(`已开启「${mode}」断言，请在浏览器中点击目标元素`)
+}
+
+async function startPick() {
+  if (sessionId.value == null) return
+  await uiRecordApi.pick(sessionId.value)
+  ElMessage.info('已开启拾取，请点击浏览器中的元素')
+  // 轮询拾取结果
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    try {
+      const res: any = await uiRecordApi.getPick(sessionId.value!)
+      if (res.data && res.data.locators && res.data.locators.length) {
+        pickResult.value = res.data
+        const top = res.data.locators[0]
+        pickText.value = `${top.strategy} = ${top.value}`
+        break
+      }
+    } catch (e) { /* ignore */ }
+  }
+}
+
+async function doImport(kind: 'codegen' | 'side') {
+  if (!form.projectId) return
+  const payload = {
+    ui_project_id: form.projectId,
+    name: form.name || undefined,
+    code: kind === 'codegen' ? importCode.value : undefined,
+    side_json: kind === 'side' ? importSide.value : undefined,
+  }
+  try {
+    const res: any = kind === 'codegen'
+      ? await uiRecordApi.importCodegen(payload)
+      : await uiRecordApi.importSide(payload)
+    ElMessage.success(`导入成功，生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
+    if (kind === 'codegen') importCode.value = ''
+    else importSide.value = ''
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '导入失败')
+  }
+}
+</script>
+
+<style scoped>
+.recorder-container { padding: 16px; }
+.sep { margin: 0 8px; color: #999; }
+.actions { display: flex; gap: 10px; }
+.assert-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+.step-line { display: flex; align-items: center; gap: 8px; }
+.desc { color: #333; }
+.assert-info { margin-top: 4px; color: #67c23a; font-size: 12px; }
+</style>

@@ -8,6 +8,10 @@
             <el-icon><Plus /></el-icon>
             新增用例
           </el-button>
+          <el-button type="success" @click="goRecorder">
+            <el-icon><VideoCamera /></el-icon>
+            录制脚本
+          </el-button>
         </div>
       </template>
 
@@ -388,13 +392,20 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, VideoCamera } from '@element-plus/icons-vue'
 import { aiCaseApi, aiExecutionRecordApi } from '/@/api/v1/ai/intelligence'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
 import type { AICase, AICaseForm, AIExecutionRecord } from '/@/types/ai_intelligence'
 
 const { uiProjectApi } = useUiAutomationApi()
+const router = useRouter()
+
+// 跳转到脚本录制页
+function goRecorder() {
+  router.push('/ai/ui-recorder')
+}
 
 // 查询表单
 const queryForm = reactive({

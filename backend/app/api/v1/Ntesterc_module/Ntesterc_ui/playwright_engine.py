@@ -215,6 +215,17 @@ class PlaywrightTestEngine:
 
             # 其他操作需要元素定位器
             # 获取元素定位器
+            # 导航步骤（录制生成）：直接跳转到指定 URL
+            if action_type == 'navigate':
+                if resolved_input_value:
+                    ok, log = await self.navigate(resolved_input_value)
+                    execution_time = round(time.time() - start_time, 2)
+                    log += f"\n  - 执行时间: {execution_time}秒"
+                    return ok, log, None
+                else:
+                    return True, "⚠ 导航步骤缺少 URL，已跳过", None
+
+            # 获取元素定位器
             locator_strategy = element_data.get('locator_strategy', 'css')
             locator_value = element_data.get('locator_value', '')
             element_name = element_data.get('name', '未知元素')

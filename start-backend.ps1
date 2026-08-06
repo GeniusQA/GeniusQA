@@ -4,9 +4,20 @@
 $ErrorActionPreference = 'SilentlyContinue'
 $logFile = 'D:\GeniusQA\logs\autostart-backend.log'
 
+# 确保日志目录存在，否则 Out-File 会静默失败
+$logDir = Split-Path -Parent $logFile
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+
 function Write-Log($msg) {
     $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts | $msg" | Out-File -Append -FilePath $logFile -Encoding UTF8
+    try {
+        "$ts | $msg" | Out-File -Append -FilePath $logFile -Encoding UTF8
+    } catch {
+        # 日志写入失败时仅控制台输出，不中断启动流程
+        Write-Host "LOG-ERROR: $_"
+    }
 }
 
 Write-Log "=== Autostart triggered ==="

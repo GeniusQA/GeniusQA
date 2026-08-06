@@ -106,6 +106,17 @@ export function useUiAutomationApi() {
     checkAll: () => request.get('/v1/Ntesterc_ui/browsers/check-all')
   }
 
+  const uiRecordApi = {
+    start: (uiProjectId: number, data: any) => request.post(`/v1/Ntesterc_ui/projects/${uiProjectId}/record/start`, data),
+    stop: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/stop`),
+    steps: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/steps`),
+    assertMode: (sessionId: number, data: any) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/assert-mode`, data),
+    pick: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
+    getPick: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
+    importCodegen: (data: any) => request.post('/v1/Ntesterc_ui/record/import-codegen', data),
+    importSide: (data: any) => request.post('/v1/Ntesterc_ui/record/import-side', data)
+  }
+
   return {
     uiProjectApi,
     uiElementGroupApi,
@@ -116,6 +127,7 @@ export function useUiAutomationApi() {
     uiTestSuiteApi,
     uiExecutionApi,
     uiBrowserApi,
+    uiRecordApi,
   }
 }
 
@@ -130,4 +142,5 @@ export const {
   uiTestSuiteApi,
   uiExecutionApi,
   uiBrowserApi,
+  uiRecordApi,
 } = uiAutomationApi

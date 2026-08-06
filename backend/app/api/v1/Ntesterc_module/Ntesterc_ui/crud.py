@@ -169,6 +169,30 @@ class UIElementCRUD(BaseCRUD[UIElementModel]):
         return list(result.scalars().all())
 
 
+    async def get_by_project_locator(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        strategy: str,
+        value: str,
+    ) -> Optional[UIElementModel]:
+        """根据 (项目, 定位策略, 定位值) 查找已存在元素，用于录制去重。"""
+        query = select(self.model).join(
+            UIElementGroupModel,
+            self.model.group_id == UIElementGroupModel.id
+        ).where(
+            and_(
+                UIElementGroupModel.ui_project_id == project_id,
+                self.model.locator_strategy == strategy,
+                self.model.locator_value == value,
+                self.model.enabled_flag == 1,
+                UIElementGroupModel.enabled_flag == 1,
+            )
+        )
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+
 class UIPageObjectCRUD(BaseCRUD[UIPageObjectModel]):
     """UI页面对象CRUD"""
     

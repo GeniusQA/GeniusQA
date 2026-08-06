@@ -3,10 +3,12 @@
 # @author: Rebort
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, Query, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.db.sqlalchemy import get_db
 from app.common.response import success_response
 from app.core.dependencies import get_current_user_id
+from .recorder import RECORDER_MANAGER, import_codegen, import_side
 from .schema import (
     UIProjectCreateSchema,
     UIProjectUpdateSchema,
@@ -830,3 +832,136 @@ async def generate_test_case_code(
         config.framework
     )
     return success_response(data={'code': code}, message="测试用例代码生成成功")
+
+
+# ==================== UI 录制（Pattern A 自建录制器） ====================
+class RecordStartSchema(BaseModel):
+    """开始录制请求"""
+    url: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    browser_type: str = 'chromium'
+    viewport_width: int = 1280
+    viewport_height: int = 720
+    color_scheme: Optional[str] = None
+    locale: Optional[str] = None
+    timezone: Optional[str] = None
+    user_agent: Optional[str] = None
+
+
+class RecordAssertModeSchema(BaseModel):
+    """设置断言模式"""
+    mode: str  # none | visible | text | value
+
+
+class RecordImportSchema(BaseModel):
+    """导入 codegen / .side 文件"""
+    ui_project_id: int
+    name: Optional[str] = None
+    code: Optional[str] = None      # codegen 生成的测试代码
+    side_json: Optional[str] = None  # Selenium IDE .side 内容
+
+
+@router.post("/projects/{ui_project_id}/record/start", summary="开始录制")
+async def start_record(
+    ui_project_id: int,
+    data: RecordStartSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """启动有头浏览器录制：用户在弹出的浏览器中操作，实时生成步骤。"""
+    options = data.model_dump()
+    options['ui_project_id'] = ui_project_id
+    result = await RECORDER_MANAGER.start(ui_project_id, user_id, options)
+    return success_response(data=result, message="录制已启动，请在弹出的浏览器中操作")
+
+
+@router.post("/record/{session_id}/stop", summary="停止录制")
+async def stop_record(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """停止录制并关闭浏览器，返回生成的用例与步骤数。"""
+    try:
+        result = await RECORDER_MANAGER.stop(session_id)
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return success_response(data=result, message="录制已停止")
+
+
+@router.get("/record/{session_id}/steps", summary="获取录制中的实时步骤")
+async def get_record_steps(
+    session_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """轮询获取当前已录制步骤（前端可每秒刷新实现近实时展示）。"""
+    steps = await RECORDER_MANAGER.get_steps(session_id)
+    return success_response(data={'steps': steps, 'count': len(steps)})
+
+
+@router.post("/record/{session_id}/assert-mode", summary="设置断言模式")
+async def set_assert_mode(
+    session_id: int,
+    data: RecordAssertModeSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """设置下一次点击为断言捕获（可见性/文本/值），对标 codegen 断言。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    await session.set_assert_mode(data.mode)
+    return success_response(message=f"断言模式已设为 {data.mode}，下一次点击将捕获断言")
+
+
+@router.post("/record/{session_id}/pick", summary="开始定位器拾取")
+async def start_pick(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """下一次点击拾取元素定位器（对标 codegen Pick locator）。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    await session.set_pick_mode()
+    return success_response(message="拾取模式已开启，请点击目标元素")
+
+
+@router.get("/record/{session_id}/pick", summary="获取拾取结果")
+async def get_pick(
+    session_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取最近一次拾取到的定位器。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    return success_response(data=session.pick_result or {})
+
+
+@router.post("/record/import-codegen", summary="导入 codegen 生成的测试")
+async def import_codegen_endpoint(
+    data: RecordImportSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """解析 Playwright codegen 生成的测试文件，转为平台用例与步骤。"""
+    if not data.code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少 code 内容")
+    result = await import_codegen(data.ui_project_id, user_id, data.name or "codegen导入用例", data.code)
+    return success_response(data=result, message="codegen 导入成功")
+
+
+@router.post("/record/import-side", summary="导入 Selenium IDE .side 文件")
+async def import_side_endpoint(
+    data: RecordImportSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """解析 Selenium IDE 导出的 .side 文件（Selenium 原生录制路径），转为平台用例与步骤。"""
+    if not data.side_json:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少 side_json 内容")
+    result = await import_side(data.ui_project_id, user_id, data.name or "side导入用例", data.side_json)
+    return success_response(data=result, message=".side 导入成功")
