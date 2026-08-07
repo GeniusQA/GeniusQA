@@ -61,6 +61,13 @@ class SyncExecutionEngine:
             except Exception:
                 custom_path = None
 
+            # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+            try:
+                from .browser_path_config import reap_stale_browser_processes
+                reap_stale_browser_processes()
+            except Exception:
+                pass
+
             # 启动 Playwright
             with sync_playwright() as p:
                 launcher = getattr(p, launcher_name)
@@ -73,12 +80,20 @@ class SyncExecutionEngine:
                         '--disable-dev-shm-usage',
                     ]
                 }
+                # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+                from .browser_path_config import get_browser_launch_env
+                launch_options['env'] = get_browser_launch_env()
                 if custom_path and os.path.exists(custom_path):
                     launch_options['executable_path'] = custom_path
                     launch_options.pop('channel', None)
                 elif channel:
                     launch_options['channel'] = channel
                 self.browser = launcher.launch(**launch_options)
+                try:
+                    from .browser_path_config import register_active_browser
+                    register_active_browser(self.browser)
+                except Exception:
+                    pass
 
                 browser_info = f"{browser_type}"
                 if custom_path and os.path.exists(custom_path):
@@ -162,6 +177,11 @@ class SyncExecutionEngine:
                         break
                 
                 # 关闭浏览器
+                try:
+                    from .browser_path_config import unregister_active_browser
+                    unregister_active_browser(self.browser)
+                except Exception:
+                    pass
                 self.browser.close()
                 logs.append(f"✓ 浏览器已关闭")
             

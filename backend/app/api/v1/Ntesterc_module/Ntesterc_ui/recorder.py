@@ -364,6 +364,17 @@ class RecorderSession:
         launcher = getattr(self.pw, launcher_name, self.pw.chromium)
         launch_kwargs: Dict[str, Any] = {'headless': headless, 'args': launch_args}
 
+        # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+        try:
+            from .browser_path_config import reap_stale_browser_processes
+            reap_stale_browser_processes()
+        except Exception:
+            pass
+
+        # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+        from .browser_path_config import get_browser_launch_env
+        launch_kwargs['env'] = get_browser_launch_env()
+
         # 优先使用用户配置的自定义浏览器路径
         custom_path = None
         try:
@@ -378,7 +389,13 @@ class RecorderSession:
             launch_kwargs['channel'] = channel
 
         try:
-            return await launcher.launch(**launch_kwargs)
+            browser = await launcher.launch(**launch_kwargs)
+            try:
+                from .browser_path_config import register_active_browser
+                register_active_browser(browser)
+            except Exception:
+                pass
+            return browser
         except Exception as e:
             err = str(e)
             if custom_path and "Executable doesn't exist" in err:
@@ -443,6 +460,11 @@ class RecorderSession:
     async def _cleanup(self):
         try:
             if self.browser and self.browser.is_connected():
+                try:
+                    from .browser_path_config import unregister_active_browser
+                    unregister_active_browser(self.browser)
+                except Exception:
+                    pass
                 await self.browser.close()
         except Exception:
             pass

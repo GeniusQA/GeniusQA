@@ -64,6 +64,12 @@ class PlaywrightTestEngine:
 
     async def start(self):
         """启动浏览器"""
+        # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+        try:
+            from .browser_path_config import reap_stale_browser_processes
+            reap_stale_browser_processes()
+        except Exception:
+            pass
         try:
             self.playwright = await async_playwright().start()
 
@@ -87,6 +93,9 @@ class PlaywrightTestEngine:
                     '--disable-dev-shm-usage',
                 ]
             }
+            # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+            from .browser_path_config import get_browser_launch_env
+            launch_options['env'] = get_browser_launch_env()
 
             # 若配置了自定义可执行路径，优先使用 executable_path（channel 与之冲突，需要移除）
             if self.executable_path:
@@ -103,6 +112,11 @@ class PlaywrightTestEngine:
                 logger.info(f"使用系统浏览器: channel={self.channel}")
 
             self.browser = await browser_launcher.launch(**launch_options)
+            try:
+                from .browser_path_config import register_active_browser
+                register_active_browser(self.browser)
+            except Exception:
+                pass
 
             # 创建浏览器上下文
             self.context = await self.browser.new_context(
@@ -127,6 +141,11 @@ class PlaywrightTestEngine:
             if self.context:
                 await self.context.close()
             if self.browser:
+                try:
+                    from .browser_path_config import unregister_active_browser
+                    unregister_active_browser(self.browser)
+                except Exception:
+                    pass
                 await self.browser.close()
             if self.playwright:
                 await self.playwright.stop()

@@ -553,6 +553,14 @@ async def check_playwright_browser(
     launcher_name, channel = browser_map.get(browser_type, ('chromium', None))
     custom_path = get_browser_path(browser_type)
 
+    # 检测前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+    try:
+        from .browser_path_config import reap_stale_browser_processes
+        reap_stale_browser_processes()
+    except Exception:
+        pass
+
+    browser = None
     try:
         pw = await async_playwright().start()
         launcher = getattr(pw, launcher_name)
@@ -565,6 +573,9 @@ async def check_playwright_browser(
                 '--disable-dev-shm-usage',
             ]
         }
+        # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+        from .browser_path_config import get_browser_launch_env
+        launch_kwargs['env'] = get_browser_launch_env()
         if channel:
             launch_kwargs['channel'] = channel
         # 若用户配置了自定义安装路径，优先使用 executable_path 启动
@@ -573,6 +584,8 @@ async def check_playwright_browser(
             # 使用 executable_path 时 channel 与之冲突，需要移除
             launch_kwargs.pop('channel', None)
         browser = await launcher.launch(**launch_kwargs)
+        from .browser_path_config import register_active_browser
+        register_active_browser(browser)
         await browser.close()
         await pw.stop()
         return success_response(data={
@@ -595,6 +608,13 @@ async def check_playwright_browser(
             'custom_path': custom_path,
             'message': error_msg
         })
+    finally:
+        try:
+            if browser is not None:
+                from .browser_path_config import unregister_active_browser
+                unregister_active_browser(browser)
+        except Exception:
+            pass
 
 
 @router.get("/browsers/custom-paths", summary="获取浏览器自定义路径列表", response_model=success_response)
