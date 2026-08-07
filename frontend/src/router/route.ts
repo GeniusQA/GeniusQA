@@ -315,7 +315,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 					meta: {
 						title: 'UI 脚本录制',
 						isLink: '',
-						isHide: false,
+						isHide: true,
 						isKeepAlive: false,
 						isAffix: false,
 						isIframe: false,

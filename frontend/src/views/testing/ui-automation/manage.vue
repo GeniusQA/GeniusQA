@@ -10,6 +10,7 @@
           </el-breadcrumb>
         </div>
         <div class="actions">
+          <el-button type="warning" :icon="VideoCamera" @click="goRecorder">录制脚本</el-button>
           <el-button type="primary" :icon="VideoPlay" @click="handleExecute">执行测试</el-button>
           <el-button type="success" :icon="Document" @click="handleViewReport">查看报告</el-button>
           <el-button :icon="Back" @click="handleBack">返回</el-button>
@@ -133,7 +134,7 @@
 import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, VideoPlay, Document, Back, Folder } from '@element-plus/icons-vue'
+import { Plus, VideoPlay, Document, Back, Folder, VideoCamera } from '@element-plus/icons-vue'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
 import ElementManage from './components/ElementManage.vue'
 import PageObjectManage from './components/PageObjectManage.vue'
@@ -319,6 +320,11 @@ const handleExecute = () => {
       ElMessage.info('请在测试套件中选择要执行的套件')
     }
   })
+}
+
+// 录制脚本
+const goRecorder = () => {
+  router.push('/ai/ui-recorder')
 }
 
 // 查看报告
