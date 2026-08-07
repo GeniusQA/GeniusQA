@@ -18,11 +18,10 @@
             </el-form-item>
             <el-form-item label="浏览器">
               <el-select v-model="form.browserType" style="width:100%">
-                <el-option label="Chromium（Playwright 自带）" value="chromium" />
-                <el-option label="Microsoft Edge（系统已安装）" value="msedge" />
-                <el-option label="Google Chrome（系统已安装）" value="chrome" />
-                <el-option label="Firefox" value="firefox" />
-                <el-option label="WebKit" value="webkit" />
+                <el-option label="Microsoft Edge" value="edge" />
+                <el-option label="Google Chrome" value="chrome" />
+                <el-option label="Mozilla Firefox" value="firefox" />
+                <el-option label="Apple Safari" value="safari" />
               </el-select>
             </el-form-item>
             <el-form-item label="视口">
@@ -193,7 +192,7 @@ const form = reactive({
   projectId: null as number | null,
   name: '',
   url: '',
-  browserType: 'chromium',
+  browserType: 'edge',
   viewportWidth: 1280,
   viewportHeight: 720,
   colorScheme: '',
@@ -220,7 +219,13 @@ async function applyProjectConfig(pid: number | null) {
   if (p.base_url && !form.url) form.url = p.base_url
   if (p.browser_type) {
     const bt = String(p.browser_type).toLowerCase()
-    form.browserType = bt === 'edge' ? 'msedge' : bt
+    // 兼容旧数据：msedge/chromium/webkit 映射到新的统一命名
+    const compatMap: Record<string, string> = {
+      msedge: 'edge',
+      chromium: 'chrome',
+      webkit: 'safari'
+    }
+    form.browserType = compatMap[bt] || bt
   }
   if (p.viewport_width != null) form.viewportWidth = Number(p.viewport_width)
   if (p.viewport_height != null) form.viewportHeight = Number(p.viewport_height)

@@ -1452,7 +1452,7 @@ class UIExecutionService:
             'suite_id': None,
             'test_case_id': test_case_id,
             'engine_type': config.get('engine_type', 'playwright'),
-            'browser_type': config.get('browser_type', 'chromium'),
+            'browser_type': config.get('browser_type', 'edge'),
             'status': 'running',
             'start_time': datetime.now(),
             'total_steps': len(steps_data),
@@ -1844,7 +1844,7 @@ class UIExecutionService:
             'suite_id': None,
             'test_case_id': None,  # 批量执行不关联单个用例
             'engine_type': config.get('engine_type', 'playwright'),
-            'browser_type': config.get('browser_type', 'chromium'),
+            'browser_type': config.get('browser_type', 'edge'),
             'status': 'running',
             'start_time': datetime.now(),
             'total_steps': 0,
@@ -2997,7 +2997,7 @@ class UIElementValidationService:
             'suite_id': None,
             'test_case_id': None,  # 批量执行不关联单个用例
             'engine_type': config.get('engine_type', 'playwright'),
-            'browser_type': config.get('browser_type', 'chromium'),
+            'browser_type': config.get('browser_type', 'edge'),
             'status': 'running',
             'start_time': datetime.now(),
             'total_steps': 0,

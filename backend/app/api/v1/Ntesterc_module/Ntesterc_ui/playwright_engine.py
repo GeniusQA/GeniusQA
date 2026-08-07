@@ -16,22 +16,35 @@ logger = logging.getLogger(__name__)
 class PlaywrightTestEngine:
     """Playwright测试执行引擎"""
 
-    def __init__(self, browser_type='chromium', headless=True, channel=None, stop_check_func=None):
+    # 与浏览器检查页一致的浏览器名称 -> Playwright 启动参数映射
+    _BROWSER_MAP = {
+        'edge': ('chromium', 'msedge'),
+        'chrome': ('chromium', 'chrome'),
+        'firefox': ('firefox', None),
+        'safari': ('webkit', None),
+        # 兼容旧数据
+        'msedge': ('chromium', 'msedge'),
+        'chromium': ('chromium', None),
+        'webkit': ('webkit', None),
+    }
+
+    def __init__(self, browser_type='edge', headless=True, channel=None, stop_check_func=None):
         """
         初始化测试引擎
 
         Args:
-            browser_type: 浏览器类型 (chromium, firefox, webkit)
+            browser_type: 浏览器类型 (edge, chrome, firefox, safari; 兼容 chromium/webkit/msedge)
             headless: 是否无头模式
-            channel: 浏览器渠道 (chrome, msedge, chrome-beta 等)
+            channel: 浏览器渠道 (chrome, msedge, chrome-beta 等)，默认按 browser_type 自动推断
                     - 'chrome': 使用系统安装的 Chrome
                     - 'msedge': 使用系统安装的 Edge
                     - None: 使用 Playwright 下载的浏览器
             stop_check_func: 停止检查函数，返回True表示需要停止执行
         """
-        self.browser_type = browser_type
+        mapped = self._BROWSER_MAP.get(browser_type, ('chromium', None))
+        self.browser_type = mapped[0]
         self.headless = headless
-        self.channel = channel
+        self.channel = channel or mapped[1]
         self.stop_check_func = stop_check_func
         self.playwright = None
         self.browser: Optional[Browser] = None

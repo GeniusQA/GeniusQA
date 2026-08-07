@@ -168,19 +168,26 @@
         </el-form-item>
         <el-form-item label="浏览器类型">
           <el-radio-group v-model="executeForm.browser_type">
-            <el-radio label="chromium">Chromium</el-radio>
-            <el-radio label="firefox">Firefox</el-radio>
-            <el-radio label="webkit">WebKit</el-radio>
+            <el-radio label="edge">Microsoft Edge</el-radio>
+            <el-radio label="chrome">Google Chrome</el-radio>
+            <el-radio label="firefox">Mozilla Firefox</el-radio>
+            <el-radio label="safari">Apple Safari</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="浏览器渠道" v-if="executeForm.browser_type === 'chromium'">
-          <el-select v-model="executeForm.channel" placeholder="选择浏览器" style="width: 100%" clearable>
-            <el-option label="Playwright Chromium（需下载）" :value="null" />
-            <el-option label="系统 Chrome" value="chrome" />
-            <el-option label="系统 Edge" value="msedge" />
+        <el-form-item label="浏览器渠道" v-if="['edge','chrome'].includes(executeForm.browser_type)">
+          <el-select v-model="executeForm.channel" placeholder="选择浏览器渠道" style="width: 100%" clearable>
+            <el-option label="系统自动检测" :value="null" />
+            <el-option label="Microsoft Edge" value="msedge" />
+            <el-option label="Edge Beta" value="msedge-beta" />
+            <el-option label="Edge Dev" value="msedge-dev" />
+            <el-option label="Edge Canary" value="msedge-canary" />
+            <el-option label="Google Chrome" value="chrome" />
+            <el-option label="Chrome Beta" value="chrome-beta" />
+            <el-option label="Chrome Dev" value="chrome-dev" />
+            <el-option label="Chrome Canary" value="chrome-canary" />
           </el-select>
           <div style="margin-top: 5px; color: #909399; font-size: 12px">
-            选择系统浏览器可避免下载 Playwright 浏览器
+            选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
         <el-form-item label="无头模式">
@@ -215,19 +222,26 @@
         </el-form-item>
         <el-form-item label="浏览器类型">
           <el-radio-group v-model="batchExecuteForm.browser_type">
-            <el-radio label="chromium">Chromium</el-radio>
-            <el-radio label="firefox">Firefox</el-radio>
-            <el-radio label="webkit">WebKit</el-radio>
+            <el-radio label="edge">Microsoft Edge</el-radio>
+            <el-radio label="chrome">Google Chrome</el-radio>
+            <el-radio label="firefox">Mozilla Firefox</el-radio>
+            <el-radio label="safari">Apple Safari</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="浏览器渠道" v-if="batchExecuteForm.browser_type === 'chromium'">
-          <el-select v-model="batchExecuteForm.channel" placeholder="选择浏览器" style="width: 100%" clearable>
-            <el-option label="Playwright Chromium（需下载）" :value="null" />
-            <el-option label="系统 Chrome" value="chrome" />
-            <el-option label="系统 Edge" value="msedge" />
+        <el-form-item label="浏览器渠道" v-if="['edge','chrome'].includes(batchExecuteForm.browser_type)">
+          <el-select v-model="batchExecuteForm.channel" placeholder="选择浏览器渠道" style="width: 100%" clearable>
+            <el-option label="系统自动检测" :value="null" />
+            <el-option label="Microsoft Edge" value="msedge" />
+            <el-option label="Edge Beta" value="msedge-beta" />
+            <el-option label="Edge Dev" value="msedge-dev" />
+            <el-option label="Edge Canary" value="msedge-canary" />
+            <el-option label="Google Chrome" value="chrome" />
+            <el-option label="Chrome Beta" value="chrome-beta" />
+            <el-option label="Chrome Dev" value="chrome-dev" />
+            <el-option label="Chrome Canary" value="chrome-canary" />
           </el-select>
           <div style="margin-top: 5px; color: #909399; font-size: 12px">
-            选择系统浏览器可避免下载 Playwright 浏览器
+            选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
         <el-form-item label="无头模式">
@@ -388,8 +402,8 @@ const executeLoading = ref(false)
 const currentExecuteTestCaseId = ref<number | null>(null)
 const executeForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'chromium',
-  channel: 'chrome',  // 默认使用系统 Chrome
+  browser_type: 'edge',
+  channel: '',
   headless: true,
   timeout: 30000
 })
@@ -579,7 +593,9 @@ const handleExecute = async (row: any) => {
 const handleExecuteSubmit = async () => {
   executeLoading.value = true
   try {
-    const res = await uiTestCaseApi.execute(currentExecuteTestCaseId.value, executeForm)
+    const payload = { ...executeForm }
+    if (!payload.channel) delete (payload as any).channel
+    const res = await uiTestCaseApi.execute(currentExecuteTestCaseId.value, payload)
     currentExecutionId.value = res.data.execution_id
     ElMessage.success('测试用例开始执行')
     executeDialogVisible.value = false
@@ -609,8 +625,8 @@ const batchExecuteDialogVisible = ref(false)
 const batchExecuteLoading = ref(false)
 const batchExecuteForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'chromium',
-  channel: 'chrome',
+  browser_type: 'edge',
+  channel: '',
   headless: true,
   parallel: false,
   max_workers: 1,
@@ -625,10 +641,12 @@ const handleBatchExecuteSubmit = async () => {
     const test_case_ids = selectedTestCases.value.map((item: any) => item.id)
     
     // 调用批量执行API
+    const payload = { ...batchExecuteForm }
+    if (!payload.channel) delete (payload as any).channel
     const res = await uiTestCaseApi.batchExecute({
       ui_project_id: props.uiProjectId,
       test_case_ids,
-      ...batchExecuteForm
+      ...payload
     })
     
     currentExecutionId.value = res.data.execution_id

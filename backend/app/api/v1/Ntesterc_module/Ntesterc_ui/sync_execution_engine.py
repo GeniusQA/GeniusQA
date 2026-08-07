@@ -35,22 +35,30 @@ class SyncExecutionEngine:
         
         try:
             # 获取配置
-            browser_type = config.get('browser_type', 'chromium')
+            browser_type = config.get('browser_type', 'edge')
             headless = config.get('headless', True)
             channel = config.get('channel', None)
-            
+
+            # 与浏览器检查页/录制器一致的映射
+            browser_map = {
+                'edge': ('chromium', 'msedge'),
+                'chrome': ('chromium', 'chrome'),
+                'firefox': ('firefox', None),
+                'safari': ('webkit', None),
+                'msedge': ('chromium', 'msedge'),
+                'chromium': ('chromium', None),
+                'webkit': ('webkit', None),
+            }
+            launcher_name, inferred_channel = browser_map.get(browser_type, ('chromium', None))
+            channel = channel or inferred_channel
+
             # 启动 Playwright
             with sync_playwright() as p:
-                # 选择浏览器
-                if browser_type == 'firefox':
-                    self.browser = p.firefox.launch(headless=headless)
-                elif browser_type == 'webkit':
-                    self.browser = p.webkit.launch(headless=headless)
-                else:  # chromium, chrome, edge
-                    launch_options = {'headless': headless}
-                    if channel:
-                        launch_options['channel'] = channel
-                    self.browser = p.chromium.launch(**launch_options)
+                launcher = getattr(p, launcher_name)
+                launch_options = {'headless': headless}
+                if channel:
+                    launch_options['channel'] = channel
+                self.browser = launcher.launch(**launch_options)
                 
                 browser_info = f"{browser_type}"
                 if channel:

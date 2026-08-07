@@ -336,32 +336,30 @@ class RecorderSession:
             logger.error(f"自动安装 Playwright 浏览器失败: {e}", exc_info=True)
             raise
 
-    # Playwright channel 到系统浏览器名称的映射
-    _CHANNEL_MAP = {
-        'msedge': 'msedge',
-        'edge': 'msedge',
-        'chrome': 'chrome',
+    # 与浏览器检查页一致的浏览器 -> Playwright launcher/channel 映射
+    _BROWSER_MAP = {
+        'edge': ('chromium', 'msedge'),
+        'chrome': ('chromium', 'chrome'),
+        'firefox': ('firefox', None),
+        'safari': ('webkit', None),
+        # 兼容旧数据
+        'msedge': ('chromium', 'msedge'),
+        'chromium': ('chromium', None),
+        'webkit': ('webkit', None),
     }
 
     async def _launch_browser(self, opts: Dict[str, Any]):
-        browser_type = opts.get('browser_type', 'chromium')
+        browser_type = opts.get('browser_type', 'edge')
         headless = bool(opts.get('headless', False))
         launch_args = ['--disable-blink-features=AutomationControlled']
         if headless:
             launch_args.append('--hide-scrollbars')
 
-        # 支持直接调用系统已安装的 Edge / Chrome（Playwright channel 模式）
-        channel = self._CHANNEL_MAP.get(browser_type)
+        launcher_name, channel = self._BROWSER_MAP.get(browser_type, ('chromium', None))
+        launcher = getattr(self.pw, launcher_name, self.pw.chromium)
+        launch_kwargs: Dict[str, Any] = {'headless': headless, 'args': launch_args}
         if channel:
-            launcher = self.pw.chromium
-            launch_kwargs: Dict[str, Any] = {
-                'headless': headless,
-                'args': launch_args,
-                'channel': channel,
-            }
-        else:
-            launcher = getattr(self.pw, browser_type, self.pw.chromium)
-            launch_kwargs = {'headless': headless, 'args': launch_args}
+            launch_kwargs['channel'] = channel
 
         try:
             return await launcher.launch(**launch_kwargs)
@@ -374,7 +372,7 @@ class RecorderSession:
             if "Executable doesn't exist" in err or "browserType.launch" in err:
                 # 尝试自动安装 Playwright 自带浏览器后重试一次
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self._install_browser, browser_type
+                    None, self._install_browser, launcher_name
                 )
                 return await launcher.launch(**launch_kwargs)
             raise

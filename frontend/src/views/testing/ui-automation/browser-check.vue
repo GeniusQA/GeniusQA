@@ -130,7 +130,7 @@
             <ul>
               <li>此功能会检测系统中已安装的浏览器</li>
               <li>Selenium 引擎支持：Chrome、Firefox、Edge、Safari（仅 macOS）</li>
-              <li>Playwright 引擎支持：Chromium、Firefox、WebKit</li>
+              <li>Playwright 引擎支持：Edge、Chrome、Firefox、Safari（Edge/Chrome 优先调用系统浏览器）</li>
               <li>首次使用时，webdriver-manager 会自动下载对应的浏览器驱动</li>
               <li>建议至少安装一个浏览器以进行 UI 自动化测试</li>
             </ul>

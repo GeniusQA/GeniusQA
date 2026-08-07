@@ -518,21 +518,23 @@ async def check_all_browsers():
 
 @router.get("/browsers/check-playwright", summary="检查 Playwright 录制浏览器可用性")
 async def check_playwright_browser(
-    browser_type: str = Query('chromium', description="录制所选浏览器: chromium, msedge, edge, chrome, firefox, webkit"),
+    browser_type: str = Query('edge', description="录制所选浏览器: edge, chrome, firefox, safari（兼容 chromium/msedge/webkit）"),
     headless: bool = Query(True, description="检测时是否使用无头模式，避免弹窗"),
 ):
     """检测后端运行身份能否实际启动所选浏览器（用于录制前环境校验）。"""
     from playwright.async_api import async_playwright
 
-    # 与录制器一致的 channel 映射：msedge/edge/chrome 走系统浏览器
-    channel_map = {'msedge': 'msedge', 'edge': 'msedge', 'chrome': 'chrome'}
-    channel = channel_map.get(browser_type)
-    if channel:
-        launcher_name = 'chromium'
-    elif browser_type in ('chromium', 'firefox', 'webkit'):
-        launcher_name = browser_type
-    else:
-        launcher_name = 'chromium'
+    # 与浏览器检查页/执行引擎一致的映射：edge/chrome 走系统浏览器，safari 用 webkit
+    browser_map = {
+        'edge': ('chromium', 'msedge'),
+        'chrome': ('chromium', 'chrome'),
+        'firefox': ('firefox', None),
+        'safari': ('webkit', None),
+        'msedge': ('chromium', 'msedge'),
+        'chromium': ('chromium', None),
+        'webkit': ('webkit', None),
+    }
+    launcher_name, channel = browser_map.get(browser_type, ('chromium', None))
 
     try:
         pw = await async_playwright().start()
@@ -602,8 +604,8 @@ async def batch_execute_test_cases(
     ui_project_id = request.get('ui_project_id')
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'chromium'),
-        'channel': request.get('channel'),
+        'browser_type': request.get('browser_type', 'edge'),
+        'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
         'max_workers': request.get('max_workers', 1),
@@ -626,8 +628,8 @@ async def batch_execute_test_suites(
     suite_ids = request.get('suite_ids', [])
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'chromium'),
-        'channel': request.get('channel'),
+        'browser_type': request.get('browser_type', 'edge'),
+        'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
         'max_workers': request.get('max_workers', 1),
