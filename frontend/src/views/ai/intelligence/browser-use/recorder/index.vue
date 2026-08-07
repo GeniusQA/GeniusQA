@@ -87,7 +87,7 @@
 
         <el-card shadow="never" header="导入已有脚本" style="margin-top:16px">
           <el-tabs v-model="importTab">
-            <el-tab-pane label="Playwright codegen" name="codegen">
+            <el-tab-pane label="Playwright Codegen" name="codegen">
               <el-input v-model="importCode" type="textarea" :rows="5"
                 placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
               <el-button type="primary" size="small" style="margin-top:8px"
