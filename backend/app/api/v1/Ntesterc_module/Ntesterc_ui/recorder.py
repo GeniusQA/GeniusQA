@@ -20,6 +20,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from fastapi import HTTPException
 from playwright.async_api import async_playwright
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -175,6 +176,8 @@ class RecorderSession:
         self.element_cache: Dict[tuple, int] = {}
         self.pick_result: Optional[Dict[str, Any]] = None
         self._lock = asyncio.Lock()
+        self.started_event = asyncio.Event()
+        self.start_error: Optional[str] = None
 
     # ---- 事件处理（来自页面注入脚本） ----------------------------------
     async def _handle(self, data: str):
@@ -313,9 +316,14 @@ class RecorderSession:
             self.pw = await async_playwright().start()
             browser_type = opts.get('browser_type', 'chromium')
             launcher = getattr(self.pw, browser_type, self.pw.chromium)
+            # 允许通过 headless 选项控制是否弹出浏览器窗口；后台服务/无桌面环境建议 true
+            headless = bool(opts.get('headless', False))
+            launch_args = ['--disable-blink-features=AutomationControlled']
+            if headless:
+                launch_args.append('--hide-scrollbars')
             self.browser = await launcher.launch(
-                headless=False,
-                args=['--disable-blink-features=AutomationControlled'],
+                headless=headless,
+                args=launch_args,
             )
             viewport = {
                 'width': int(opts.get('viewport_width', 1280)),
@@ -339,12 +347,15 @@ class RecorderSession:
             url = opts.get('url') or 'about:blank'
             await self.page.goto(url)
             self.running = True
-            logger.info(f"录制会话 {self.session_id} 浏览器已启动，目标: {url}")
+            self.started_event.set()
+            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={headless})，目标: {url}")
 
             # 保持会话，直到被停止或浏览器关闭
             while self.running and self.browser and self.browser.is_connected():
                 await asyncio.sleep(1)
         except Exception as e:
+            self.start_error = str(e)
+            self.started_event.set()
             logger.error(f"录制会话 {self.session_id} 运行异常: {e}", exc_info=True)
         finally:
             await self._cleanup()
@@ -426,6 +437,20 @@ class RecorderManager:
         session = RecorderSession(session_id, project_id, user_id, tc_id, group_id, options)
         self.sessions[session_id] = session
         asyncio.ensure_future(session.run())
+
+        # 等待浏览器实际启动成功（最多 15 秒），失败则清理并返回错误
+        try:
+            await asyncio.wait_for(session.started_event.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            await session.stop()
+            self.sessions.pop(session_id, None)
+            raise HTTPException(status_code=500, detail='浏览器启动超时，请尝试开启“无头模式”后再试')
+
+        if session.start_error:
+            await session.stop()
+            self.sessions.pop(session_id, None)
+            raise HTTPException(status_code=500, detail=f'浏览器启动失败: {session.start_error}')
+
         return {
             'session_id': session_id,
             'test_case_id': tc_id,

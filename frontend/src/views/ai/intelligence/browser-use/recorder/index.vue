@@ -40,6 +40,10 @@
             <el-form-item label="时区">
               <el-input v-model="form.timezone" placeholder="如 Asia/Shanghai" clearable />
             </el-form-item>
+            <el-form-item label="无头模式">
+              <el-switch v-model="form.headless" active-text="开启" inactive-text="关闭" />
+              <span class="hint">后台服务/无桌面环境建议开启</span>
+            </el-form-item>
           </el-form>
 
           <el-divider />
@@ -145,6 +149,7 @@ const form = reactive({
   colorScheme: '',
   locale: '',
   timezone: '',
+  headless: false,
 })
 
 const route = useRoute()
@@ -206,6 +211,7 @@ async function startRecord() {
     color_scheme: form.colorScheme || undefined,
     locale: form.locale || undefined,
     timezone: form.timezone || undefined,
+    headless: form.headless,
   }
   try {
     const res: any = await uiRecordApi.start(form.projectId, payload)
@@ -214,7 +220,8 @@ async function startRecord() {
     pickResult.value = null
     steps.value = []
     startPolling()
-    ElMessage.success('录制已启动，请在弹出的浏览器中操作')
+    const tip = form.headless ? '录制已启动（无头模式），请继续操作' : '录制已启动，请在弹出的浏览器中操作'
+    ElMessage.success(tip)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '启动录制失败')
   }
@@ -297,6 +304,7 @@ async function doImport(kind: 'codegen' | 'side') {
 <style scoped>
 .recorder-container { padding: 16px; }
 .sep { margin: 0 8px; color: #999; }
+.hint { margin-left: 8px; color: #909399; font-size: 12px; }
 .actions { display: flex; gap: 10px; }
 .assert-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .step-line { display: flex; align-items: center; gap: 8px; }
