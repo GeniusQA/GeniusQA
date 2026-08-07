@@ -8,6 +8,8 @@ from typing import Dict, Any, List
 from datetime import datetime
 from playwright.sync_api import sync_playwright, Page
 
+import os
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,16 +54,28 @@ class SyncExecutionEngine:
             launcher_name, inferred_channel = browser_map.get(browser_type, ('chromium', None))
             channel = channel or inferred_channel
 
+            # 读取自定义浏览器路径（优先使用）
+            try:
+                from .browser_path_config import get_browser_path
+                custom_path = get_browser_path(browser_type)
+            except Exception:
+                custom_path = None
+
             # 启动 Playwright
             with sync_playwright() as p:
                 launcher = getattr(p, launcher_name)
                 launch_options = {'headless': headless}
-                if channel:
+                if custom_path and os.path.exists(custom_path):
+                    launch_options['executable_path'] = custom_path
+                    launch_options.pop('channel', None)
+                elif channel:
                     launch_options['channel'] = channel
                 self.browser = launcher.launch(**launch_options)
-                
+
                 browser_info = f"{browser_type}"
-                if channel:
+                if custom_path and os.path.exists(custom_path):
+                    browser_info += f" (custom_path={custom_path})"
+                elif channel:
                     browser_info += f" (channel={channel})"
                 browser_info += f", headless={headless}"
                 logs.append(f"✓ 浏览器启动成功: {browser_info}")

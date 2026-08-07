@@ -358,13 +358,28 @@ class RecorderSession:
         launcher_name, channel = self._BROWSER_MAP.get(browser_type, ('chromium', None))
         launcher = getattr(self.pw, launcher_name, self.pw.chromium)
         launch_kwargs: Dict[str, Any] = {'headless': headless, 'args': launch_args}
-        if channel:
+
+        # 优先使用用户配置的自定义浏览器路径
+        custom_path = None
+        try:
+            from .browser_path_config import get_browser_path
+            custom_path = get_browser_path(browser_type)
+        except Exception:
+            pass
+        if custom_path and os.path.exists(custom_path):
+            launch_kwargs['executable_path'] = custom_path
+            launch_kwargs.pop('channel', None)
+        elif channel:
             launch_kwargs['channel'] = channel
 
         try:
             return await launcher.launch(**launch_kwargs)
         except Exception as e:
             err = str(e)
+            if custom_path and "Executable doesn't exist" in err:
+                raise RuntimeError(
+                    f"自定义浏览器路径无法启动: {custom_path}，请检查是否选择了正确的可执行文件"
+                ) from e
             if channel and "Chromium distribution" in err:
                 raise RuntimeError(
                     f"未找到系统安装的 {channel} 浏览器，请确认已安装后再试"

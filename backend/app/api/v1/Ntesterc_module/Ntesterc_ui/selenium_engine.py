@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class SeleniumTestEngine:
     """Selenium测试执行引擎"""
 
-    def __init__(self, browser_type='chrome', headless=True, stop_check_func=None):
+    def __init__(self, browser_type='chrome', headless=True, stop_check_func=None, executable_path: Optional[str] = None):
         """
         初始化测试引擎
 
@@ -30,24 +30,33 @@ class SeleniumTestEngine:
             browser_type: 浏览器类型 (chrome, firefox, safari, edge)
             headless: 是否无头模式
             stop_check_func: 停止检查函数，返回True表示需要停止执行
+            executable_path: 自定义浏览器可执行文件路径
         """
         self.browser_type = browser_type
         self.headless = headless
         self.stop_check_func = stop_check_func
+        self.executable_path = executable_path
         self.driver = None
 
     @staticmethod
-    def check_browser_available(browser_type='chrome'):
+    def check_browser_available(browser_type='chrome', executable_path: Optional[str] = None):
         """
         检查浏览器是否可用
 
         Args:
             browser_type: 浏览器类型
+            executable_path: 自定义浏览器可执行文件路径，提供时优先校验该路径
 
         Returns:
             (是否可用, 错误信息)
         """
         try:
+            # 若提供了自定义路径，优先检查该路径是否存在
+            if executable_path:
+                if not os.path.exists(executable_path):
+                    return False, f"自定义浏览器路径不存在或无法访问: {executable_path}"
+                return True, None
+
             if browser_type == 'chrome':
                 # 检查 Chrome 浏览器是否安装
                 chrome_paths = [
@@ -114,8 +123,8 @@ class SeleniumTestEngine:
             os.environ['WDM_LOG_LEVEL'] = '0'  # 减少日志输出
             os.environ['WDM_PRINT_FIRST_LINE'] = 'False'  # 不打印首行信息
             
-            # 先检查浏览器是否可用
-            is_available, error_msg = self.check_browser_available(self.browser_type)
+            # 先检查浏览器是否可用（优先使用自定义路径）
+            is_available, error_msg = self.check_browser_available(self.browser_type, self.executable_path)
             if not is_available:
                 logger.error(f"浏览器不可用: {error_msg}")
                 # 提供安装建议
@@ -133,6 +142,8 @@ class SeleniumTestEngine:
                 from webdriver_manager.chrome import ChromeDriverManager
 
                 options = Options()
+                if self.executable_path:
+                    options.binary_location = self.executable_path
                 if self.headless:
                     options.add_argument('--headless')
                 options.add_argument('--disable-blink-features=AutomationControlled')
@@ -181,6 +192,8 @@ class SeleniumTestEngine:
                 from webdriver_manager.firefox import GeckoDriverManager
 
                 options = Options()
+                if self.executable_path:
+                    options.binary_location = self.executable_path
                 if self.headless:
                     options.add_argument('--headless')
                 options.add_argument('--width=1920')
@@ -211,6 +224,8 @@ class SeleniumTestEngine:
                 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
                 options = Options()
+                if self.executable_path:
+                    options.binary_location = self.executable_path
                 if self.headless:
                     options.add_argument('--headless')
                 options.add_argument('--disable-blink-features=AutomationControlled')

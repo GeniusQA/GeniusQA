@@ -90,23 +90,38 @@
               <el-icon v-else class="error-icon"><WarningFilled /></el-icon>
               <span>{{ row.message }}</span>
             </div>
+            <div v-if="row.custom_path" class="custom-path-line">
+              <el-tag v-if="row.custom_path_exists" type="success" size="small" effect="plain">自定义路径</el-tag>
+              <el-tag v-else type="danger" size="small" effect="plain">自定义路径不存在</el-tag>
+              <el-tooltip :content="row.custom_path" placement="top">
+                <span class="custom-path-text">{{ row.custom_path }}</span>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="240">
           <template #default="{ row }">
-            <el-button 
-              v-if="!row.is_available" 
-              type="primary" 
+            <el-button
+              type="warning"
+              size="small"
+              :icon="FolderOpened"
+              @click="openCustomPathDialog(row)"
+            >
+              {{ row.custom_path ? '修改目录' : '自定义目录' }}
+            </el-button>
+            <el-button
+              v-if="!row.is_available"
+              type="primary"
               size="small"
               :icon="Document"
               @click="showInstallGuide(row)"
             >
               安装指南
             </el-button>
-            <el-button 
+            <el-button
               v-else
-              type="success" 
+              type="success"
               size="small"
               :icon="Check"
               disabled
@@ -219,6 +234,91 @@
         <el-button type="primary" @click="checkAllBrowsers">重新检查</el-button>
       </template>
     </el-dialog>
+
+    <!-- 自定义浏览器路径对话框 -->
+    <el-dialog
+      v-model="customPathVisible"
+      :title="`自定义安装目录 - ${currentBrowser ? getBrowserName(currentBrowser.browser_type) : ''}`"
+      width="620px"
+      :close-on-click-modal="false"
+      @close="resetCustomPathForm"
+    >
+      <div v-if="currentBrowser" class="custom-path-form">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="custom-path-tip"
+        >
+          <template #default>
+            <div>
+              当浏览器未安装在默认目录时，可手动指定浏览器的可执行文件（例如 <code>msedge.exe</code>、<code>chrome.exe</code>、<code>firefox.exe</code>）。保存后系统将优先使用该路径启动浏览器。
+            </div>
+          </template>
+        </el-alert>
+
+        <el-form
+          ref="customPathFormRef"
+          :model="customPathForm"
+          :rules="customPathRules"
+          label-width="110px"
+          label-position="right"
+        >
+          <el-form-item label="浏览器类型">
+            <el-input v-model="customPathForm.browser_type" disabled />
+          </el-form-item>
+
+          <el-form-item label="可执行文件" prop="executable_path">
+            <el-input
+              v-model="customPathForm.executable_path"
+              placeholder="D:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+              clearable
+            >
+              <template #append>
+                <el-button @click="handleBrowseFile">
+                  <el-icon><FolderOpened /></el-icon>
+                  浏览
+                </el-button>
+              </template>
+            </el-input>
+            <!-- 隐藏的文件选择输入 -->
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept=".exe"
+              style="display: none"
+              @change="onFileSelected"
+            />
+          </el-form-item>
+        </el-form>
+
+        <div v-if="verifyResult" class="verify-result" :class="verifyResult.is_available ? 'success' : 'error'">
+          <el-icon><component :is="verifyResult.is_available ? 'CircleCheck' : 'CircleClose'" /></el-icon>
+          <span>{{ verifyResult.message }}</span>
+        </div>
+
+        <div v-if="currentBrowser.custom_path" class="current-path-info">
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="当前已保存路径">{{ currentBrowser.custom_path }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="customPathVisible = false">关闭</el-button>
+        <el-button
+          v-if="currentBrowser?.custom_path"
+          type="danger"
+          plain
+          :loading="deletePathLoading"
+          @click="deleteCustomPath"
+        >
+          清除自定义路径
+        </el-button>
+        <el-button type="success" plain :loading="verifyLoading" @click="verifyCustomPath">验证路径</el-button>
+        <el-button type="primary" :loading="savePathLoading" @click="saveCustomPath">保存并应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -227,8 +327,9 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
   Monitor, Refresh, CircleCheck, CircleClose, TrendCharts, 
-  Document, Check, SuccessFilled, WarningFilled, DocumentCopy 
+  Document, Check, SuccessFilled, WarningFilled, DocumentCopy, FolderOpened 
 } from '@element-plus/icons-vue'
+import type { FormInstance } from 'element-plus'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
 
 const { uiBrowserApi } = useUiAutomationApi()
@@ -242,13 +343,38 @@ interface Browser {
   browser_type: string
   is_available: boolean
   message: string
+  custom_path?: string
+  custom_path_exists?: boolean
+}
+
+interface VerifyResult {
+  is_available: boolean
+  message: string
 }
 
 const loading = ref(false)
 const browsers = ref<Browser[]>([])
 const installGuideVisible = ref(false)
+const customPathVisible = ref(false)
 const currentBrowser = ref<Browser | null>(null)
 const activeTab = ref('windows')
+const customPathFormRef = ref<FormInstance>()
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const verifyResult = ref<VerifyResult | null>(null)
+const verifyLoading = ref(false)
+const savePathLoading = ref(false)
+const deletePathLoading = ref(false)
+
+const customPathForm = ref({
+  browser_type: '',
+  executable_path: ''
+})
+
+const customPathRules = {
+  executable_path: [
+    { required: true, message: '请选择浏览器可执行文件路径', trigger: 'blur' }
+  ]
+}
 
 // 统计数据
 const availableCount = computed(() => browsers.value.filter(b => b.is_available).length)
@@ -320,6 +446,119 @@ const getBrowserIcon = (type: string) => {
 const showInstallGuide = (browser: Browser) => {
   currentBrowser.value = browser
   installGuideVisible.value = true
+}
+
+// 打开自定义路径对话框
+const openCustomPathDialog = (browser: Browser) => {
+  currentBrowser.value = browser
+  customPathForm.value = {
+    browser_type: browser.browser_type,
+    executable_path: browser.custom_path || ''
+  }
+  verifyResult.value = null
+  customPathVisible.value = true
+}
+
+// 重置自定义路径表单
+const resetCustomPathForm = () => {
+  customPathForm.value = {
+    browser_type: '',
+    executable_path: ''
+  }
+  verifyResult.value = null
+  currentBrowser.value = null
+}
+
+// 点击浏览按钮触发隐藏文件选择
+const handleBrowseFile = () => {
+  fileInputRef.value?.click()
+}
+
+// 文件选择变更
+const onFileSelected = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    customPathForm.value.executable_path = file.path || file.name
+  }
+  if (target) {
+    target.value = ''
+  }
+}
+
+// 验证自定义路径
+const verifyCustomPath = async () => {
+  if (!customPathForm.value.executable_path.trim()) {
+    ElMessage.warning('请先输入或选择浏览器可执行文件路径')
+    return
+  }
+  verifyLoading.value = true
+  verifyResult.value = null
+  try {
+    const res = await uiBrowserApi.verifyCustomPath({
+      browser_type: customPathForm.value.browser_type,
+      executable_path: customPathForm.value.executable_path.trim()
+    })
+    verifyResult.value = {
+      is_available: res.data.is_available,
+      message: res.data.message
+    }
+    if (res.data.is_available) {
+      ElMessage.success('路径验证通过')
+    } else {
+      ElMessage.error(res.data.message || '路径验证失败')
+    }
+  } catch (error) {
+    ElMessage.error('验证请求失败，请稍后重试')
+  } finally {
+    verifyLoading.value = false
+  }
+}
+
+// 保存自定义路径
+const saveCustomPath = async () => {
+  if (!customPathFormRef.value) return
+  await customPathFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    savePathLoading.value = true
+    try {
+      const res = await uiBrowserApi.saveCustomPath({
+        browser_type: customPathForm.value.browser_type,
+        executable_path: customPathForm.value.executable_path.trim()
+      })
+      if (res.code === 200) {
+        ElMessage.success('自定义路径已保存')
+        customPathVisible.value = false
+        await checkAllBrowsers()
+      } else {
+        ElMessage.error(res.message || '保存失败')
+      }
+    } catch (error) {
+      ElMessage.error('保存失败，请稍后重试')
+    } finally {
+      savePathLoading.value = false
+    }
+  })
+}
+
+// 删除自定义路径
+const deleteCustomPath = async () => {
+  if (!currentBrowser.value) return
+  deletePathLoading.value = true
+  try {
+    const res = await uiBrowserApi.deleteCustomPath(currentBrowser.value.browser_type)
+    if (res.code === 200) {
+      ElMessage.success('已恢复使用默认路径查找')
+      customPathVisible.value = false
+      await checkAllBrowsers()
+    } else {
+      ElMessage.error(res.message || '删除失败')
+    }
+  } catch (error) {
+    ElMessage.error('删除失败，请稍后重试')
+  } finally {
+    deletePathLoading.value = false
+  }
 }
 
 // 获取安装提示
@@ -598,6 +837,52 @@ onMounted(() => {
     .refresh-tip {
       margin-top: 20px;
     }
+  }
+
+  .custom-path-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding-left: 24px;
+
+    .custom-path-text {
+      color: #606266;
+      font-size: 13px;
+      max-width: 360px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+
+.custom-path-form {
+  .custom-path-tip {
+    margin-bottom: 20px;
+  }
+
+  .verify-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-top: 16px;
+
+    &.success {
+      background-color: #f0f9eb;
+      color: #67c23a;
+    }
+
+    &.error {
+      background-color: #fef0f0;
+      color: #f56c6c;
+    }
+  }
+
+  .current-path-info {
+    margin-top: 16px;
   }
 }
 </style>

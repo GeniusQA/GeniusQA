@@ -105,6 +105,10 @@ export function useUiAutomationApi() {
     check: (browserType: string) => request.get('/v1/Ntesterc_ui/browsers/check', { params: { browser_type: browserType } }),
     checkAll: () => request.get('/v1/Ntesterc_ui/browsers/check-all'),
     checkPlaywright: (browserType: string, headless = true) => request.get('/v1/Ntesterc_ui/browsers/check-playwright', { params: { browser_type: browserType, headless } }),
+    getCustomPaths: () => request.get('/v1/Ntesterc_ui/browsers/custom-paths'),
+    saveCustomPath: (data: any) => request.post('/v1/Ntesterc_ui/browsers/custom-paths', data),
+    deleteCustomPath: (browserType: string) => request.delete(`/v1/Ntesterc_ui/browsers/custom-paths/${browserType}`),
+    verifyCustomPath: (data: any) => request.post('/v1/Ntesterc_ui/browsers/verify-custom-path', data),
   }
 
   const uiRecordApi = {

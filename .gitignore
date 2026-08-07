@@ -96,6 +96,7 @@ uploads/skills/
 
 # ==================== Local config & scripts ====================
 config.yaml
+backend/browser_paths.json
 README.md
 
 # Local sync/personal scripts

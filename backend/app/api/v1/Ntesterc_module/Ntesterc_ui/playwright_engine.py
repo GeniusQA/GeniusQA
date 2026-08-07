@@ -28,7 +28,7 @@ class PlaywrightTestEngine:
         'webkit': ('webkit', None),
     }
 
-    def __init__(self, browser_type='edge', headless=True, channel=None, stop_check_func=None):
+    def __init__(self, browser_type='edge', headless=True, channel=None, stop_check_func=None, executable_path: Optional[str] = None):
         """
         初始化测试引擎
 
@@ -40,6 +40,7 @@ class PlaywrightTestEngine:
                     - 'msedge': 使用系统安装的 Edge
                     - None: 使用 Playwright 下载的浏览器
             stop_check_func: 停止检查函数，返回True表示需要停止执行
+            executable_path: 自定义浏览器可执行文件路径，未提供时会尝试读取配置文件
         """
         mapped = self._BROWSER_MAP.get(browser_type, ('chromium', None))
         self.browser_type = mapped[0]
@@ -50,6 +51,16 @@ class PlaywrightTestEngine:
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
+
+        # 优先使用显式传入的自定义路径，否则读取配置文件
+        if executable_path:
+            self.executable_path = executable_path
+        else:
+            try:
+                from .browser_path_config import get_browser_path
+                self.executable_path = get_browser_path(browser_type)
+            except Exception:
+                self.executable_path = None
 
     async def start(self):
         """启动浏览器"""
@@ -71,12 +82,21 @@ class PlaywrightTestEngine:
                 'headless': self.headless,
                 'args': ['--disable-blink-features=AutomationControlled']  # 避免被检测
             }
-            
-            # 如果指定了 channel，使用系统安装的浏览器
-            if self.channel:
+
+            # 若配置了自定义可执行路径，优先使用 executable_path（channel 与之冲突，需要移除）
+            if self.executable_path:
+                import os
+                if os.path.exists(self.executable_path):
+                    launch_options['executable_path'] = self.executable_path
+                    launch_options.pop('channel', None)
+                    logger.info(f"使用自定义浏览器路径: {self.executable_path}")
+                else:
+                    logger.warning(f"自定义浏览器路径不存在: {self.executable_path}")
+            elif self.channel:
+                # 如果指定了 channel，使用系统安装的浏览器
                 launch_options['channel'] = self.channel
                 logger.info(f"使用系统浏览器: channel={self.channel}")
-            
+
             self.browser = await browser_launcher.launch(**launch_options)
 
             # 创建浏览器上下文

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # @author: Rebort
+import os
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel
@@ -26,7 +27,10 @@ from .schema import (
     UITestStepUpdateSchema,
     TestStepReorderSchema,
     ExecutionRequestSchema,
-    CodeGenerationSchema
+    CodeGenerationSchema,
+    BrowserCustomPathSchema,
+    BrowserCustomPathOutSchema,
+    BrowserVerifyPathSchema
 )
 from .service import (
     UIProjectService,
@@ -41,7 +45,13 @@ from .service import (
     UIReportService,
     UIElementValidationService
 )
-
+from .browser_path_config import (
+    get_browser_path,
+    get_all_browser_paths,
+    set_browser_path,
+    remove_browser_path,
+    path_exists
+)
 router = APIRouter()
 
 
@@ -459,15 +469,18 @@ async def delete_test_step(
 async def check_browser_availability(
     browser_type: str = Query('chrome', description="浏览器类型: chrome, firefox, edge, safari")
 ):
-    """检查指定浏览器是否可用"""
+    """检查指定浏览器是否可用（优先使用已配置的自定义路径）"""
     from .selenium_engine import SeleniumTestEngine
-    
-    is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type)
-    
+
+    custom_path = get_browser_path(browser_type)
+    is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type, custom_path)
+
     return success_response(data={
         'browser_type': browser_type,
         'is_available': is_available,
         'message': error_msg if not is_available else '浏览器可用',
+        'custom_path': custom_path,
+        'custom_path_exists': path_exists(browser_type),
         'install_tips': {
             'chrome': {
                 'macos': 'brew install --cask google-chrome',
@@ -495,20 +508,23 @@ async def check_browser_availability(
 
 @router.get("/browsers/check-all", summary="检查所有浏览器可用性")
 async def check_all_browsers():
-    """检查所有支持的浏览器可用性"""
+    """检查所有支持的浏览器可用性（优先使用已配置的自定义路径）"""
     from .selenium_engine import SeleniumTestEngine
-    
+
     browsers = ['chrome', 'firefox', 'edge', 'safari']
     results = []
-    
+
     for browser in browsers:
-        is_available, error_msg = SeleniumTestEngine.check_browser_available(browser)
+        custom_path = get_browser_path(browser)
+        is_available, error_msg = SeleniumTestEngine.check_browser_available(browser, custom_path)
         results.append({
             'browser_type': browser,
             'is_available': is_available,
-            'message': error_msg if not is_available else '浏览器可用'
+            'message': error_msg if not is_available else '浏览器可用',
+            'custom_path': custom_path,
+            'custom_path_exists': bool(custom_path and os.path.exists(custom_path))
         })
-    
+
     return success_response(data={
         'browsers': results,
         'total': len(results),
@@ -535,6 +551,7 @@ async def check_playwright_browser(
         'webkit': ('webkit', None),
     }
     launcher_name, channel = browser_map.get(browser_type, ('chromium', None))
+    custom_path = get_browser_path(browser_type)
 
     try:
         pw = await async_playwright().start()
@@ -542,6 +559,11 @@ async def check_playwright_browser(
         launch_kwargs = {'headless': headless}
         if channel:
             launch_kwargs['channel'] = channel
+        # 若用户配置了自定义安装路径，优先使用 executable_path 启动
+        if custom_path and os.path.exists(custom_path):
+            launch_kwargs['executable_path'] = custom_path
+            # 使用 executable_path 时 channel 与之冲突，需要移除
+            launch_kwargs.pop('channel', None)
         browser = await launcher.launch(**launch_kwargs)
         await browser.close()
         await pw.stop()
@@ -549,6 +571,7 @@ async def check_playwright_browser(
             'browser_type': browser_type,
             'is_available': True,
             'channel': channel,
+            'custom_path': custom_path,
             'message': '浏览器可用'
         })
     except Exception as e:
@@ -561,8 +584,205 @@ async def check_playwright_browser(
             'browser_type': browser_type,
             'is_available': False,
             'channel': channel,
+            'custom_path': custom_path,
             'message': error_msg
         })
+
+
+@router.get("/browsers/custom-paths", summary="获取浏览器自定义路径列表", response_model=success_response)
+async def list_browser_custom_paths():
+    """获取所有已保存的浏览器自定义安装路径。"""
+    paths = get_all_browser_paths()
+    data = [
+        {
+            'browser_type': bt,
+            'executable_path': path,
+            'exists': os.path.exists(path)
+        }
+        for bt, path in paths.items()
+    ]
+    return success_response(data=data)
+
+
+@router.post("/browsers/custom-paths", summary="保存浏览器自定义路径")
+async def save_browser_custom_path(data: BrowserCustomPathSchema):
+    """保存浏览器自定义安装路径。"""
+    normalized = set_browser_path(data.browser_type, data.executable_path)
+    saved_path = get_browser_path(normalized)
+    return success_response(data={
+        'browser_type': normalized,
+        'executable_path': saved_path,
+        'exists': os.path.exists(saved_path) if saved_path else False
+    }, message="自定义路径已保存")
+
+
+@router.delete("/browsers/custom-paths/{browser_type}", summary="删除浏览器自定义路径")
+async def delete_browser_custom_path(browser_type: str):
+    """删除指定浏览器的自定义安装路径，恢复使用默认路径查找。"""
+    remove_browser_path(browser_type)
+    return success_response(data={'browser_type': browser_type}, message="自定义路径已删除")
+
+
+@router.post("/browsers/verify-custom-path", summary="验证浏览器自定义路径")
+async def verify_browser_custom_path(data: BrowserVerifyPathSchema):
+    """
+    验证自定义路径是否真的能启动浏览器。
+    对 edge/chrome/chromium 使用 headless 模式打开 about:blank 验证；
+    对 firefox 使用 --version 验证；
+    对 safari 仅做路径存在性校验（Windows/Linux 不支持 Safari）。
+    """
+    import asyncio
+    import platform
+
+    executable_path = data.executable_path.strip() if data.executable_path else ''
+    if not executable_path:
+        return success_response(data={'is_available': False, 'message': '可执行文件路径不能为空'})
+    if not os.path.exists(executable_path):
+        return success_response(data={'is_available': False, 'message': f'路径不存在: {executable_path}'})
+
+    browser_type = data.browser_type.lower().strip()
+
+    # edge/chrome/chromium: 先用 --version 做轻量验证；
+    # 若不支持 --version（如 Edge 返回 1002），再尝试 headless + dump-dom + 独立 user-data-dir。
+    # 两种验证都失败时，只要文件存在且是有效可执行文件，仍允许保存，
+    # 因为 Playwright/Selenium 实际启动方式与独立子进程可能不同。
+    if browser_type in ('edge', 'chrome', 'msedge', 'chromium'):
+        import tempfile
+        import shutil
+
+        # 第一重：--version
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
+            output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+            if process.returncode == 0 and output:
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': f'路径验证通过，{output}'
+                })
+        except Exception:
+            pass
+
+        # 第二重：headless + dump-dom + 独立 user-data-dir
+        tmp_dir = None
+        try:
+            tmp_dir = tempfile.mkdtemp(prefix=f'{browser_type}-verify-')
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--headless',
+                '--disable-gpu',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                f'--user-data-dir={tmp_dir}',
+                '--dump-dom',
+                'about:blank',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+                output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+                if process.returncode == 0:
+                    return success_response(data={
+                        'browser_type': browser_type,
+                        'executable_path': executable_path,
+                        'is_available': True,
+                        'message': '路径验证通过，浏览器可以正常启动'
+                    })
+            except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+        finally:
+            if tmp_dir:
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+        # 两重回验证均失败：若文件存在且扩展名符合可执行文件，允许保存并给出提示
+        if os.path.isfile(executable_path):
+            ext = os.path.splitext(executable_path)[1].lower()
+            if ext in ('.exe', ''):
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': '路径格式正确，已保存。独立验证未通过，但 Playwright/Selenium 执行时仍会尝试从该路径启动浏览器。'
+                })
+        return success_response(data={
+            'browser_type': browser_type,
+            'executable_path': executable_path,
+            'is_available': False,
+            'message': '路径验证失败: 无法识别为可用的浏览器可执行文件，请检查是否选择了正确的 .exe 文件'
+        })
+
+    # firefox 使用 --version
+    if browser_type == 'firefox':
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+            output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+            if process.returncode == 0 and output:
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': f'路径验证通过，{output}'
+                })
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': f'路径验证失败: 进程退出码 {process.returncode}，输出: {output or "(无输出)"}'
+            })
+        except Exception as e:
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': f'路径验证失败: {e}'
+            })
+
+    # Safari 仅在 macOS 有效
+    if browser_type in ('safari', 'webkit'):
+        if platform.system() != 'Darwin':
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': 'Safari 仅在 macOS 系统上可用，Windows/Linux 请使用 Edge/Chrome/Firefox'
+            })
+        return success_response(data={
+            'browser_type': browser_type,
+            'executable_path': executable_path,
+            'is_available': True,
+            'message': '路径已确认'
+        })
+
+    return success_response(data={
+        'browser_type': browser_type,
+        'executable_path': executable_path,
+        'is_available': False,
+        'message': f'不支持的浏览器类型: {browser_type}'
+    })
 
 
 @router.post("/test-suites/{test_suite_id}/execute", summary="执行测试套件")

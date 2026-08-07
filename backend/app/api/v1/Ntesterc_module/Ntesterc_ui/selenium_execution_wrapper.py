@@ -44,9 +44,16 @@ class SeleniumExecutionEngine:
             # 获取配置
             browser_type = config.get('browser_type', 'chrome')
             headless = config.get('headless', True)
-            
-            # 检查浏览器是否可用
-            is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type)
+
+            # 读取自定义浏览器路径
+            try:
+                from .browser_path_config import get_browser_path
+                custom_path = get_browser_path(browser_type)
+            except Exception:
+                custom_path = None
+
+            # 检查浏览器是否可用（优先使用自定义路径）
+            is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type, custom_path)
             if not is_available:
                 return {
                     'status': 'failed',
@@ -58,9 +65,13 @@ class SeleniumExecutionEngine:
                     'screenshots': [],  # 空截图列表
                     'error_message': error_msg
                 }
-            
+
             # 创建引擎实例
-            self.engine = SeleniumTestEngine(browser_type=browser_type, headless=headless)
+            self.engine = SeleniumTestEngine(
+                browser_type=browser_type,
+                headless=headless,
+                executable_path=custom_path
+            )
             
             # 启动浏览器
             self.engine.start()

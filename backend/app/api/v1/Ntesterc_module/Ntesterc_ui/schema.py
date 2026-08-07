@@ -378,6 +378,26 @@ class ExecutionListQuerySchema(BaseModel):
     end_date: Optional[datetime] = Field(None, description='结束日期')
 
 
+# ==================== 浏览器自定义路径 ====================
+class BrowserCustomPathSchema(BaseModel):
+    """浏览器自定义路径"""
+    browser_type: str = Field(..., description='浏览器类型: edge/chrome/firefox/safari')
+    executable_path: str = Field(..., description='浏览器可执行文件绝对路径')
+
+
+class BrowserCustomPathOutSchema(BaseModel):
+    """浏览器自定义路径输出"""
+    browser_type: str
+    executable_path: str
+    exists: bool = Field(False, description='路径是否真实存在')
+
+
+class BrowserVerifyPathSchema(BaseModel):
+    """验证浏览器自定义路径请求"""
+    browser_type: str = Field(..., description='浏览器类型: edge/chrome/firefox/safari')
+    executable_path: str = Field(..., description='浏览器可执行文件绝对路径')
+
+
 class ExecutionStatisticsSchema(BaseModel):
     """执行统计"""
     total_executions: int = Field(..., description='总执行次数')
