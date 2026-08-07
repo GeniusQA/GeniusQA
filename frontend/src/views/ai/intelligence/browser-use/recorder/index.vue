@@ -50,6 +50,9 @@
           <el-divider />
 
           <div class="actions">
+            <el-button type="info" :disabled="!form.projectId" @click="saveRecorderConfig">
+              <el-icon><FolderChecked /></el-icon> 保存配置
+            </el-button>
             <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="openEnvCheck">
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
@@ -200,7 +203,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
 
 const projects = ref<any[]>([])
@@ -226,6 +229,39 @@ const form = reactive({
   timezone: '',
   headless: false,
 })
+
+const RECORDER_CONFIG_KEY = 'ui-recorder-config'
+const CONFIG_FIELDS: (keyof typeof form)[] = [
+  'url', 'browserType', 'viewportWidth', 'viewportHeight', 'colorScheme', 'locale', 'timezone', 'headless'
+]
+
+function saveRecorderConfig() {
+  try {
+    const payload: any = {}
+    CONFIG_FIELDS.forEach((key) => {
+      payload[key] = (form as any)[key]
+    })
+    localStorage.setItem(RECORDER_CONFIG_KEY, JSON.stringify(payload))
+    ElMessage.success('已保存当前配置')
+  } catch (e) {
+    ElMessage.error('保存配置失败')
+  }
+}
+
+function loadRecorderConfig() {
+  try {
+    const raw = localStorage.getItem(RECORDER_CONFIG_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    CONFIG_FIELDS.forEach((key) => {
+      if (saved[key] !== undefined) {
+        (form as any)[key] = saved[key]
+      }
+    })
+  } catch (e) {
+    console.error('读取录制配置失败', e)
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -291,6 +327,8 @@ onMounted(async () => {
         await applyProjectConfig(pid)
       }
     }
+    // 最后加载历史输入，覆盖项目默认值
+    loadRecorderConfig()
   } catch (e) {
     ElMessage.error('加载 UI 项目失败')
   }
