@@ -92,7 +92,7 @@
         </el-card>
 
         <el-card shadow="never" header="导入已有脚本" style="margin-top:16px">
-          <el-tabs v-model="importTab">
+          <el-tabs v-if="engine === 'all'" v-model="importTab">
             <el-tab-pane label="Playwright Codegen" name="codegen">
               <el-input v-model="importCode" type="textarea" :rows="5"
                 placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
@@ -106,6 +106,18 @@
                 :disabled="!form.projectId || !importSide" @click="doImport('side')">导入为用例</el-button>
             </el-tab-pane>
           </el-tabs>
+          <div v-else-if="engine === 'playwright'">
+            <el-input v-model="importCode" type="textarea" :rows="5"
+              placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
+            <el-button type="primary" size="small" style="margin-top:8px"
+              :disabled="!form.projectId || !importCode" @click="doImport('codegen')">导入为用例</el-button>
+          </div>
+          <div v-else-if="engine === 'selenium'">
+            <el-input v-model="importSide" type="textarea" :rows="5"
+              placeholder="粘贴 Selenium IDE 导出的 .side 文件内容（JSON）" />
+            <el-button type="primary" size="small" style="margin-top:8px"
+              :disabled="!form.projectId || !importSide" @click="doImport('side')">导入为用例</el-button>
+          </div>
         </el-card>
       </el-col>
 
@@ -197,9 +209,9 @@ const paused = ref(false)
 const sessionId = ref<number | null>(null)
 const steps = ref<any[]>([])
 const pickResult = ref<any>(null)
-const importTab = ref('codegen')
 const importCode = ref('')
 const importSide = ref('')
+const importTab = ref(engine.value === 'selenium' ? 'side' : 'codegen')
 let pollTimer: any = null
 
 const form = reactive({
@@ -217,6 +229,12 @@ const form = reactive({
 
 const route = useRoute()
 const router = useRouter()
+
+// 根据入口参数决定当前是 Playwright 还是 Selenium 录制模式
+const engine = computed(() => {
+  const e = String(route.query.engine || 'all')
+  return ['playwright', 'selenium', 'all'].includes(e) ? e : 'all'
+})
 
 // 录制/导入完成后自动跳转到对应的用例管理页并高亮新记录
 function syncToManage(caseId?: number) {

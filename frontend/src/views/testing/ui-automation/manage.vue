@@ -68,7 +68,7 @@
 
             <!-- 测试用例 -->
             <el-tab-pane label="测试用例" name="testCases">
-              <TestCaseManage ref="testCaseManageRef" :ui-project-id="projectId" :highlight-case-id="Number(route.query.caseId) || undefined" />
+              <TestCaseManage :ui-project-id="projectId" :highlight-case-id="Number(route.query.caseId) || undefined" />
             </el-tab-pane>
 
             <!-- 测试套件 -->
@@ -160,7 +160,6 @@ const projectInfo = ref<any>({})
 const validTabs = ['elements', 'pageObjects', 'testCases', 'testSuites', 'executions']
 const activeTab = ref(validTabs.includes(route.query.tab as string) ? (route.query.tab as string) : 'elements')
 const selectedGroupId = ref<number | null>(null)
-const testCaseManageRef = ref()
 const testSuiteManageRef = ref()
 
 // 元素分组树
@@ -342,9 +341,9 @@ const handleExecute = () => {
   })
 }
 
-// 录制脚本
+// 录制脚本（Selenium 入口：只展示 Selenium IDE 导入）
 const goRecorder = () => {
-  router.push({ path: '/ai/ui-recorder', query: { projectId: projectId.value } })
+  router.push({ path: '/ai/ui-recorder', query: { projectId: projectId.value, engine: 'selenium' } })
 }
 
 // 查看报告

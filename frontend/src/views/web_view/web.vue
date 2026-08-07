@@ -12,6 +12,10 @@
               <el-icon class="el-icon--left"><CirclePlus /></el-icon>
               新建脚本
             </el-button>
+            <el-button type="warning" :plain="false" @click="goPlaywrightRecorder">
+              <el-icon class="el-icon--left"><VideoCamera /></el-icon>
+              录制脚本
+            </el-button>
             <el-button type="success" :plain="false" @click="openCreateResourceDialog('folder')">
               <el-icon class="el-icon--left"><Folder /></el-icon>
               新建文件夹
@@ -1420,6 +1424,7 @@ import {
   Refresh,
   ArrowLeft,
   Monitor,
+  VideoCamera,
 } from '@element-plus/icons-vue'
 import NtestercDialog from '/@/components/ntesterc/NtestercDialog.vue'
 import NtestercUploadFiles from '/@/components/ntesterc/NtestercUploadFiles.vue'
@@ -1654,6 +1659,11 @@ const goBackToList = () => {
   pageMode.value = 'list'
   resourceDrawerVisible.value = false
   router.replace({ query: {} })
+}
+
+// 跳转到 Playwright 脚本录制页（仅展示 Playwright Codegen 导入）
+const goPlaywrightRecorder = () => {
+  router.push({ path: '/ai/ui-recorder', query: { engine: 'playwright' } })
 }
 
 const openScriptFromList = async (row: { id: number }) => {

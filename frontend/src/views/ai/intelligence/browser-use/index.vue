@@ -402,9 +402,9 @@ import type { AICase, AICaseForm, AIExecutionRecord } from '/@/types/ai_intellig
 const { uiProjectApi } = useUiAutomationApi()
 const router = useRouter()
 
-// 跳转到脚本录制页
+// 跳转到脚本录制页（Playwright 模式）
 function goRecorder() {
-  router.push('/ai/ui-recorder')
+  router.push({ path: '/ai/ui-recorder', query: { engine: 'playwright' } })
 }
 
 // 查询表单
