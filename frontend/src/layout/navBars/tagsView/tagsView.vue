@@ -269,27 +269,30 @@ const closeCurrentTagsView = (path: string) => {
         storesKeepALiveNames.delCachedView(v.fullPath || "");
         state.tagsViewList.splice(k, 1);
         setTimeout(() => {
-          if (state.tagsViewList.length === k && getThemeConfig.value.isShareTagsView ? state.routePath === path : state.routeActive === path) {
+          const isActiveClosed = getThemeConfig.value.isShareTagsView ? state.routePath === path : state.routeActive === path;
+          const targetItem = k !== arr.length ? arr[k] : arr[arr.length - 1];
+          if (!targetItem) {
+            // 没有可跳转的目标时回首页，避免读取 undefined.meta 报错
+            router.push('/home');
+            return;
+          }
+          if (state.tagsViewList.length === k && isActiveClosed) {
             // 最后一个且高亮时
-            if (arr[arr.length - 1].meta.isDynamic) {
+            if (targetItem.meta?.isDynamic) {
               // 动态路由（xxx/:id/:name"）
-              if (k !== arr.length) router.push({name: arr[k].name, params: arr[k].params});
-              else router.push({name: arr[arr.length - 1].name, params: arr[arr.length - 1].params});
+              router.push({name: targetItem.name, params: targetItem.params});
             } else {
               // 普通路由
-              if (k !== arr.length) router.push({path: arr[k].path, query: arr[k].query});
-              else router.push({path: arr[arr.length - 1].path, query: arr[arr.length - 1].query});
+              router.push({path: targetItem.path, query: targetItem.query});
             }
-          } else {
+          } else if (state.tagsViewList.length !== k && isActiveClosed) {
             // 非最后一个且高亮时，跳转到下一个
-            if (state.tagsViewList.length !== k && getThemeConfig.value.isShareTagsView ? state.routePath === path : state.routeActive === path) {
-              if (arr[k].meta.isDynamic) {
-                // 动态路由（xxx/:id/:name"）
-                router.push({name: arr[k].name, params: arr[k].params});
-              } else {
-                // 普通路由
-                router.push({path: arr[k].path, query: arr[k].query});
-              }
+            if (targetItem.meta?.isDynamic) {
+              // 动态路由（xxx/:id/:name"）
+              router.push({name: targetItem.name, params: targetItem.params});
+            } else {
+              // 普通路由
+              router.push({path: targetItem.path, query: targetItem.query});
             }
           }
         }, 0);
@@ -322,16 +325,19 @@ const closeAllTagsView = () => {
       if (v.meta?.isAffix && !v.meta.isHide) {
         v.url = setTagsViewHighlight(v);
         state.tagsViewList.push({...v});
-        router.push({path: state.tagsViewList[state.tagsViewList.length - 1].path});
       }
     });
+    const last = state.tagsViewList[state.tagsViewList.length - 1];
+    if (last) router.push({path: last.path});
+    else router.push('/home');
     addBrowserSetSession(state.tagsViewList);
   }
 };
 // 6、开启当前页面全屏
 const openCurrenFullscreen = async (path: string) => {
   const item = state.tagsViewList.find((v: RouteItem) => (getThemeConfig.value.isShareTagsView ? v.path === path : v.url === path));
-  if (item.meta.isDynamic) await router.push({name: item.name, params: item.params});
+  if (!item) return;
+  if (item.meta?.isDynamic) await router.push({name: item.name, params: item.params});
   else await router.push({name: item.name, query: item.query});
   stores.setCurrenFullscreen(true);
 };
