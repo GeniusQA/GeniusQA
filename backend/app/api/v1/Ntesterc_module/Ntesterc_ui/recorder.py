@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @author: GeniusQA
 """
-UI 自动化「录制」核心模块（Pattern A：自建录制器）
+UI 自动化「录制」
 
 设计要点：
 - 复用 Playwright 启动一个「有头（可见）」浏览器，用户在弹出的浏览器里操作。
@@ -16,9 +16,19 @@ UI 自动化「录制」核心模块（Pattern A：自建录制器）
 import asyncio
 import json
 import logging
+import os
 import re
+import subprocess
+import sys
 import time
 from typing import Any, Dict, List, Optional
+
+# 把浏览器固定到后端目录，避免不同用户/服务身份运行时找不到浏览器
+_recorder_file = os.path.abspath(__file__)
+_backend_dir = os.path.dirname(_recorder_file)
+for _ in range(6):
+    _backend_dir = os.path.dirname(_backend_dir)
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(_backend_dir, ".playwright"))
 
 from fastapi import HTTPException
 from playwright.async_api import async_playwright
@@ -310,21 +320,70 @@ class RecorderSession:
         await self._add_step('navigate', action_value=url, description=f"导航到 {url}")
 
     # ---- 浏览器生命周期 ------------------------------------------------
+    @staticmethod
+    def _install_browser(browser_type: str) -> None:
+        """自动安装 Playwright 浏览器（用于 SYSTEM/服务用户找不到浏览器时）。"""
+        try:
+            logger.info(f"正在自动安装 Playwright 浏览器: {browser_type}")
+            subprocess.run(
+                [sys.executable, '-m', 'playwright', 'install', browser_type],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info(f"Playwright 浏览器 {browser_type} 安装完成")
+        except Exception as e:
+            logger.error(f"自动安装 Playwright 浏览器失败: {e}", exc_info=True)
+            raise
+
+    # Playwright channel 到系统浏览器名称的映射
+    _CHANNEL_MAP = {
+        'msedge': 'msedge',
+        'edge': 'msedge',
+        'chrome': 'chrome',
+    }
+
+    async def _launch_browser(self, opts: Dict[str, Any]):
+        browser_type = opts.get('browser_type', 'chromium')
+        headless = bool(opts.get('headless', False))
+        launch_args = ['--disable-blink-features=AutomationControlled']
+        if headless:
+            launch_args.append('--hide-scrollbars')
+
+        # 支持直接调用系统已安装的 Edge / Chrome（Playwright channel 模式）
+        channel = self._CHANNEL_MAP.get(browser_type)
+        if channel:
+            launcher = self.pw.chromium
+            launch_kwargs: Dict[str, Any] = {
+                'headless': headless,
+                'args': launch_args,
+                'channel': channel,
+            }
+        else:
+            launcher = getattr(self.pw, browser_type, self.pw.chromium)
+            launch_kwargs = {'headless': headless, 'args': launch_args}
+
+        try:
+            return await launcher.launch(**launch_kwargs)
+        except Exception as e:
+            err = str(e)
+            if channel and "Chromium distribution" in err:
+                raise RuntimeError(
+                    f"未找到系统安装的 {channel} 浏览器，请确认已安装后再试"
+                ) from e
+            if "Executable doesn't exist" in err or "browserType.launch" in err:
+                # 尝试自动安装 Playwright 自带浏览器后重试一次
+                await asyncio.get_event_loop().run_in_executor(
+                    None, self._install_browser, browser_type
+                )
+                return await launcher.launch(**launch_kwargs)
+            raise
+
     async def run(self):
         opts = self.options
         try:
             self.pw = await async_playwright().start()
-            browser_type = opts.get('browser_type', 'chromium')
-            launcher = getattr(self.pw, browser_type, self.pw.chromium)
-            # 允许通过 headless 选项控制是否弹出浏览器窗口；后台服务/无桌面环境建议 true
-            headless = bool(opts.get('headless', False))
-            launch_args = ['--disable-blink-features=AutomationControlled']
-            if headless:
-                launch_args.append('--hide-scrollbars')
-            self.browser = await launcher.launch(
-                headless=headless,
-                args=launch_args,
-            )
+            self.browser = await self._launch_browser(opts)
             viewport = {
                 'width': int(opts.get('viewport_width', 1280)),
                 'height': int(opts.get('viewport_height', 720)),
@@ -348,7 +407,7 @@ class RecorderSession:
             await self.page.goto(url)
             self.running = True
             self.started_event.set()
-            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={headless})，目标: {url}")
+            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={opts.get('headless', False)})，目标: {url}")
 
             # 保持会话，直到被停止或浏览器关闭
             while self.running and self.browser and self.browser.is_connected():

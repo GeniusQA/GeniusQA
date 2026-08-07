@@ -18,7 +18,9 @@
             </el-form-item>
             <el-form-item label="浏览器">
               <el-select v-model="form.browserType" style="width:100%">
-                <el-option label="Chromium" value="chromium" />
+                <el-option label="Chromium（Playwright 自带）" value="chromium" />
+                <el-option label="Microsoft Edge（系统已安装）" value="msedge" />
+                <el-option label="Google Chrome（系统已安装）" value="chrome" />
                 <el-option label="Firefox" value="firefox" />
                 <el-option label="WebKit" value="webkit" />
               </el-select>
@@ -75,7 +77,12 @@
               style="margin-top:10px"
             />
             <el-alert type="info" :closable="false" show-icon title="提示"
-              description="在弹出的浏览器中操作后，点击下方断言/拾取按钮，再点击页面元素即可捕获。录制步骤会实时显示到右侧。" />
+              :description="form.headless
+                ? '无头模式：浏览器在后台运行，不会弹出窗口。点击下方“打开被录页面”可在新标签页查看目标页面，但当前标签页的操作不会被录制。'
+                : '在弹出的浏览器中操作后，点击下方断言/拾取按钮，再点击页面元素即可捕获。录制步骤会实时显示到右侧。'" />
+            <el-button v-if="form.headless && form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
+              打开被录页面
+            </el-button>
           </template>
         </el-card>
 
@@ -160,11 +167,14 @@ async function applyProjectConfig(pid: number | null) {
   try {
     const res: any = await uiProjectApi.get(pid)
     const p = res.data
-    if (!p) return
-    if (p.base_url && !form.url) form.url = p.base_url
-    if (p.browser_type) form.browserType = String(p.browser_type).toLowerCase()
-    if (p.viewport_width != null) form.viewportWidth = Number(p.viewport_width)
-    if (p.viewport_height != null) form.viewportHeight = Number(p.viewport_height)
+  if (!p) return
+  if (p.base_url && !form.url) form.url = p.base_url
+  if (p.browser_type) {
+    const bt = String(p.browser_type).toLowerCase()
+    form.browserType = bt === 'edge' ? 'msedge' : bt
+  }
+  if (p.viewport_width != null) form.viewportWidth = Number(p.viewport_width)
+  if (p.viewport_height != null) form.viewportHeight = Number(p.viewport_height)
   } catch (e) {
     ElMessage.error(`加载项目配置失败（项目ID: ${pid}）`)
   }
@@ -259,6 +269,12 @@ async function setAssert(mode: string) {
   if (sessionId.value == null) return
   await uiRecordApi.assertMode(sessionId.value, { mode })
   ElMessage.info(`已开启「${mode}」断言，请在浏览器中点击目标元素`)
+}
+
+function openRecordedPage() {
+  if (form.url) {
+    window.open(form.url, '_blank')
+  }
 }
 
 async function startPick() {
