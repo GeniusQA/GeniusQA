@@ -49,7 +49,7 @@ export interface NotificationHistory {
 export interface TaskNotificationSetting {
   id?: number
   task_id: number
-  task_type: 'API' | 'UI'
+  task_type: 'APP' | 'WEB_UI' | 'API'
   notification_config_id: number
   is_enabled: boolean
   notify_on_success: boolean
@@ -59,7 +59,7 @@ export interface TaskNotificationSetting {
 
 export interface TaskNotificationSettingCreate {
   task_id: number
-  task_type: 'API' | 'UI'
+  task_type: 'APP' | 'WEB_UI' | 'API'
   notification_config_id: number
   is_enabled?: boolean
   notify_on_success?: boolean

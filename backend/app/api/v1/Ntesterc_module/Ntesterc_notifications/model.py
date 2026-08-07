@@ -57,7 +57,7 @@ class TaskNotificationSettingModel(Base):
     )
     
     task_id = Column(BigInteger, nullable=False, comment="任务ID")
-    task_type = Column(String(10), nullable=False, comment="任务类型: API/UI")
+    task_type = Column(String(10), nullable=False, comment="任务类型: APP/WEB_UI/API, 与定时任务类型 APP自动化/WEB自动化/API自动化 对应")
     notification_config_id = Column(BigInteger, nullable=False, comment="通知配置ID")
     is_enabled = Column(Boolean, default=True, comment="是否启用")
     notify_on_success = Column(Boolean, default=False, comment="成功时通知")
