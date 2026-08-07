@@ -157,11 +157,11 @@ async function applyProjectConfig(pid: number | null) {
     const p = res.data
     if (!p) return
     if (p.base_url && !form.url) form.url = p.base_url
-    if (p.browser_type) form.browserType = p.browser_type
-    if (p.viewport_width) form.viewportWidth = p.viewport_width
-    if (p.viewport_height) form.viewportHeight = p.viewport_height
+    if (p.browser_type) form.browserType = String(p.browser_type).toLowerCase()
+    if (p.viewport_width != null) form.viewportWidth = Number(p.viewport_width)
+    if (p.viewport_height != null) form.viewportHeight = Number(p.viewport_height)
   } catch (e) {
-    /* 忽略单个项目加载失败 */
+    ElMessage.error(`加载项目配置失败（项目ID: ${pid}）`)
   }
 }
 
@@ -171,11 +171,13 @@ onMounted(async () => {
   try {
     const res: any = await uiProjectApi.list({ page: 1, page_size: 200 })
     projects.value = res.data?.items || res.data || []
-    const qid = route.query.projectId
-    if (qid) {
-      const pid = Number(qid)
-      form.projectId = pid
-      await applyProjectConfig(pid)
+    const rawQid = route.query.projectId
+    if (rawQid) {
+      const pid = Number(rawQid)
+      if (!isNaN(pid) && pid > 0) {
+        form.projectId = pid
+        await applyProjectConfig(pid)
+      }
     }
   } catch (e) {
     ElMessage.error('加载 UI 项目失败')
