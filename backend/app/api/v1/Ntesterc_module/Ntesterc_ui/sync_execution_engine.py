@@ -64,7 +64,15 @@ class SyncExecutionEngine:
             # 启动 Playwright
             with sync_playwright() as p:
                 launcher = getattr(p, launcher_name)
-                launch_options = {'headless': headless}
+                launch_options = {
+                    'headless': headless,
+                    'args': [
+                        '--disable-blink-features=AutomationControlled',
+                        '--no-sandbox',
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                    ]
+                }
                 if custom_path and os.path.exists(custom_path):
                     launch_options['executable_path'] = custom_path
                     launch_options.pop('channel', None)

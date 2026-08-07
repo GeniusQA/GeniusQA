@@ -80,7 +80,12 @@ class PlaywrightTestEngine:
             # 启动浏览器
             launch_options = {
                 'headless': self.headless,
-                'args': ['--disable-blink-features=AutomationControlled']  # 避免被检测
+                'args': [
+                    '--disable-blink-features=AutomationControlled',  # 避免被检测
+                    '--no-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                ]
             }
 
             # 若配置了自定义可执行路径，优先使用 executable_path（channel 与之冲突，需要移除）

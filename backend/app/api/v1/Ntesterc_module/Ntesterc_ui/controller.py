@@ -556,7 +556,15 @@ async def check_playwright_browser(
     try:
         pw = await async_playwright().start()
         launcher = getattr(pw, launcher_name)
-        launch_kwargs = {'headless': headless}
+        launch_kwargs = {
+            'headless': headless,
+            'args': [
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+            ]
+        }
         if channel:
             launch_kwargs['channel'] = channel
         # 若用户配置了自定义安装路径，优先使用 executable_path 启动

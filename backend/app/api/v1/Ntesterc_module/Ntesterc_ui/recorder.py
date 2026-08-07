@@ -351,7 +351,12 @@ class RecorderSession:
     async def _launch_browser(self, opts: Dict[str, Any]):
         browser_type = opts.get('browser_type', 'msedge')
         headless = bool(opts.get('headless', False))
-        launch_args = ['--disable-blink-features=AutomationControlled']
+        launch_args = [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+        ]
         if headless:
             launch_args.append('--hide-scrollbars')
 
