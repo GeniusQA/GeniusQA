@@ -51,7 +51,7 @@
           <el-divider />
 
           <div class="actions">
-            <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="startRecord">
+            <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="openEnvCheck">
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
             <el-button v-else type="danger" @click="stopRecord">
@@ -127,14 +127,57 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 前置环境检测弹窗 -->
+    <el-dialog
+      v-model="envCheckVisible"
+      title="录制前置环境检测"
+      width="520px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="env-check-intro">
+        开始录制前将自动检查后端服务、所选浏览器及目标 URL 是否就绪。
+        <el-alert
+          v-if="!form.headless"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-top:10px"
+          title="无头模式建议"
+          description="当前关闭无头模式。若后端以后台服务/SYSTEM 身份运行，可能无法弹出浏览器窗口，建议开启无头模式。"
+        />
+      </div>
+      <el-divider />
+      <div class="env-check-list">
+        <div v-for="(item, idx) in envChecks" :key="idx" class="env-check-item">
+          <el-icon v-if="item.status === 'pending'" class="status-icon" color="#909399"><Loading /></el-icon>
+          <el-icon v-else-if="item.status === 'checking'" class="status-icon is-loading" color="#409EFF"><Loading /></el-icon>
+          <el-icon v-else-if="item.status === 'success'" class="status-icon" color="#67C23A"><CircleCheck /></el-icon>
+          <el-icon v-else-if="item.status === 'error'" class="status-icon" color="#F56C6C"><CircleClose /></el-icon>
+          <div class="env-check-body">
+            <div class="env-check-name">{{ item.name }}</div>
+            <div class="env-check-msg" :class="item.status">{{ item.message || '等待检测...' }}</div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button :loading="envChecking" @click="runEnvCheck">重新检测</el-button>
+          <el-button type="primary" :disabled="!envAllPassed || envChecking" @click="confirmStartRecord">开始录制</el-button>
+          <el-button @click="envCheckVisible = false">取消</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { uiRecordApi, uiProjectApi } from '/@/api/v1/testing/uiAutomation'
+import { VideoCamera, VideoCameraFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
 
 const projects = ref<any[]>([])
 const running = ref(false)
@@ -161,6 +204,12 @@ const form = reactive({
 
 const route = useRoute()
 const pickText = ref('')
+
+// 前置环境检测弹窗
+const envCheckVisible = ref(false)
+const envChecking = ref(false)
+const envChecks = ref<Array<{ name: string; status: 'pending' | 'checking' | 'success' | 'error'; message: string }>>([])
+const envAllPassed = computed(() => envChecks.value.length > 0 && envChecks.value.every((c) => c.status === 'success'))
 
 async function applyProjectConfig(pid: number | null) {
   if (!pid) return
@@ -210,7 +259,83 @@ function stepColor(t: string) {
   return { navigate: 'info', click: 'primary', fill: 'warning', assert: 'success', waitFor: 'info' }[t] || ''
 }
 
-async function startRecord() {
+function openEnvCheck() {
+  if (!form.projectId) {
+    ElMessage.warning('请先选择 UI 项目')
+    return
+  }
+  envCheckVisible.value = true
+  runEnvCheck()
+}
+
+async function runEnvCheck() {
+  envChecking.value = true
+  envChecks.value = [
+    { name: '后端服务连通性', status: 'pending', message: '' },
+    { name: `浏览器可用性（${form.browserType}）`, status: 'pending', message: '' },
+    { name: '起始 URL 格式', status: 'pending', message: '' },
+  ]
+
+  // 1. 后端服务连通性
+  const check1 = envChecks.value[0]
+  check1.status = 'checking'
+  try {
+    await uiProjectApi.list({ page: 1, page_size: 1 })
+    check1.status = 'success'
+    check1.message = '后端服务正常'
+  } catch (e: any) {
+    check1.status = 'error'
+    check1.message = e?.response?.data?.message || '无法连接到后端服务'
+  }
+
+  // 2. 浏览器可用性
+  const check2 = envChecks.value[1]
+  check2.status = 'checking'
+  try {
+    const res: any = await uiBrowserApi.checkPlaywright(form.browserType, true)
+    if (res.data?.is_available) {
+      check2.status = 'success'
+      check2.message = res.data?.message || '浏览器可正常启动'
+    } else {
+      check2.status = 'error'
+      check2.message = res.data?.message || '浏览器不可用'
+    }
+  } catch (e: any) {
+    check2.status = 'error'
+    check2.message = e?.response?.data?.message || '浏览器检测请求失败'
+  }
+
+  // 3. URL 格式
+  const check3 = envChecks.value[2]
+  check3.status = 'checking'
+  const url = (form.url || '').trim()
+  if (!url) {
+    check3.status = 'success'
+    check3.message = '未填写起始 URL，将使用 about:blank'
+  } else {
+    try {
+      new URL(url)
+      check3.status = 'success'
+      check3.message = 'URL 格式正确'
+    } catch {
+      check3.status = 'error'
+      check3.message = '起始 URL 格式不正确，请以 http:// 或 https:// 开头'
+    }
+  }
+
+  envChecking.value = false
+}
+
+async function confirmStartRecord() {
+  if (!envAllPassed.value) {
+    ElMessage.warning('请确保所有前置检测项通过后再开始录制')
+    return
+  }
+  envCheckVisible.value = false
+  await doStartRecord()
+}
+
+async function doStartRecord() {
   if (!form.projectId) return
   const payload = {
     url: form.url || undefined,
@@ -326,4 +451,14 @@ async function doImport(kind: 'codegen' | 'side') {
 .step-line { display: flex; align-items: center; gap: 8px; }
 .desc { color: #333; }
 .assert-info { margin-top: 4px; color: #67c23a; font-size: 12px; }
+.env-check-intro { color: #606266; font-size: 14px; }
+.env-check-list { display: flex; flex-direction: column; gap: 16px; }
+.env-check-item { display: flex; align-items: flex-start; gap: 12px; }
+.status-icon { margin-top: 2px; font-size: 20px; }
+.env-check-body { flex: 1; }
+.env-check-name { font-weight: 500; color: #303133; }
+.env-check-msg { margin-top: 4px; font-size: 13px; color: #909399; }
+.env-check-msg.success { color: #67c23a; }
+.env-check-msg.error { color: #f56c6c; }
+.dialog-footer { display: flex; justify-content: flex-end; gap: 10px; }
 </style>

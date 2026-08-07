@@ -511,9 +511,56 @@ async def check_all_browsers():
     
     return success_response(data={
         'browsers': results,
-        'available_count': sum(1 for r in results if r['is_available']),
-        'total_count': len(results)
+        'total': len(results),
+        'available_count': sum(1 for r in results if r['is_available'])
     })
+
+
+@router.get("/browsers/check-playwright", summary="检查 Playwright 录制浏览器可用性")
+async def check_playwright_browser(
+    browser_type: str = Query('chromium', description="录制所选浏览器: chromium, msedge, edge, chrome, firefox, webkit"),
+    headless: bool = Query(True, description="检测时是否使用无头模式，避免弹窗"),
+):
+    """检测后端运行身份能否实际启动所选浏览器（用于录制前环境校验）。"""
+    from playwright.async_api import async_playwright
+
+    # 与录制器一致的 channel 映射：msedge/edge/chrome 走系统浏览器
+    channel_map = {'msedge': 'msedge', 'edge': 'msedge', 'chrome': 'chrome'}
+    channel = channel_map.get(browser_type)
+    if channel:
+        launcher_name = 'chromium'
+    elif browser_type in ('chromium', 'firefox', 'webkit'):
+        launcher_name = browser_type
+    else:
+        launcher_name = 'chromium'
+
+    try:
+        pw = await async_playwright().start()
+        launcher = getattr(pw, launcher_name)
+        launch_kwargs = {'headless': headless}
+        if channel:
+            launch_kwargs['channel'] = channel
+        browser = await launcher.launch(**launch_kwargs)
+        await browser.close()
+        await pw.stop()
+        return success_response(data={
+            'browser_type': browser_type,
+            'is_available': True,
+            'channel': channel,
+            'message': '浏览器可用'
+        })
+    except Exception as e:
+        error_msg = str(e)
+        if channel and 'Chromium distribution' in error_msg:
+            error_msg = f'未找到系统安装的 {channel} 浏览器，请先安装或切换到 Playwright 自带 Chromium'
+        elif "Executable doesn't exist" in error_msg:
+            error_msg = f'Playwright 未找到 {browser_type} 浏览器可执行文件，请执行: playwright install {browser_type}'
+        return success_response(data={
+            'browser_type': browser_type,
+            'is_available': False,
+            'channel': channel,
+            'message': error_msg
+        })
 
 
 @router.post("/test-suites/{test_suite_id}/execute", summary="执行测试套件")

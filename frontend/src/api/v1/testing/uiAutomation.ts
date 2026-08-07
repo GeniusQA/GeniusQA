@@ -103,7 +103,8 @@ export function useUiAutomationApi() {
 
   const uiBrowserApi = {
     check: (browserType: string) => request.get('/v1/Ntesterc_ui/browsers/check', { params: { browser_type: browserType } }),
-    checkAll: () => request.get('/v1/Ntesterc_ui/browsers/check-all')
+    checkAll: () => request.get('/v1/Ntesterc_ui/browsers/check-all'),
+    checkPlaywright: (browserType: string, headless = true) => request.get('/v1/Ntesterc_ui/browsers/check-playwright', { params: { browser_type: browserType, headless } }),
   }
 
   const uiRecordApi = {
