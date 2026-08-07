@@ -27,10 +27,13 @@
 
     <!-- 测试用例列表 -->
     <el-table
+      ref="tableRef"
       :data="testCaseList"
       v-loading="loading"
       border
       stripe
+      highlight-current-row
+      :row-class-name="rowClassName"
       style="margin-top: 15px"
       @selection-change="handleSelectionChange"
     >
@@ -334,7 +337,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { Plus, VideoPlay, Refresh, Search, CopyDocument, Download, Delete } from '@element-plus/icons-vue'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
@@ -346,6 +349,7 @@ const { uiTestCaseApi, uiTestStepApi } = useUiAutomationApi()
 
 const props = defineProps<{
   uiProjectId: number
+  highlightCaseId?: number
 }>()
 
 // 搜索
@@ -356,6 +360,29 @@ const searchPriority = ref('')
 const testCaseList = ref([])
 const loading = ref(false)
 const selectedTestCases = ref([])
+const tableRef = ref()
+
+// 高亮定位
+const rowClassName = ({ row }: { row: any }) => {
+  if (props.highlightCaseId && row.id === props.highlightCaseId) {
+    return 'highlight-row'
+  }
+  return ''
+}
+
+const highlightCase = () => {
+  if (!props.highlightCaseId || !tableRef.value) return
+  const row = testCaseList.value.find((item: any) => item.id === props.highlightCaseId)
+  if (row) {
+    tableRef.value.setCurrentRow(row)
+    nextTick(() => {
+      const rowEl = tableRef.value?.$el.querySelector('.highlight-row')
+      if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+}
+
+watch(() => props.highlightCaseId, highlightCase)
 
 // 分页
 const pagination = reactive({
@@ -464,6 +491,7 @@ const loadTestCaseList = async () => {
     const res = await uiTestCaseApi.list(params)
     testCaseList.value = res.data.items || []
     pagination.total = res.data.total || 0
+    nextTick(highlightCase)
   } catch (error) {
     ElMessage.error('加载测试用例列表失败')
     console.error(error)
@@ -782,6 +810,10 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .test-case-manage {
+  :deep(.el-table .highlight-row) {
+    background-color: #e6f7ff;
+  }
+
   .toolbar {
     display: flex;
     gap: 10px;

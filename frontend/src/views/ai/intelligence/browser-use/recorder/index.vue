@@ -53,9 +53,15 @@
             <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="openEnvCheck">
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
-            <el-button v-else type="danger" @click="stopRecord">
-              <el-icon><VideoCameraFilled /></el-icon> 停止录制
-            </el-button>
+            <template v-else>
+              <el-button :type="paused ? 'success' : 'warning'" @click="togglePause">
+                <el-icon><component :is="paused ? CaretRight : VideoPause" /></el-icon>
+                {{ paused ? '继续录制' : '暂停录制' }}
+              </el-button>
+              <el-button type="danger" @click="stopRecord">
+                <el-icon><VideoCameraFilled /></el-icon> 停止录制
+              </el-button>
+            </template>
           </div>
 
           <template v-if="running">
@@ -105,7 +111,14 @@
 
       <!-- 右侧：实时步骤 -->
       <el-col :span="14">
-        <el-card shadow="never" :header="running ? `录制中（会话 ${sessionId}）` : '录制步骤'">
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-header">
+              <span>{{ running ? `录制中（会话 ${sessionId}）` : '录制步骤' }}</span>
+              <el-tag v-if="running && paused" type="warning" effect="dark" size="small">已暂停</el-tag>
+              <el-tag v-else-if="running" type="success" effect="plain" size="small">录制中</el-tag>
+            </div>
+          </template>
           <el-empty v-if="steps.length === 0" description="尚未录制到步骤" />
           <el-timeline v-else>
             <el-timeline-item
@@ -173,13 +186,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { VideoCamera, VideoCameraFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
 
 const projects = ref<any[]>([])
 const running = ref(false)
+const paused = ref(false)
 const sessionId = ref<number | null>(null)
 const steps = ref<any[]>([])
 const pickResult = ref<any>(null)
@@ -202,6 +216,17 @@ const form = reactive({
 })
 
 const route = useRoute()
+const router = useRouter()
+
+// 录制/导入完成后自动跳转到对应的用例管理页并高亮新记录
+function syncToManage(caseId?: number) {
+  if (!form.projectId) return
+  router.push({
+    path: '/testing/ui-automation/manage',
+    query: { id: form.projectId, tab: 'testCases', caseId }
+  })
+}
+
 const pickText = ref('')
 
 // 前置环境检测弹窗
@@ -357,6 +382,7 @@ async function doStartRecord() {
     const res: any = await uiRecordApi.start(form.projectId, payload)
     sessionId.value = res.data.session_id
     running.value = true
+    paused.value = false
     pickResult.value = null
     steps.value = []
     startPolling()
@@ -372,9 +398,11 @@ async function stopRecord() {
   try {
     const res: any = await uiRecordApi.stop(sessionId.value)
     running.value = false
+    paused.value = false
     if (pollTimer) clearInterval(pollTimer)
     await refreshSteps()
     ElMessage.success(`录制完成，已生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
+    syncToManage(res.data.test_case_id)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '停止录制失败')
   }
@@ -390,8 +418,26 @@ async function refreshSteps() {
   try {
     const res: any = await uiRecordApi.steps(sessionId.value)
     steps.value = res.data.steps || []
+    paused.value = !!res.data.paused
   } catch (e) {
     /* 忽略轮询错误 */
+  }
+}
+
+async function togglePause() {
+  if (sessionId.value == null) return
+  try {
+    if (paused.value) {
+      await uiRecordApi.resume(sessionId.value)
+      paused.value = false
+      ElMessage.success('已继续录制')
+    } else {
+      await uiRecordApi.pause(sessionId.value)
+      paused.value = true
+      ElMessage.info('已暂停录制，页面操作不再生成步骤')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '操作失败')
   }
 }
 
@@ -439,6 +485,7 @@ async function doImport(kind: 'codegen' | 'side') {
       ? await uiRecordApi.importCodegen(payload)
       : await uiRecordApi.importSide(payload)
     ElMessage.success(`导入成功，生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
+    syncToManage(res.data.test_case_id)
     if (kind === 'codegen') importCode.value = ''
     else importSide.value = ''
   } catch (e: any) {
@@ -452,6 +499,7 @@ async function doImport(kind: 'codegen' | 'side') {
 .sep { margin: 0 8px; color: #999; }
 .hint { margin-left: 8px; color: #909399; font-size: 12px; }
 .actions { display: flex; gap: 10px; }
+.card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .assert-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .step-line { display: flex; align-items: center; gap: 8px; }
 .desc { color: #333; }
