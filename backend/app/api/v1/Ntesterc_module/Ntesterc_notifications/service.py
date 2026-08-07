@@ -549,8 +549,8 @@ class NotificationService:
             
             # 登录并发送邮件
             server.login(username, password)
-            text = msg.as_string()
-            server.sendmail(from_email, to_emails, text)
+            # 使用 send_message 自动处理 UTF-8 编码，避免 as_string()+sendmail 触发 ascii codec 错误
+            server.send_message(msg, from_addr=from_email, to_addrs=to_emails)
             server.quit()
             
             response_data = {

@@ -758,8 +758,13 @@ const handleSetDefault = async (row: NotificationConfig) => {
 // 测试配置
 const handleTest = async (row: NotificationConfig) => {
   try {
-    await notificationConfigApi.testConfig(row.id!)
-    ElMessage.success('测试消息发送成功')
+    const res: any = await notificationConfigApi.testConfig(row.id!)
+    // 后端返回 200 但 data.success 表示真实业务结果，不能只看 HTTP 成功
+    if (res?.data?.success) {
+      ElMessage.success(res?.data?.message || '测试消息发送成功')
+    } else {
+      ElMessage.error(res?.data?.message || '测试消息发送失败')
+    }
   } catch (error) {
     console.error('测试配置失败:', error)
     ElMessage.error('测试消息发送失败')
