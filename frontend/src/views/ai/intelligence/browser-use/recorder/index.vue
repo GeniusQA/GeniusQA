@@ -462,7 +462,7 @@ async function doImport(kind: 'codegen' | 'side') {
 .status-icon { margin-top: 2px; font-size: 20px; }
 .env-check-body { flex: 1; }
 .env-check-name { font-weight: 500; color: #303133; }
-.env-check-msg { margin-top: 4px; font-size: 13px; color: #909399; }
+.env-check-msg { margin-top: 4px; font-size: 13px; color: #909399; word-break: break-all; overflow-wrap: break-word; line-height: 1.5; }
 .env-check-msg.success { color: #67c23a; }
 .env-check-msg.error { color: #f56c6c; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 10px; }

@@ -771,15 +771,26 @@ onMounted(() => {
 
     .message-content {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
+      word-break: break-all;
+      overflow-wrap: break-word;
+      line-height: 1.5;
+
+      span {
+        flex: 1;
+      }
 
       .success-icon {
         color: #67c23a;
+        flex-shrink: 0;
+        margin-top: 2px;
       }
 
       .error-icon {
         color: #f56c6c;
+        flex-shrink: 0;
+        margin-top: 2px;
       }
     }
   }
