@@ -324,7 +324,7 @@ const handleExecute = () => {
 
 // 录制脚本
 const goRecorder = () => {
-  router.push('/ai/ui-recorder')
+  router.push({ path: '/ai/ui-recorder', query: { projectId: projectId.value } })
 }
 
 // 查看报告

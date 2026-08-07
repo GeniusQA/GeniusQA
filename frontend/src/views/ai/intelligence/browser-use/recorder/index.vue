@@ -120,7 +120,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { uiRecordApi, uiProjectApi } from '/@/api/v1/testing/uiAutomation'
 
@@ -146,12 +147,36 @@ const form = reactive({
   timezone: '',
 })
 
+const route = useRoute()
 const pickText = ref('')
+
+async function applyProjectConfig(pid: number | null) {
+  if (!pid) return
+  try {
+    const res: any = await uiProjectApi.get(pid)
+    const p = res.data
+    if (!p) return
+    if (p.base_url && !form.url) form.url = p.base_url
+    if (p.browser_type) form.browserType = p.browser_type
+    if (p.viewport_width) form.viewportWidth = p.viewport_width
+    if (p.viewport_height) form.viewportHeight = p.viewport_height
+  } catch (e) {
+    /* 忽略单个项目加载失败 */
+  }
+}
+
+watch(() => form.projectId, applyProjectConfig)
 
 onMounted(async () => {
   try {
     const res: any = await uiProjectApi.list({ page: 1, page_size: 200 })
     projects.value = res.data?.items || res.data || []
+    const qid = route.query.projectId
+    if (qid) {
+      const pid = Number(qid)
+      form.projectId = pid
+      await applyProjectConfig(pid)
+    }
   } catch (e) {
     ElMessage.error('加载 UI 项目失败')
   }
