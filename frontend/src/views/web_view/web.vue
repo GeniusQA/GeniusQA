@@ -5,20 +5,16 @@
         <div v-if="pageMode === 'list'" class="wa-header-row">
           <el-space wrap :size="12">
             <el-text tag="b" size="large">{{ listPageTitle }}</el-text>
-            <el-text size="small" type="info">点击表格行：脚本进入编辑，文件夹进入分组管理</el-text>
+            <el-text size="small" type="info">点击表格行：脚本进入编辑，脚本库进入分组管理</el-text>
           </el-space>
           <el-space wrap :size="8">
             <el-button type="primary" :plain="false" @click="openCreateResourceDialog('script')">
               <el-icon class="el-icon--left"><CirclePlus /></el-icon>
-              新建脚本
+              新建脚本/脚本库
             </el-button>
             <el-button type="warning" :plain="false" @click="goPlaywrightRecorder">
               <el-icon class="el-icon--left"><VideoCamera /></el-icon>
               录制脚本
-            </el-button>
-            <el-button type="success" :plain="false" @click="openCreateResourceDialog('folder')">
-              <el-icon class="el-icon--left"><Folder /></el-icon>
-              新建文件夹
             </el-button>
             <el-button type="info" :plain="false" @click="get_web_menu">
               <el-icon class="el-icon--left"><Refresh /></el-icon>
@@ -60,7 +56,7 @@
             <el-table-column label="类型" width="108" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.menuType === 2 ? 'primary' : 'warning'" effect="dark" size="small">
-                  {{ row.menuType === 2 ? '脚本' : '文件夹' }}
+                  {{ row.menuType === 2 ? '脚本' : '脚本库' }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -149,7 +145,7 @@
                       />
                       <el-table-column label="类型" align="center">
                         <template #default="{ row }">
-                          <el-tag v-if="row.type === 1">文件夹</el-tag>
+                          <el-tag v-if="row.type === 1">脚本库</el-tag>
                           <el-tag v-else-if="row.type === 2">脚本</el-tag>
                         </template>
                       </el-table-column>
@@ -1051,7 +1047,7 @@
               </el-form-item>
               <el-form-item label="类型：">
                 <el-radio-group v-model="add_menu_form.type">
-                  <el-radio :value="1">文件夹</el-radio>
+                  <el-radio :value="1">脚本库</el-radio>
                   <el-radio :value="2">脚本</el-radio>
                 </el-radio-group>
               </el-form-item>
@@ -1365,7 +1361,7 @@
 
     <el-dialog
       v-model="createResourceVisible"
-      :title="createResourceForm.resourceType === 2 ? '新建脚本' : '新建文件夹'"
+      :title="createResourceForm.resourceType === 2 ? '新建脚本' : '新建脚本库'"
       width="460px"
       destroy-on-close
       append-to-body
@@ -1375,13 +1371,13 @@
         <el-form-item label="类型">
           <el-radio-group v-model="createResourceForm.resourceType" @change="onCreateResourceTypeChange">
             <el-radio :value="2">脚本</el-radio>
-            <el-radio :value="1">文件夹</el-radio>
+            <el-radio :value="1">脚本库</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="createResourceForm.resourceType === 2 ? '脚本名称' : '文件夹名称'" required>
+        <el-form-item :label="createResourceForm.resourceType === 2 ? '脚本名称' : '脚本库名称'" required>
           <el-input
             v-model="createResourceForm.name"
-            :placeholder="createResourceForm.resourceType === 2 ? '请输入脚本名称' : '请输入文件夹名称'"
+            :placeholder="createResourceForm.resourceType === 2 ? '请输入脚本名称' : '请输入脚本库名称'"
             clearable
             maxlength="64"
             show-word-limit
@@ -1524,7 +1520,7 @@ function groupPathForScript(script: any, m: Map<any, any>): string {
   return '—'
 }
 
-/** 文件夹节点完整路径（用于新建脚本选父级） */
+/** 脚本库节点完整路径（用于新建脚本选父级） */
 function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   const chain: string[] = []
   let cur: any = node
@@ -1537,7 +1533,7 @@ function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   return chain.filter(Boolean).join(' / ')
 }
 
-/** 首页列表：文件夹 + 脚本，含类型与状态展示 */
+/** 首页列表：脚本库 + 脚本，含类型与状态展示 */
 const homeResourceRows = computed(() => {
   const flat = flattenWebMenuTree(tree_data.value)
   const m = nodeByIdMap(flat)
@@ -1578,7 +1574,7 @@ const homeResourceRows = computed(() => {
   return rows
 })
 
-/** 新建脚本：所有可作为父级的文件夹/脚本组 */
+/** 新建脚本：所有可作为父级的脚本库/脚本组 */
 const folderParentOptions = computed(() => {
   const flat = flattenWebMenuTree(tree_data.value)
   const m = nodeByIdMap(flat)
@@ -1592,7 +1588,7 @@ const folderParentOptions = computed(() => {
 
 const createResourceVisible = ref(false)
 const createResourceSubmitting = ref(false)
-/** resourceType：与树侧「新建子菜单」一致，1=文件夹，2=脚本 */
+/** resourceType：与树侧「新建子菜单」一致，1=脚本库，2=脚本 */
 const createResourceForm = ref<{
   resourceType: 1 | 2
   name: string
@@ -1680,7 +1676,7 @@ const onHomeResourceRowClick = (row: { menuType: 1 | 2; id: number; raw: any }) 
 }
 
 const deleteResourceFromList = (row: { id: number; name: string; menuType: 1 | 2 }) => {
-  const kind = row.menuType === 2 ? '脚本' : '文件夹'
+  const kind = row.menuType === 2 ? '脚本' : '脚本库'
   ElMessageBox.confirm(`确定删除${kind}「${row.name}」吗？`, '提示', { type: 'warning' })
     .then(async () => {
       const res: any = await del_web_menu({ id: row.id, type: row.menuType })
@@ -1696,7 +1692,7 @@ const deleteResourceFromList = (row: { id: number; name: string; menuType: 1 | 2
 const submitCreateResource = async () => {
   const name = createResourceForm.value.name?.trim()
   if (!name) {
-    ElMessage.warning(createResourceForm.value.resourceType === 2 ? '请输入脚本名称' : '请输入文件夹名称')
+    ElMessage.warning(createResourceForm.value.resourceType === 2 ? '请输入脚本名称' : '请输入脚本库名称')
     return
   }
   if (createResourceForm.value.pid == null) {
