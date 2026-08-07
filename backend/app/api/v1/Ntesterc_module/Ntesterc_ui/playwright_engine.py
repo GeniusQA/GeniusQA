@@ -28,7 +28,7 @@ class PlaywrightTestEngine:
         'webkit': ('webkit', None),
     }
 
-    def __init__(self, browser_type='edge', headless=True, channel=None, stop_check_func=None, executable_path: Optional[str] = None):
+    def __init__(self, browser_type='msedge', headless=True, channel=None, stop_check_func=None, executable_path: Optional[str] = None):
         """
         初始化测试引擎
 

@@ -430,7 +430,7 @@ const formData = reactive({
   name: '',
   description: '',
   engine_type: 'playwright',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   headless: true,
   parallel: false,
   max_workers: 1,
@@ -475,7 +475,7 @@ const executeLoading = ref(false)
 const currentExecuteSuiteId = ref<number | null>(null)
 const executeForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   channel: '',        // edge/chrome 会自动推断，无需默认
   headless: true,
   parallel: false,
@@ -574,7 +574,7 @@ const handleCreate = () => {
     name: '',
     description: '',
     engine_type: 'playwright',
-    browser_type: 'edge',
+    browser_type: 'msedge',
     headless: true,
     parallel: false,
     max_workers: 1,
@@ -735,7 +735,7 @@ const handleExecute = (row: any) => {
   currentSuiteName.value = row.name
   // 使用套件的默认配置
   executeForm.engine_type = row.engine_type || 'playwright'
-  executeForm.browser_type = row.browser_type || 'edge'
+  executeForm.browser_type = row.browser_type || 'msedge'
   executeForm.headless = row.headless !== undefined ? row.headless : true
   executeForm.parallel = row.parallel !== undefined ? row.parallel : false
   executeForm.max_workers = row.max_workers || 1
@@ -778,7 +778,7 @@ const batchExecuteDialogVisible = ref(false)
 const batchExecuteLoading = ref(false)
 const batchExecuteForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   channel: '',
   headless: true,
   parallel: false,

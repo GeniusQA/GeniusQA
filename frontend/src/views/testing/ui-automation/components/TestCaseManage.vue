@@ -402,7 +402,7 @@ const executeLoading = ref(false)
 const currentExecuteTestCaseId = ref<number | null>(null)
 const executeForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   channel: '',
   headless: true,
   timeout: 30000
@@ -625,7 +625,7 @@ const batchExecuteDialogVisible = ref(false)
 const batchExecuteLoading = ref(false)
 const batchExecuteForm = reactive({
   engine_type: 'playwright',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   channel: '',
   headless: true,
   parallel: false,

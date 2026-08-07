@@ -222,7 +222,7 @@ const formData = reactive({
   name: '',
   description: '',
   base_url: '',
-  browser_type: 'edge',
+  browser_type: 'msedge',
   viewport_width: 1920,
   viewport_height: 1080,
   timeout: 30000
@@ -356,7 +356,7 @@ const handleCreate = () => {
     name: '',
     description: '',
     base_url: '',
-    browser_type: 'edge',
+    browser_type: 'msedge',
     viewport_width: 1920,
     viewport_height: 1080,
     timeout: 30000
