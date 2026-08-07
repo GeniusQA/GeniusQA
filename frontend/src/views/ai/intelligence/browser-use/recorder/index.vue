@@ -206,6 +206,15 @@ import { ElMessage } from 'element-plus'
 import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
 
+const route = useRoute()
+const router = useRouter()
+
+// 根据入口参数决定当前是 Playwright 还是 Selenium 录制模式
+const engine = computed(() => {
+  const e = String(route.query.engine || 'all')
+  return ['playwright', 'selenium', 'all'].includes(e) ? e : 'all'
+})
+
 const projects = ref<any[]>([])
 const running = ref(false)
 const paused = ref(false)
@@ -262,15 +271,6 @@ function loadRecorderConfig() {
     console.error('读取录制配置失败', e)
   }
 }
-
-const route = useRoute()
-const router = useRouter()
-
-// 根据入口参数决定当前是 Playwright 还是 Selenium 录制模式
-const engine = computed(() => {
-  const e = String(route.query.engine || 'all')
-  return ['playwright', 'selenium', 'all'].includes(e) ? e : 'all'
-})
 
 // 录制/导入完成后自动跳转到对应的用例管理页并高亮新记录
 function syncToManage(caseId?: number) {
