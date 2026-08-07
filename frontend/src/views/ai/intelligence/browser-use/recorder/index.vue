@@ -93,7 +93,7 @@
               <el-button type="primary" size="small" style="margin-top:8px"
                 :disabled="!form.projectId || !importCode" @click="doImport('codegen')">导入为用例</el-button>
             </el-tab-pane>
-            <el-tab-pane label="Selenium IDE .side" name="side">
+            <el-tab-pane label="Selenium IDE" name="side">
               <el-input v-model="importSide" type="textarea" :rows="5"
                 placeholder="粘贴 Selenium IDE 导出的 .side 文件内容（JSON）" />
               <el-button type="primary" size="small" style="margin-top:8px"
