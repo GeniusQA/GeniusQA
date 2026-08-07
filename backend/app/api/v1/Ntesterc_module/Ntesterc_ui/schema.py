@@ -14,7 +14,7 @@ class UIProjectCreateSchema(BaseModel):
     name: str = Field(..., max_length=200, description='UI项目名称')
     description: Optional[str] = Field(None, description='项目描述')
     base_url: Optional[str] = Field(None, max_length=500, description='基础URL')
-    browser_type: str = Field('edge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     viewport_width: int = Field(1920, description='视口宽度')
     viewport_height: int = Field(1080, description='视口高度')
     timeout: int = Field(30000, description='默认超时时间(毫秒)')
@@ -279,7 +279,7 @@ class UITestSuiteCreateSchema(BaseModel):
     name: str = Field(..., max_length=200, description='套件名称')
     description: Optional[str] = Field(None, description='套件描述')
     engine_type: str = Field('playwright', description='执行引擎')
-    browser_type: str = Field('edge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     headless: bool = Field(True, description='无头模式')
     parallel: bool = Field(False, description='并行执行')
     max_workers: int = Field(1, description='最大并行数')
@@ -350,7 +350,7 @@ class UIExecutionOutSchema(BaseModel):
 class ExecutionRequestSchema(BaseModel):
     """执行请求"""
     engine_type: str = Field('playwright', description='执行引擎: playwright/selenium')
-    browser_type: str = Field('edge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     headless: bool = Field(True, description='无头模式')
     timeout: Optional[int] = Field(30000, description='超时时间(毫秒)')
 

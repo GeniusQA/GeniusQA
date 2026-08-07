@@ -349,7 +349,7 @@ class RecorderSession:
     }
 
     async def _launch_browser(self, opts: Dict[str, Any]):
-        browser_type = opts.get('browser_type', 'edge')
+        browser_type = opts.get('browser_type', 'msedge')
         headless = bool(opts.get('headless', False))
         launch_args = ['--disable-blink-features=AutomationControlled']
         if headless:

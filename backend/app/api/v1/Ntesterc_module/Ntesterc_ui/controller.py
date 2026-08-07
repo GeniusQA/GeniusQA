@@ -534,7 +534,7 @@ async def check_all_browsers():
 
 @router.get("/browsers/check-playwright", summary="检查 Playwright 录制浏览器可用性")
 async def check_playwright_browser(
-    browser_type: str = Query('edge', description="录制所选浏览器: edge, chrome, firefox, safari（兼容 chromium/msedge/webkit）"),
+    browser_type: str = Query('msedge', description="录制所选浏览器: edge, chrome, firefox, safari（兼容 chromium/msedge/webkit）"),
     headless: bool = Query(True, description="检测时是否使用无头模式，避免弹窗"),
 ):
     """检测后端运行身份能否实际启动所选浏览器（用于录制前环境校验）。"""
@@ -824,7 +824,7 @@ async def batch_execute_test_cases(
     ui_project_id = request.get('ui_project_id')
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'edge'),
+        'browser_type': request.get('browser_type', 'msedge'),
         'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
@@ -848,7 +848,7 @@ async def batch_execute_test_suites(
     suite_ids = request.get('suite_ids', [])
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'edge'),
+        'browser_type': request.get('browser_type', 'msedge'),
         'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
