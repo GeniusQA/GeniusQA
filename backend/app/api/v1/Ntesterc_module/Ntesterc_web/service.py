@@ -1833,14 +1833,13 @@ class WebManagementService:
         except Exception as e:
             raise RuntimeError(f"LLM调用失败: {str(e)}")
 
-        # 提取 JSON
-        start = content.find("[")
-        end = content.rfind("]") + 1
-        if start == -1 or end == 0:
-            raise RuntimeError(f"AI未返回有效的步骤JSON数组，原始回复前300字符：{content[:300]}")
+        # 提取 JSON（用平衡括号扫描，避免多余文本/截断导致解析失败）
+        block = WebManagementService._extract_json_block(content)
+        if block is None:
+            raise RuntimeError(f"AI未返回有效的步骤JSON（非JSON或被截断），原始回复前300字符：{content[:300]}")
 
         try:
-            steps = _json.loads(content[start:end])
+            steps = _json.loads(block)
         except _json.JSONDecodeError as e:
             raise RuntimeError(f"AI返回的JSON解析失败: {str(e)}，原始回复：{content[:500]}")
 
@@ -1931,6 +1930,37 @@ class WebManagementService:
                 value: el.tagName === 'INPUT' ? (el.value || '') : null,
             }));
     }"""
+
+    @staticmethod
+    def _extract_json_block(text: str):
+        """从可能含多余文本的 LLM 回复中，提取第一个括号平衡的 JSON 块（数组 [] 或对象 {}）。
+        返回可传给 json.loads 的字符串；若找不到完整闭合块（被截断/无 JSON）则返回 None。"""
+        for opener, closer in (("[", "]"), ("{", "}")):
+            start = text.find(opener)
+            if start == -1:
+                continue
+            depth = 0
+            in_str = False
+            esc = False
+            for i in range(start, len(text)):
+                c = text[i]
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif c == "\\":
+                        esc = True
+                    elif c == '"':
+                        in_str = False
+                else:
+                    if c == '"':
+                        in_str = True
+                    elif c == opener:
+                        depth += 1
+                    elif c == closer:
+                        depth -= 1
+                        if depth == 0:
+                            return text[start:i + 1]
+        return None
 
     @staticmethod
     async def ai_explore_and_generate_script(
@@ -2118,23 +2148,36 @@ class WebManagementService:
                             },
                         ]
 
-                        try:
-                            resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=1024)
-                            content = resp["choices"][0]["message"]["content"].strip()
-                        except Exception as e:
-                            last_error = f"第{step_idx+1}步 LLM 调用失败: {str(e)}"
+                        # ---- 调用 LLM 并解析（解析失败/截断最多重试 2 次，把错误反馈给模型重答）----
+                        decision = None
+                        parse_err = ""
+                        for attempt in range(3):
+                            try:
+                                resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=1500)
+                                content = resp["choices"][0]["message"]["content"].strip()
+                            except Exception as e:
+                                parse_err = f"第{step_idx+1}步 LLM 调用失败: {str(e)}"
+                                break
+
+                            block = WebManagementService._extract_json_block(content)
+                            if block is None:
+                                parse_err = f"第{step_idx+1}步 LLM 返回无法解析（非JSON或被截断）：{content[:300]}"
+                                # 把错误反馈给模型，要求仅返回完整 JSON 后重试
+                                messages.append({"role": "assistant", "content": content})
+                                messages.append({"role": "user", "content": "你的回复必须是单个 JSON 对象（以 } 结尾），不要任何解释文字。请重新只返回 JSON。"})
+                                continue
+
+                            try:
+                                decision = _json.loads(block)
+                            except _json.JSONDecodeError as e:
+                                parse_err = f"第{step_idx+1}步 JSON 解析失败: {str(e)}，原始回复：{content[:300]}"
+                                messages.append({"role": "assistant", "content": content})
+                                messages.append({"role": "user", "content": f"JSON 解析失败：{str(e)}。请重新返回合法且完整的单个 JSON 对象（务必含闭合大括号）。"})
+                                continue
                             break
 
-                        start = content.find("{")
-                        end = content.rfind("}") + 1
-                        if start == -1 or end == 0:
-                            last_error = f"第{step_idx+1}步 LLM 返回无法解析：{content[:300]}"
-                            break
-
-                        try:
-                            decision = _json.loads(content[start:end])
-                        except _json.JSONDecodeError as e:
-                            last_error = f"第{step_idx+1}步 JSON 解析失败: {str(e)}"
+                        if decision is None:
+                            last_error = parse_err or f"第{step_idx+1}步 LLM 多次解析失败"
                             break
 
                         # 兜底：如果 LLM 说完成，但页面上仍有未填的账号/密码框且我们提供了账号密码，
