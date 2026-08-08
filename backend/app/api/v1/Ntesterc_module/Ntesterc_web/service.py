@@ -1669,13 +1669,33 @@ class WebManagementService:
         }
         cfg = launch_config.get(browser_type.lower(), launch_config["msedge"])
         _is_linux = _platform.system().lower() != "windows"
-        channel = None if _is_linux else cfg.get("channel")
+        # AI 生成脚本必须 headless，channel 在 headless 下不稳定（尤其 msedge/chrome 易退出），
+        # 统一使用 Playwright 自带的 Chromium，不指定 channel。
+        channel = None
 
         async with async_playwright() as pw:
-            launch_kwargs = {"headless": True}
-            if channel:
-                launch_kwargs["channel"] = channel
-            browser = await getattr(pw, cfg["browser"]).launch(**launch_kwargs)
+            # 优先用 Playwright 自带浏览器；channel 仅用于 headed 录制场景，headless 生成脚本时避免
+            browser_name = cfg["browser"]
+            launch_kwargs: Dict[str, Any] = {
+                "headless": True,
+                "args": [
+                    "--no-sandbox",
+                    "--disable-gpu",
+                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            }
+            try:
+                browser = await getattr(pw, browser_name).launch(**launch_kwargs)
+            except Exception as launch_err:
+                err_msg = str(launch_err)
+                if "Executable doesn't exist" in err_msg or "executable doesn't exist" in err_msg.lower():
+                    raise RuntimeError(
+                        f"Playwright {browser_name} 浏览器未安装。请在服务器执行：cd D:\\GeniusQA\\backend && .venv\\Scripts\\python.exe -m playwright install {browser_name}"
+                    )
+                raise RuntimeError(f"启动 Playwright 浏览器失败：{err_msg}")
+
             context = await browser.new_context(
                 viewport={"width": viewport_width, "height": viewport_height},
             )
