@@ -2218,10 +2218,11 @@ class WebManagementService:
                             break
 
                         # 去重：如果这一步和最近 3 步的（类型+定位值+选择器）完全相同，则强制 LLM 重新决策
+                        next_action = decision.get("action") or {}
                         dup_check = {
                             "type": action_type,
-                            "element": str(action.get("element") or ""),
-                            "locator_select": int(action.get("locator_select") or 2),
+                            "element": str(next_action.get("element") or ""),
+                            "locator_select": int(next_action.get("locator_select") or 2),
                         }
                         recent = [
                             {
@@ -2235,7 +2236,7 @@ class WebManagementService:
                             last_error = f"第{step_idx+1}步与近期步骤重复（{dup_check['element']}），AI 可能在原地打转。"
                             break
 
-                        action = decision.get("action") or {}
+                        action = next_action
                         step_obj = {
                             "name": decision.get("name") or f"步骤{step_idx+1}",
                             "type": action_type,
