@@ -1635,7 +1635,7 @@ const goBackToList = () => {
 
 // 跳转到 Playwright 脚本录制页（仅展示 Playwright Codegen 导入）
 const goPlaywrightRecorder = () => {
-  router.push({ path: '/ai/ui-recorder', query: { engine: 'playwright' } })
+  router.push({ path: '/web/automation/recorder', query: { engine: 'playwright' } })
 }
 
 const openScriptFromList = async (row: { id: number }) => {

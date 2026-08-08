@@ -404,7 +404,7 @@ const router = useRouter()
 
 // 跳转到脚本录制页（Playwright 模式）
 function goRecorder() {
-  router.push({ path: '/ai/ui-recorder', query: { engine: 'playwright' } })
+  router.push({ path: '/web/automation/recorder', query: { engine: 'playwright' } })
 }
 
 // 查询表单

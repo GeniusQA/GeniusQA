@@ -343,7 +343,7 @@ const handleExecute = () => {
 
 // 录制脚本（Selenium 入口：只展示 Selenium IDE 导入）
 const goRecorder = () => {
-  router.push({ path: '/ai/ui-recorder', query: { projectId: projectId.value, engine: 'selenium' } })
+  router.push({ path: '/web/automation/recorder', query: { projectId: projectId.value, engine: 'selenium' } })
 }
 
 // 查看报告

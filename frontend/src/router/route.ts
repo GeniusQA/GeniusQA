@@ -309,8 +309,8 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 					},
 				},
 				{
-					path: '/ai/ui-recorder',
-					name: 'aiUiRecorder',
+					path: '/web/automation/recorder',
+					name: 'webAutomationRecorder',
 					component: () => import('/src/views/ai/intelligence/browser-use/recorder/index.vue'),
 					meta: {
 						title: 'UI 脚本录制',
