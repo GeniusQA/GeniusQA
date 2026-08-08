@@ -1899,7 +1899,7 @@ class WebManagementService:
 
     # DOM 元素提取脚本（方案 B / B+ 共用）
     _DOM_EXTRACT_JS = """() => {
-        const selectors = 'button, a, input, select, textarea, [role], [data-testid], [aria-label], [placeholder]';
+        const selectors = 'button, a, input, select, textarea, [role], [data-testid], [aria-label], [placeholder], .dropdown-item, .menu-item, [role="menuitem"], [role="menuitemradio"], [role="option"], li a, .nav-item a';
         const seen = new Set();
         return Array.from(document.querySelectorAll(selectors))
             .filter(el => {
@@ -2231,23 +2231,26 @@ class WebManagementService:
                             last_error = f"第{step_idx+1}步 action_type 非法: {action_type}"
                             break
 
-                        # 去重：如果这一步和最近 3 步的（类型+定位值+选择器）完全相同，则强制 LLM 重新决策
+                        # 去重：如果这一步和最近 3 步的（类型+定位值+选择器）相同，则强制 LLM 重新决策
+                        def _norm_element(el: str) -> str:
+                            return str(el or "").lower().replace("按钮", "").replace("菜单项", "").replace("选项", "").replace("链接", "").strip()
+
                         next_action = decision.get("action") or {}
                         dup_check = {
                             "type": action_type,
-                            "element": str(next_action.get("element") or ""),
+                            "element": _norm_element(next_action.get("element")),
                             "locator_select": int(next_action.get("locator_select") or 2),
                         }
                         recent = [
                             {
                                 "type": s.get("type"),
-                                "element": str((s.get("action") or {}).get("element") or ""),
+                                "element": _norm_element((s.get("action") or {}).get("element")),
                                 "locator_select": int((s.get("action") or {}).get("locator_select") or 2),
                             }
                             for s in steps[-3:]
                         ]
                         if any(r == dup_check for r in recent):
-                            last_error = f"第{step_idx+1}步与近期步骤重复（{dup_check['element']}），AI 可能在原地打转。"
+                            last_error = f"第{step_idx+1}步与近期步骤重复（{next_action.get('element')}），AI 可能在原地打转。"
                             break
 
                         action = next_action
@@ -2354,27 +2357,33 @@ class WebManagementService:
             before_url = page.url
 
             if t == 1 or t == 2 or t == 16:
-                # 对可能是下拉菜单触发器的元素，先 hover/click 使其展开，再截图给 LLM 下一步识别子项
+                # 直接点击；对下拉菜单触发器，点击后 URL 通常不变，此时应让菜单展开即可
                 if t == 1:
-                    try:
-                        await locator.first.hover(timeout=5000)
-                        await page.wait_for_timeout(600)
-                        await locator.first.click(timeout=8000)
-                    except Exception:
-                        await locator.first.click(timeout=8000)
+                    await locator.first.click(timeout=8000)
                 elif t == 2:
                     await locator.first.dblclick(timeout=8000)
                 else:
                     await locator.first.click(button="right", timeout=8000)
 
                 # 点击后等待页面稳定，并检测是否真正产生变化
-                await page.wait_for_timeout(1200)
+                await page.wait_for_timeout(1500)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=6000)
                 except Exception:
                     pass
                 after_url = page.url
                 if before_url == after_url:
+                    # URL 未变：可能是下拉菜单展开/收起；再点一次确保处于展开状态
+                    try:
+                        expanded = await locator.first.evaluate("el => el.getAttribute('aria-expanded') === 'true'")
+                    except Exception:
+                        expanded = False
+                    if not expanded:
+                        try:
+                            await locator.first.click(timeout=5000)
+                            await page.wait_for_timeout(800)
+                        except Exception:
+                            pass
                     return True, "点击成功（URL 未变化，可能是展开菜单）"
                 return True, f"点击成功，页面已跳转: {after_url}"
             elif t in (5, 6):
