@@ -32,20 +32,27 @@ os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(_backend_dir, ".p
 
 from fastapi import HTTPException
 from playwright.async_api import async_playwright
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.db.sqlalchemy import async_session_factory
+from ..Ntesterc_web.model import WebMenuModel, WebScriptModel
+from ..Ntesterc_web.service import WebManagementService
 from .crud import (
     UIElementCRUD,
     UIElementGroupCRUD,
     UITestCaseCRUD,
     UITestStepCRUD,
+    UIPageObjectCRUD,
+    UIPageObjectElementCRUD,
 )
 from .model import (
     UIElementGroupModel,
     UIElementModel,
     UITestCaseModel,
     UITestStepModel,
+    UIPageObjectModel,
+    UIPageObjectElementModel,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,9 +189,12 @@ class RecorderSession:
         self.context = None
         self.page = None
         self.pw = None
+        self.interactive_pid: Optional[int] = None
+        self.actual_headless = False
         self.step_counter = 0
         self.element_cache: Dict[tuple, int] = {}
         self.pick_result: Optional[Dict[str, Any]] = None
+        self.paused: bool = False
         self._lock = asyncio.Lock()
         self.started_event = asyncio.Event()
         self.start_error: Optional[str] = None
@@ -194,6 +204,9 @@ class RecorderSession:
         try:
             payload = json.loads(data)
         except Exception:
+            return
+        # 暂停期间不再记录新的操作步骤（断言/拾取也一并暂停，保持语义简单）
+        if self.paused:
             return
         kind = payload.get('kind')
         try:
@@ -351,6 +364,75 @@ class RecorderSession:
     async def _launch_browser(self, opts: Dict[str, Any]):
         browser_type = opts.get('browser_type', 'msedge')
         headless = bool(opts.get('headless', False))
+        self.actual_headless = headless
+
+        # 后端运行于无桌面环境（session 0 / 非活动会话 / 非交互窗口站）时，
+        # 普通有头浏览器无法创建窗口会立即退出（exitCode=1002）。
+        # 两端处理：
+        #   1) 若后端确实没有可交互桌面 -> 直接强制无头，用系统 Edge 以 --headless=new
+        #      启动（仍是系统安装的 Edge，只是无头运行），避免窗口创建失败崩溃；
+        #   2) 若后端当前在本机交互桌面（有可见桌面）-> 尝试把浏览器派生到当前登录
+        #      用户的交互桌面，从而保留可见弹窗录制体验。
+        try:
+            from .browser_path_config import is_headless_required
+            headless_required = is_headless_required()
+        except Exception:
+            headless_required = False
+
+        if headless_required and not headless:
+            logger.warning(
+                "后端运行于无桌面环境(session 0 / 非交互会话)，强制以无头方式启动系统 "
+                "浏览器（仍为系统安装的 Edge，仅无头运行，避免窗口创建失败）"
+            )
+            headless = True
+            self.actual_headless = True
+
+        if not headless_required and not headless:
+            # 仅在「有可见桌面」时尝试交互桌面弹出，避免无效尝试浪费时间
+            try:
+                from .browser_path_config import launch_interactive_browser
+                logger.warning(
+                    "后端运行于有桌面环境，尝试在交互桌面启动有头浏览器"
+                )
+                try:
+                    info = launch_interactive_browser(browser_type)
+                    self.interactive_pid = info["pid"]
+                    cdp_port = info["cdp_port"]
+                    # 等待 CDP 端口就绪（最多 30 秒）
+                    import socket
+                    for _ in range(60):
+                        try:
+                            with socket.create_connection(
+                                ("127.0.0.1", cdp_port), timeout=1
+                            ):
+                                break
+                        except Exception:
+                            await asyncio.sleep(0.5)
+                    else:
+                        raise RuntimeError(
+                            f"浏览器 CDP 端口 {cdp_port} 未在 30 秒内就绪"
+                        )
+                    browser = await self.pw.chromium.connect_over_cdp(
+                        f"http://127.0.0.1:{cdp_port}"
+                    )
+                    try:
+                        from .browser_path_config import register_active_browser
+                        register_active_browser(browser, pid=self.interactive_pid)
+                    except Exception:
+                        pass
+                    logger.info(
+                        f"已通过 CDP 连接交互桌面浏览器 (pid={self.interactive_pid}, "
+                        f"port={cdp_port})"
+                    )
+                    return browser
+                except Exception as e:
+                    logger.warning(
+                        f"交互桌面启动失败，回退到普通启动: {e}", exc_info=True
+                    )
+                    self.interactive_pid = None
+            except Exception:
+                pass
+
         launch_args = [
             '--disable-blink-features=AutomationControlled',
             '--no-sandbox',
@@ -359,15 +441,17 @@ class RecorderSession:
         ]
         if headless:
             launch_args.append('--hide-scrollbars')
+            # 系统 Edge 在无头模式下使用 new headless，支持 CDP 注入且更稳定
+            launch_args.append('--headless=new')
 
         launcher_name, channel = self._BROWSER_MAP.get(browser_type, ('chromium', None))
         launcher = getattr(self.pw, launcher_name, self.pw.chromium)
         launch_kwargs: Dict[str, Any] = {'headless': headless, 'args': launch_args}
 
-        # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+        # 清理交互桌面启动失败时遗留的 profile 目录（避免锁冲突导致本次启动即崩）
         try:
-            from .browser_path_config import reap_stale_browser_processes
-            reap_stale_browser_processes()
+            from .browser_path_config import cleanup_interactive_profiles
+            cleanup_interactive_profiles()
         except Exception:
             pass
 
@@ -398,6 +482,58 @@ class RecorderSession:
             return browser
         except Exception as e:
             err = str(e)
+            logger.error(
+                f"_launch_browser 启动失败 (browser_type={browser_type}, "
+                f"headless={headless}, channel={channel}, custom_path={custom_path}): "
+                f"{err}",
+                exc_info=True,
+            )
+            # 即便 is_headless_required() 误判为非强制无头，这里也做通用兜底：
+            # 有头启动失败（典型为 exitCode=1002 / Target page, context or browser has been closed）
+            # 往往就是「无桌面会话无法创建窗口」导致。直接以无头模式重试一次，
+            # 仍使用系统安装的 Edge（channel 不变），只是无头运行。
+            if not self.actual_headless and not headless:
+                logger.warning(
+                    "有头启动失败，自动以无头模式重试系统浏览器（--headless=new）"
+                )
+                headless = True
+                self.actual_headless = True
+                launch_args = [
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--hide-scrollbars',
+                    '--headless=new',
+                ]
+                launch_kwargs = {
+                    'headless': True,
+                    'args': launch_args,
+                    'env': launch_kwargs.get('env') or get_browser_launch_env(),
+                }
+                if channel:
+                    launch_kwargs['channel'] = channel
+                try:
+                    browser = await launcher.launch(**launch_kwargs)
+                    try:
+                        from .browser_path_config import register_active_browser
+                        register_active_browser(browser)
+                    except Exception:
+                        pass
+                    logger.info("无头模式重试启动成功")
+                    return browser
+                except Exception as e2:
+                    logger.error(f"无头模式重试仍然失败: {e2}", exc_info=True)
+                    # 继续走后续兜底逻辑
+
+            # 启动失败后在重试兜底前，回收本进程树内残留的浏览器子进程，
+            # 避免句柄/管道累积导致后续启动也失败（注意：必须在 launch 失败后才回收，
+            # 否则会误伤本次即将启动的浏览器，造成 Target page, context or browser has been closed）
+            try:
+                from .browser_path_config import reap_stale_browser_processes
+                reap_stale_browser_processes()
+            except Exception:
+                pass
             if custom_path and "Executable doesn't exist" in err:
                 raise RuntimeError(
                     f"自定义浏览器路径无法启动: {custom_path}，请检查是否选择了正确的可执行文件"
@@ -406,17 +542,77 @@ class RecorderSession:
                 raise RuntimeError(
                     f"未找到系统安装的 {channel} 浏览器，请确认已安装后再试"
                 ) from e
+            # channel（系统 Edge/Chrome，可能版本不兼容）失败时，
+            # 优先回退到 Playwright 自带的、版本严格匹配的 Chromium
+            try:
+                from .browser_path_config import find_bundled_chromium
+                bundled = find_bundled_chromium()
+                if bundled and os.path.exists(bundled):
+                    # 同步最新的 headless 状态（前面判定无头时强制无头）
+                    launch_kwargs['headless'] = headless
+                    if headless and '--headless=new' not in launch_kwargs.get('args', []):
+                        launch_kwargs.setdefault('args', []).append('--headless=new')
+                    launch_kwargs['executable_path'] = bundled
+                    launch_kwargs.pop('channel', None)
+                    logger.warning(
+                        f"尝试用 Playwright 自带 Chromium 重新启动浏览器: {bundled}"
+                    )
+                    browser = await launcher.launch(**launch_kwargs)
+                    try:
+                        from .browser_path_config import register_active_browser
+                        register_active_browser(browser)
+                    except Exception:
+                        pass
+                    return browser
+            except Exception as e2:
+                logger.error(
+                    f"Playwright 自带 Chromium 也启动失败: {e2}", exc_info=True
+                )
+            # 再尝试直接使用系统浏览器可执行文件路径
+            if channel in ('msedge', 'chrome') and not (custom_path and os.path.exists(custom_path)):
+                try:
+                    from .browser_path_config import _get_interactive_browser_executable
+                    fallback_exe = _get_interactive_browser_executable(browser_type)
+                    launch_kwargs['headless'] = headless
+                    if headless and '--headless=new' not in launch_kwargs.get('args', []):
+                        launch_kwargs.setdefault('args', []).append('--headless=new')
+                    launch_kwargs['executable_path'] = fallback_exe
+                    launch_kwargs.pop('channel', None)
+                    logger.warning(
+                        f"尝试用系统可执行文件路径重新启动浏览器: {fallback_exe}"
+                    )
+                    browser = await launcher.launch(**launch_kwargs)
+                    try:
+                        from .browser_path_config import register_active_browser
+                        register_active_browser(browser)
+                    except Exception:
+                        pass
+                    return browser
+                except Exception as e3:
+                    logger.error(
+                        f"系统可执行文件路径也启动失败: {e3}", exc_info=True
+                    )
             if "Executable doesn't exist" in err or "browserType.launch" in err:
                 # 尝试自动安装 Playwright 自带浏览器后重试一次
                 await asyncio.get_event_loop().run_in_executor(
                     None, self._install_browser, launcher_name
                 )
+                launch_kwargs['headless'] = headless
+                if headless and '--headless=new' not in launch_kwargs.get('args', []):
+                    launch_kwargs.setdefault('args', []).append('--headless=new')
                 return await launcher.launch(**launch_kwargs)
             raise
 
     async def run(self):
         opts = self.options
         try:
+            # 必须在 start() 之前重定向临时目录，否则 Playwright 的 Node 驱动进程
+            # 会缓存 C:\WINDOWS\TEMP，导致 user-data-dir 创建失败（Target page closed）
+            try:
+                from .browser_path_config import ensure_browser_temp_env
+                ensure_browser_temp_env()
+            except Exception:
+                pass
             self.pw = await async_playwright().start()
             self.browser = await self._launch_browser(opts)
             viewport = {
@@ -442,7 +638,7 @@ class RecorderSession:
             await self.page.goto(url)
             self.running = True
             self.started_event.set()
-            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={opts.get('headless', False)})，目标: {url}")
+            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={self.actual_headless})，目标: {url}")
 
             # 保持会话，直到被停止或浏览器关闭
             while self.running and self.browser and self.browser.is_connected():
@@ -462,12 +658,27 @@ class RecorderSession:
             if self.browser and self.browser.is_connected():
                 try:
                     from .browser_path_config import unregister_active_browser
-                    unregister_active_browser(self.browser)
+                    unregister_active_browser(
+                        self.browser, pid=self.interactive_pid
+                    )
                 except Exception:
                     pass
                 await self.browser.close()
         except Exception:
             pass
+        # 交互桌面启动的浏览器进程需要显式结束（connect_over_cdp 不会 kill 系统进程）
+        if self.interactive_pid:
+            try:
+                _subprocess.run(
+                    f"taskkill /F /PID {self.interactive_pid} /T",
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception:
+                pass
+            self.interactive_pid = None
         try:
             if self.pw:
                 await self.pw.stop()
@@ -491,6 +702,16 @@ class RecorderSession:
         self.pick_result = None
         if self.page:
             await self.page.evaluate("window.__pickMode = true")
+
+    async def pause(self):
+        """暂停录制：后续页面操作不再生成步骤。"""
+        self.paused = True
+        logger.info(f"录制会话 {self.session_id} 已暂停")
+
+    async def resume(self):
+        """继续录制：恢复生成步骤。"""
+        self.paused = False
+        logger.info(f"录制会话 {self.session_id} 已继续")
 
     async def get_pick(self) -> Optional[Dict[str, Any]]:
         return self.pick_result
@@ -559,36 +780,202 @@ class RecorderManager:
     def get(self, session_id: int) -> Optional[RecorderSession]:
         return self.sessions.get(session_id)
 
+    async def pause(self, session_id: int) -> Dict[str, Any]:
+        session = self.sessions.get(session_id)
+        if not session:
+            raise KeyError('录制会话不存在或已结束')
+        await session.pause()
+        return {'session_id': session_id, 'paused': True}
+
+    async def resume(self, session_id: int) -> Dict[str, Any]:
+        session = self.sessions.get(session_id)
+        if not session:
+            raise KeyError('录制会话不存在或已结束')
+        await session.resume()
+        return {'session_id': session_id, 'paused': False}
+
     async def stop(self, session_id: int) -> Dict[str, Any]:
         session = self.sessions.get(session_id)
         if not session:
             raise KeyError('录制会话不存在或已结束')
         await session.stop()
         count = await session.count_steps()
+        # 录制结束时自动把本会话采集到的元素聚合为一个页面对象，
+        # 这样「页面对象」Tab 也能直接看到本次录制的对象数据。
+        page_object_id = None
+        try:
+            page_object_id = await self._create_page_object(session)
+        except Exception as e:
+            logger.error(f"录制生成页面对象失败: {e}", exc_info=True)
+        # 若指定了 Web 脚本目标，把录制步骤同步到脚本库
+        web_script_menu_id = None
+        if session.options.get('script_id') or session.options.get('script_menu_id'):
+            try:
+                web_script_menu_id = await self._save_steps_to_web_script(session)
+            except Exception as e:
+                logger.error(f"同步录制步骤到 Web 脚本失败: {e}", exc_info=True)
         # 稍等浏览器回收
         await asyncio.sleep(1)
         return {
             'session_id': session_id,
             'test_case_id': session.test_case_id,
             'steps_count': count,
+            'page_object_id': page_object_id,
+            'web_script_menu_id': web_script_menu_id,
         }
 
-    async def get_steps(self, session_id: int) -> List[Dict[str, Any]]:
+    async def _save_steps_to_web_script(self, session: 'RecorderSession') -> Optional[int]:
+        """把录制步骤转换后写入 Web 脚本库（追加到所选脚本，或在所选脚本库下新建脚本）。"""
+        script_id = session.options.get('script_id')
+        script_menu_id = session.options.get('script_menu_id')
+        if not script_id and not script_menu_id:
+            return None
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(UITestStepModel).where(
+                    UITestStepModel.test_case_id == session.test_case_id,
+                ).order_by(UITestStepModel.step_number)
+            )
+            steps = result.scalars().all()
+            if not steps:
+                return None
+
+            data: List[Dict[str, Any]] = []
+            for s in steps:
+                element: Optional[Dict[str, Any]] = None
+                if s.element_id:
+                    el = await db.get(UIElementModel, s.element_id)
+                    if el:
+                        custom_locators: List[Dict[str, str]] = [
+                            {"value": f"{el.locator_strategy}={el.locator_value}"}
+                        ]
+                        if el.backup_locators:
+                            for bl in el.backup_locators:
+                                if not isinstance(bl, dict):
+                                    continue
+                                strategy = bl.get('strategy')
+                                val = bl.get('value')
+                                if val and strategy and '=' not in str(val):
+                                    custom_locators.append({"value": f"{strategy}={val}"})
+                                elif val:
+                                    custom_locators.append({"value": str(val)})
+                        element = {"custom_locators": custom_locators}
+                if s.action_type == 'navigate':
+                    data.append({
+                        "action": "open_page",
+                        "fill_name": s.description or "打开",
+                        "action_detail": {"open_page": {"url": s.action_value or ""}},
+                    })
+                elif s.action_type == 'click':
+                    data.append({
+                        "action": "mouse_clicking",
+                        "fill_name": s.description or "点击",
+                        "action_detail": {"mouse_clicking": {"type": "single_click_left", "element": element or {}}},
+                    })
+                elif s.action_type == 'fill':
+                    data.append({
+                        "action": "input_operations",
+                        "fill_name": s.description or "输入",
+                        "action_detail": {"input_operations": {"input_content": s.action_value or "", "element": element or {}}},
+                    })
+                else:
+                    continue
+
+            if not data:
+                return None
+
+            ok, msg, new_script = await WebManagementService._analysis_element("recorded", session.user_id, 0, data)
+            if not ok:
+                raise Exception(msg)
+
+            target_menu_id: Optional[int] = None
+            if script_id:
+                target_menu_id = int(script_id)
+            else:
+                name = session.options.get('name') or f"录制脚本_{session.session_id}"
+                created = await WebManagementService.create_web_menu(
+                    db,
+                    name=name,
+                    pid=int(script_menu_id),
+                    type=2,
+                    user_id=session.user_id,
+                )
+                target_menu_id = created["id"]
+
+            res = await db.execute(
+                select(WebScriptModel).where(
+                    WebScriptModel.menu_id == target_menu_id,
+                    WebScriptModel.enabled_flag == 1,
+                )
+            )
+            row = res.scalar_one_or_none()
+            if row:
+                existing = row.script or []
+                row.script = existing + new_script
+                row.last_updated_by = session.user_id
+            else:
+                row = WebScriptModel(
+                    script=new_script,
+                    menu_id=target_menu_id,
+                    created_by=session.user_id,
+                )
+                db.add(row)
+            await db.commit()
+            return target_menu_id
+
+    async def _create_page_object(self, session: 'RecorderSession') -> Optional[int]:
+        """把录制分组下的元素关联生成一个页面对象（ui_page_objects）。"""
+        group_id = session.group_id
+        project_id = session.project_id
+        user_id = session.user_id
+        async with async_session_factory() as db:
+            elements, _ = await UIElementCRUD(db).get_by_group_id(db, group_id, limit=1000)
+            if not elements:
+                return None
+            po = await UIPageObjectCRUD(db).create_crud({
+                'ui_project_id': project_id,
+                'name': f"录制页面对象_{session.session_id}",
+                'class_name': f"RecordedPage{session.session_id}"[-31:],
+                'description': f"由录制自动生成（用例 #{session.test_case_id}）",
+                'url_pattern': '',
+                'created_by': user_id,
+            })
+            po_id = po.id
+            for idx, el in enumerate(elements):
+                raw = (el.name or f"element_{el.id}").replace(' ', '_').lower()
+                method_name = re.sub(r'\W+', '_', raw) or f"element_{el.id}"
+                await UIPageObjectElementCRUD(db).create_crud({
+                    'page_object_id': po_id,
+                    'element_id': el.id,
+                    'method_name': method_name,
+                    'is_property': False,
+                    'order_num': idx,
+                    'created_by': user_id,
+                })
+            return po_id
+
+
+    async def get_steps(self, session_id: int) -> Dict[str, Any]:
         session = self.sessions.get(session_id)
         if not session:
-            return []
+            return {'steps': [], 'count': 0, 'paused': False}
         async with async_session_factory() as db:
             steps = await UITestStepCRUD(db).get_by_test_case_id(db, session.test_case_id)
-            return [{
-                'id': s.id,
-                'step_number': s.step_number,
-                'action_type': s.action_type,
-                'element_id': s.element_id,
-                'action_value': s.action_value,
-                'assertion_type': s.assertion_type,
-                'assertion_value': s.assertion_value,
-                'description': s.description,
-            } for s in steps]
+            return {
+                'steps': [{
+                    'id': s.id,
+                    'step_number': s.step_number,
+                    'action_type': s.action_type,
+                    'element_id': s.element_id,
+                    'action_value': s.action_value,
+                    'assertion_type': s.assertion_type,
+                    'assertion_value': s.assertion_value,
+                    'description': s.description,
+                } for s in steps],
+                'count': len(steps),
+                'paused': session.paused,
+            }
 
 
 RECORDER_MANAGER = RecorderManager()

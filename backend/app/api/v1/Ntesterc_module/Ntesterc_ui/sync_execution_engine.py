@@ -39,6 +39,17 @@ class SyncExecutionEngine:
             # 获取配置
             browser_type = config.get('browser_type', 'msedge')
             headless = config.get('headless', True)
+            # 后端运行于无桌面环境（session 0 / SYSTEM）时，有头浏览器无法创建窗口会立即退出，
+            # 必须强制无头，否则报 Target page, context or browser has been closed
+            try:
+                from .browser_path_config import is_headless_required
+                if is_headless_required() and not headless:
+                    logger.warning(
+                        "后端运行于无桌面环境(session 0/SYSTEM)，已强制将测试浏览器切换为无头模式"
+                    )
+                    headless = True
+            except Exception:
+                pass
             channel = config.get('channel', None)
 
             # 与浏览器检查页/录制器一致的映射

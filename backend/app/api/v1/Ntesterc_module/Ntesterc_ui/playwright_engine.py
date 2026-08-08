@@ -45,6 +45,17 @@ class PlaywrightTestEngine:
         mapped = self._BROWSER_MAP.get(browser_type, ('chromium', None))
         self.browser_type = mapped[0]
         self.headless = headless
+        # 后端运行于无桌面环境（session 0 / SYSTEM）时，有头浏览器无法创建窗口会立即退出，
+        # 必须强制无头，否则报 Target page, context or browser has been closed
+        try:
+            from .browser_path_config import is_headless_required
+            if is_headless_required() and not self.headless:
+                logger.warning(
+                    "后端运行于无桌面环境(session 0/SYSTEM)，已强制将测试浏览器切换为无头模式"
+                )
+                self.headless = True
+        except Exception:
+            pass
         self.channel = channel or mapped[1]
         self.stop_check_func = stop_check_func
         self.playwright = None

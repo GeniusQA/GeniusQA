@@ -347,6 +347,20 @@ class WebManagementService:
         user_id: int,
     ) -> Dict[str, Any]:
 
+        # 父子关系校验：脚本(2)只能挂在容器(脚本库1/文件夹0)下；
+        # 容器(0/1)只能挂在根目录或其它容器下，不能直接挂在脚本下。
+        if type == 2:
+            if not pid or pid <= 0:
+                raise Exception("脚本必须创建在脚本库下")
+            parent = await db.get(WebMenuModel, pid)
+            if not parent or parent.type == 2:
+                raise Exception("脚本必须创建在脚本库下")
+        else:
+            if pid and pid > 0:
+                parent = await db.get(WebMenuModel, pid)
+                if not parent or parent.type == 2:
+                    raise Exception("脚本库只能创建在根目录或其它脚本库下")
+
         menu = WebMenuModel(
             name=name,
             pid=pid,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # @author: Rebort
+import asyncio
 import os
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, Query, HTTPException, status
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.db.sqlalchemy import get_db
 from app.common.response import success_response
 from app.core.dependencies import get_current_user_id
+from app.core.logger import logger
 from .recorder import RECORDER_MANAGER, import_codegen, import_side
 from .schema import (
     UIProjectCreateSchema,
@@ -539,6 +541,15 @@ async def check_playwright_browser(
 ):
     """检测后端运行身份能否实际启动所选浏览器（用于录制前环境校验）。"""
     from playwright.async_api import async_playwright
+    from .browser_path_config import (
+        ensure_browser_temp_env,
+        find_bundled_chromium,
+        get_browser_launch_env,
+        is_headless_required,
+        reap_stale_browser_processes,
+        register_active_browser,
+        unregister_active_browser,
+    )
 
     # 与浏览器检查页/执行引擎一致的映射：edge/chrome 走系统浏览器，safari 用 webkit
     browser_map = {
@@ -552,69 +563,202 @@ async def check_playwright_browser(
     }
     launcher_name, channel = browser_map.get(browser_type, ('chromium', None))
     custom_path = get_browser_path(browser_type)
+    force_headless = is_headless_required()
+    # 在 session 0 / SYSTEM 等无桌面环境，系统 Edge/Chrome 启动几乎必定失败，
+    # 直接优先走 Playwright 自带 Chromium，避免白白等超时。
+    prefer_bundled_first = force_headless and channel in ('msedge', 'chrome')
 
     # 检测前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
     try:
-        from .browser_path_config import reap_stale_browser_processes
         reap_stale_browser_processes()
     except Exception:
         pass
 
-    browser = None
-    try:
+    async def _try_launch(launcher, launch_kwargs, attempt_label: str):
+        logger.info(f"check_playwright_browser 尝试 {attempt_label}: {launch_kwargs}")
+        # 环境检测接口不应让用户长时间等待，单次启动最多 8 秒
+        launch_kwargs.setdefault('timeout', 8000)
+        browser = await launcher.launch(**launch_kwargs)
+        register_active_browser(browser)
+        await browser.close()
+
+    async def _do_check():
+        nonlocal last_error
+        # 在无桌面环境（session 0 / SYSTEM / 无 WinSta0），真实启动系统浏览器只会反复失败。
+        # 录制时本就会用自带 Chromium，因此这里直接验证 bundled Chromium 存在即可，
+        # 避免每次都做耗时且注定失败的 launch 尝试。
+        if force_headless:
+            bundled = find_bundled_chromium()
+            logger.info(f"session-0/SYSTEM 环境，直接检查 bundled Chromium: {bundled}")
+            if bundled and os.path.exists(bundled):
+                return {
+                    'browser_type': browser_type,
+                    'is_available': True,
+                    'channel': channel,
+                    'custom_path': bundled,
+                    'message': '浏览器可用（无桌面环境，将使用 Playwright 自带 Chromium）'
+                }
+            last_error = '未找到 Playwright 自带 Chromium，请执行 playwright install chromium'
+            raise RuntimeError(last_error)
+
+        # 必须在 start() 之前重定向临时目录，否则 Playwright 的 Node 驱动进程
+        # 会缓存 C:\WINDOWS\TEMP，导致 user-data-dir 创建失败（Target page closed）
+        ensure_browser_temp_env()
         pw = await async_playwright().start()
-        launcher = getattr(pw, launcher_name)
-        launch_kwargs = {
-            'headless': headless,
-            'args': [
+        try:
+            launcher = getattr(pw, launcher_name)
+            base_args = [
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
                 '--disable-gpu',
                 '--disable-dev-shm-usage',
             ]
-        }
-        # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
-        from .browser_path_config import get_browser_launch_env
-        launch_kwargs['env'] = get_browser_launch_env()
-        if channel:
-            launch_kwargs['channel'] = channel
-        # 若用户配置了自定义安装路径，优先使用 executable_path 启动
-        if custom_path and os.path.exists(custom_path):
-            launch_kwargs['executable_path'] = custom_path
-            # 使用 executable_path 时 channel 与之冲突，需要移除
-            launch_kwargs.pop('channel', None)
-        browser = await launcher.launch(**launch_kwargs)
-        from .browser_path_config import register_active_browser
-        register_active_browser(browser)
-        await browser.close()
-        await pw.stop()
-        return success_response(data={
-            'browser_type': browser_type,
-            'is_available': True,
-            'channel': channel,
-            'custom_path': custom_path,
-            'message': '浏览器可用'
-        })
+            if headless or force_headless:
+                # 系统 Edge 在 session 0/SYSTEM 下需要 new headless 才能稳定无头启动
+                base_args.append('--headless=new')
+            # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+            env = get_browser_launch_env()
+            effective_headless = headless or force_headless
+
+            # 优先 bundled Chromium（无桌面环境下系统浏览器成功率极低）
+            if prefer_bundled_first:
+                try:
+                    bundled = find_bundled_chromium()
+                    if bundled and os.path.exists(bundled):
+                        launch_kwargs = {
+                            'headless': effective_headless,
+                            'args': list(base_args),
+                            'env': env,
+                            'executable_path': bundled,
+                        }
+                        await _try_launch(launcher, launch_kwargs, f"bundled_chromium={bundled}")
+                        return {
+                            'browser_type': browser_type,
+                            'is_available': True,
+                            'channel': channel,
+                            'custom_path': bundled,
+                            'message': '浏览器可用（已回退到 Playwright 自带 Chromium）'
+                        }
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"优先 bundled Chromium 启动失败，继续尝试 channel/自定义路径: {last_error}")
+
+            # 第一重：按原有逻辑启动（channel 或自定义路径）
+            launch_kwargs = {
+                'headless': effective_headless,
+                'args': list(base_args),
+                'env': env,
+            }
+            if custom_path and os.path.exists(custom_path):
+                launch_kwargs['executable_path'] = custom_path
+            elif channel:
+                launch_kwargs['channel'] = channel
+
+            try:
+                await _try_launch(launcher, launch_kwargs, "channel/自定义路径")
+                return {
+                    'browser_type': browser_type,
+                    'is_available': True,
+                    'channel': channel,
+                    'custom_path': custom_path,
+                    'message': '浏览器可用'
+                }
+            except Exception as e1:
+                last_error = str(e1)
+                logger.warning(f"channel/自定义路径启动失败，准备 fallback: {last_error}")
+
+            # 第二重：回退到 Playwright 自带的、版本严格匹配的 Chromium
+            try:
+                bundled = find_bundled_chromium()
+                if bundled and os.path.exists(bundled):
+                    launch_kwargs2 = {
+                        'headless': effective_headless,
+                        'args': list(base_args),
+                        'env': env,
+                        'executable_path': bundled,
+                    }
+                    await _try_launch(launcher, launch_kwargs2, f"bundled_chromium={bundled}")
+                    return {
+                        'browser_type': browser_type,
+                        'is_available': True,
+                        'channel': channel,
+                        'custom_path': bundled,
+                        'message': '浏览器可用（已回退到 Playwright 自带 Chromium）'
+                    }
+            except Exception as e2:
+                last_error = str(e2)
+                logger.warning(f"Playwright 自带 Chromium 启动也失败: {last_error}")
+
+            # 第三重：再尝试直接使用系统浏览器可执行文件路径
+            if channel in ('msedge', 'chrome') and not (custom_path and os.path.exists(custom_path)):
+                try:
+                    from .browser_path_config import _get_interactive_browser_executable
+                    fallback_exe = _get_interactive_browser_executable(browser_type)
+                    launch_kwargs3 = {
+                        'headless': effective_headless,
+                        'args': list(base_args),
+                        'env': env,
+                        'executable_path': fallback_exe,
+                    }
+                    await _try_launch(launcher, launch_kwargs3, f"executable_path={fallback_exe}")
+                    return {
+                        'browser_type': browser_type,
+                        'is_available': True,
+                        'channel': channel,
+                        'custom_path': fallback_exe,
+                        'message': '浏览器可用（通过系统可执行文件路径启动）'
+                    }
+                except Exception as e3:
+                    last_error = str(e3)
+                    logger.warning(f"系统可执行文件路径启动也失败: {last_error}")
+
+            raise RuntimeError(last_error)
+        finally:
+            try:
+                await pw.stop()
+            except Exception:
+                pass
+
+    browser = None
+    last_error = ""
+    result_data = None
+    try:
+        # 整体检测最多等待 18 秒，避免任何子步骤 hang 住导致接口长期无响应
+        result_data = await asyncio.wait_for(_do_check(), timeout=18)
+    except asyncio.TimeoutError:
+        last_error = "浏览器环境检测超时（18秒），请检查后端进程是否有桌面权限或 Playwright 浏览器是否完整"
+        logger.error(f"check_playwright_browser 整体超时: browser={browser_type}")
     except Exception as e:
-        error_msg = str(e)
-        if channel and 'Chromium distribution' in error_msg:
-            error_msg = f'未找到系统安装的 {channel} 浏览器，请先安装或切换到 Playwright 自带 Chromium'
-        elif "Executable doesn't exist" in error_msg:
-            error_msg = f'Playwright 未找到 {browser_type} 浏览器可执行文件，请执行: playwright install {browser_type}'
-        return success_response(data={
-            'browser_type': browser_type,
-            'is_available': False,
-            'channel': channel,
-            'custom_path': custom_path,
-            'message': error_msg
-        })
+        last_error = str(e) or last_error
+        logger.error(
+            f"check_playwright_browser 启动失败 (browser={browser_type}, "
+            f"headless={headless}, channel={channel}, custom_path={custom_path}): "
+            f"{last_error}",
+            exc_info=True,
+        )
     finally:
         try:
             if browser is not None:
-                from .browser_path_config import unregister_active_browser
                 unregister_active_browser(browser)
         except Exception:
             pass
+
+    if result_data is not None:
+        return success_response(data=result_data)
+
+    if channel and 'Chromium distribution' in last_error:
+        last_error = f'未找到系统安装的 {channel} 浏览器，请先安装或切换到 Playwright 自带 Chromium'
+    elif "Executable doesn't exist" in last_error:
+        last_error = f'Playwright 未找到 {browser_type} 浏览器可执行文件，请执行: playwright install {browser_type}'
+    elif not last_error:
+        last_error = '浏览器检测失败，请查看后端日志'
+    return success_response(data={
+        'browser_type': browser_type,
+        'is_available': False,
+        'channel': channel,
+        'custom_path': custom_path,
+        'message': last_error
+    })
 
 
 @router.get("/browsers/custom-paths", summary="获取浏览器自定义路径列表", response_model=success_response)
@@ -1066,6 +1210,11 @@ async def generate_project_code(
         config.framework,
         config.include_comments
     )
+    if not code_files:
+        return success_response(
+            data={'files': []},
+            message="当前项目下没有页面对象，无法生成代码。请先在页面对象管理中创建页面对象。"
+        )
     return success_response(data={'files': code_files}, message=f"成功生成{len(code_files)}个文件")
 
 
@@ -1144,6 +1293,8 @@ class RecordStartSchema(BaseModel):
     locale: Optional[str] = None
     timezone: Optional[str] = None
     user_agent: Optional[str] = None
+    script_menu_id: Optional[int] = None
+    script_id: Optional[int] = None
 
 
 class RecordAssertModeSchema(BaseModel):
@@ -1192,9 +1343,29 @@ async def get_record_steps(
     session_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """轮询获取当前已录制步骤（前端可每秒刷新实现近实时展示）。"""
-    steps = await RECORDER_MANAGER.get_steps(session_id)
-    return success_response(data={'steps': steps, 'count': len(steps)})
+    """轮询获取当前已录制步骤及暂停状态（前端可每秒刷新实现近实时展示）。"""
+    data = await RECORDER_MANAGER.get_steps(session_id)
+    return success_response(data=data)
+
+
+@router.post("/record/{session_id}/pause", summary="暂停录制")
+async def pause_record(session_id: int):
+    """暂停当前录制会话：后续页面操作不再生成步骤。"""
+    try:
+        result = await RECORDER_MANAGER.pause(session_id)
+        return success_response(data=result, message='已暂停录制')
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/record/{session_id}/resume", summary="继续录制")
+async def resume_record(session_id: int):
+    """继续当前录制会话：恢复生成步骤。"""
+    try:
+        result = await RECORDER_MANAGER.resume(session_id)
+        return success_response(data=result, message='已继续录制')
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.post("/record/{session_id}/assert-mode", summary="设置断言模式")

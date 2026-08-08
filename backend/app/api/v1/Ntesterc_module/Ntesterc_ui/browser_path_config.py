@@ -7,9 +7,15 @@
 """
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
+
+try:
+    import win32api  # type: ignore
+except Exception:  # pragma: no cover - 非 Windows 或缺失 pywin32
+    win32api = None
 
 from app.core.logger import logger
 
@@ -144,6 +150,286 @@ def get_browser_launch_env() -> Dict[str, str]:
     return dict(os.environ)
 
 
+def _current_session_id() -> Optional[int]:
+    """返回当前进程所在的 Windows 会话 ID（session id），失败返回 None。"""
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        sid = ctypes.c_ulong()
+        if kernel32.ProcessIdToSessionId(
+            kernel32.GetCurrentProcessId(), ctypes.byref(sid)
+        ):
+            return sid.value
+    except Exception:
+        pass
+    return None
+
+
+def _active_console_session_id() -> Optional[int]:
+    """返回当前有用户登录的活动控制台会话 ID；无用户登录返回 None。"""
+    try:
+        import win32ts  # type: ignore
+        return win32ts.WTSGetActiveConsoleSessionId()
+    except Exception:
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            # WTSGetActiveConsoleSessionId 是 kernel32 导出函数
+            fn = kernel32.WTSGetActiveConsoleSessionId
+            fn.restype = ctypes.c_ulong
+            fn.argtypes = []
+            val = fn()
+            return None if val == 0xFFFFFFFF else val
+        except Exception:
+            pass
+    return None
+
+
+def is_headless_required() -> bool:
+    """判断当前后端进程是否必须强制使用无头（headless）浏览器。
+
+    后端常以 SYSTEM/服务身份运行于 **session 0**，该会话没有交互桌面
+    （没有 winsta0\\default）。此时若以「有头模式」启动浏览器，msedge 进程
+    虽能起来（Playwright 日志显示 <launched>），却因无法创建窗口而立即退出，
+    Playwright 随即报 ``Target page, context or browser has been closed``。
+
+    判定条件（满足任一即强制无头）：
+    1. Windows 且当前进程位于 session 0（服务会话，最可靠）；
+    2. 存在活动控制台会话，但当前进程所在会话 != 活动控制台会话
+       （即后端跑在无桌面的非交互会话，如 session 0 而用户登录在 session 1）；
+    3. 运行身份为 SYSTEM / LocalService / NetworkService；
+    4. 无法访问交互桌面（winsta0\\default），即使用户已登录。
+
+    其余情况（如开发者在本机交互桌面内运行后端）返回 False，尊重前端的
+    headless 开关，保留「可见浏览器」的录制体验。
+    """
+    if sys.platform != "win32":
+        return False
+
+    cur_sid = _current_session_id()
+    active_sid = _active_console_session_id()
+
+    # 1) 当前进程在 session 0（最可靠的「无桌面」信号）
+    if cur_sid == 0:
+        return True
+
+    # 2) 有活动用户会话，但后端不在那个会话里 → 后端没有可交互桌面
+    if active_sid is not None and cur_sid is not None and active_sid != cur_sid:
+        return True
+
+    # 3) 没有活动控制台会话（如纯服务环境）
+    if active_sid is None:
+        return True
+
+    # 4) 服务身份兜底
+    try:
+        import getpass
+        if getpass.getuser().upper() in (
+            "SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE"
+        ):
+            return True
+    except Exception:
+        pass
+
+    # 5) 是否真能访问交互桌面 winsta0\default
+    try:
+        import win32con
+        import win32security
+        desk = win32security.GetProcessWindowStation()
+        name = win32security.GetUserObjectInformation(
+            desk, win32con.UOI_NAME
+        )
+        if name and "WinSta0" not in str(name):
+            # 不在交互窗口站（如 Service-0x0-3e7$），没有可见桌面
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 在交互桌面上启动浏览器（解决 SYSTEM/session-0 下有头模式无法弹窗的问题）
+# ---------------------------------------------------------------------------
+def _find_free_port() -> int:
+    """获取一个可用的本地 TCP 端口。"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _get_interactive_browser_executable(browser_type: str) -> str:
+    """返回可用于交互桌面启动的浏览器可执行文件路径，找不到则抛异常。"""
+    bt = _normalize_browser_type(browser_type)
+    # 优先使用用户自定义路径
+    custom = get_browser_path(bt)
+    if custom and os.path.exists(custom):
+        return custom
+
+    candidates = []
+    if bt in ("edge", "msedge"):
+        candidates = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]
+    elif bt == "chrome":
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ]
+    elif bt == "chromium":
+        candidates = [
+            r"C:\Program Files\Chromium\Application\chrome.exe",
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    raise RuntimeError(f"找不到 {bt} 浏览器可执行文件，无法在当前桌面弹出交互窗口")
+
+
+def find_bundled_chromium() -> Optional[str]:
+    """查找 Playwright 自带的 Chromium 可执行文件。
+
+    当系统安装的 Edge/Chrome 版本与当前 Playwright 不兼容时，直接复用 Playwright
+    自带的、版本严格匹配的 Chromium 是最稳妥的回退方案。经测试，Playwright 1.62.0
+    已与系统 Edge 151 兼容；此处仍保留 bundled Chromium 作为兜底。
+
+    兼容 PLAYWRIGHT_BROWSERS_PATH 与默认用户目录两种存放位置。
+    """
+    roots = []
+    pb_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if pb_path:
+        roots.append(pb_path)
+    # 用户默认目录
+    roots.append(
+        os.path.join(os.path.expanduser("~"), ".cache", "ms-playwright")
+    )
+    roots.append(
+        os.path.join(os.path.expanduser("~"), "AppData", "Local", "ms-playwright")
+    )
+
+    found = []
+    # Playwright 1.60+ 的 Chromium 安装目录改为 chrome-win64（64 位），
+    # 旧版为 chrome-win；两者都要兼容。
+    chromium_subdirs = ("chrome-win64", "chrome-win", "chrome-linux", "chromium-win")
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for name in sorted(os.listdir(root), reverse=True):
+            if name.startswith("chromium-"):
+                for sub in chromium_subdirs:
+                    exe = os.path.join(root, name, sub, "chrome.exe")
+                    if os.path.exists(exe):
+                        found.append(exe)
+                        break
+
+    if not found:
+        # 也尝试更宽松的查找（firefox/webkit 不在范围内，仅 chromium）
+        for root in roots:
+            if not os.path.isdir(root):
+                continue
+            for name in sorted(os.listdir(root), reverse=True):
+                if name.startswith("chromium"):
+                    for sub in chromium_subdirs:
+                        exe = os.path.join(root, name, sub, "chrome.exe")
+                        if os.path.exists(exe):
+                            found.append(exe)
+                            break
+    return found[0] if found else None
+
+
+def launch_interactive_browser(
+    browser_type: str = "edge",
+    user_data_dir: Optional[str] = None,
+    remote_debugging_port: Optional[int] = None,
+) -> Dict[str, Any]:
+    """在当前登录用户的交互桌面上启动一个有头浏览器，并开启 CDP 调试端口。
+
+    当后端以 SYSTEM/session-0 运行时，普通 ``launcher.launch(headless=False)``
+    出来的浏览器进程没有桌面可写，窗口创建失败。本函数通过
+    ``WTSQueryUserToken`` 拿到当前活动控制台会话的用户 Token，再用
+    ``CreateProcessAsUser`` 把浏览器派生到 ``Winsta0\\Default`` 桌面，从而
+    能在用户桌面上弹出可见窗口，供交互式录制。
+
+    返回 ``{"pid": int, "cdp_port": int, "user_data_dir": str}``。
+    调用方可用 ``playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}")``
+    连接。
+
+    注意：调用进程需要足够权限（SYSTEM 或具有 SeTcbPrivilege）才能查询用户
+    Token；普通管理员账户通常无法满足。
+    """
+    if sys.platform != "win32":
+        raise OSError("交互桌面浏览器启动仅支持 Windows")
+
+    import win32api
+    import win32con
+    import win32process
+    import win32profile
+    import win32security
+    import win32ts
+
+    session_id = win32ts.WTSGetActiveConsoleSessionId()
+    if session_id == 0xFFFFFFFF:
+        raise RuntimeError("当前没有用户登录到交互桌面，无法弹出浏览器窗口")
+
+    exe_path = _get_interactive_browser_executable(browser_type)
+    port = remote_debugging_port or _find_free_port()
+    if user_data_dir is None:
+        tmp_root = ensure_browser_temp_env()
+        user_data_dir = os.path.join(tmp_root, f"interactive_profile_{port}")
+    os.makedirs(user_data_dir, exist_ok=True)
+
+    # 构造命令行：开启远程调试、指定用户数据目录、关闭首次运行向导
+    cmd = (
+        f'"{exe_path}" --remote-debugging-port={port} '
+        f'--user-data-dir="{user_data_dir}" --no-first-run '
+        f'--no-default-browser-check --disable-features=Translate '
+        f'--disable-blink-features=AutomationControlled'
+    )
+
+    h_token = win32ts.WTSQueryUserToken(session_id)
+    try:
+        h_dup = win32security.DuplicateTokenEx(
+            h_token,
+            win32security.SecurityImpersonation,
+            win32con.TOKEN_ALL_ACCESS,
+            win32security.TokenPrimary,
+        )
+        try:
+            env = win32profile.CreateEnvironmentBlock(h_dup, False)
+            si = win32process.STARTUPINFO()
+            si.dwFlags = win32con.STARTF_USESHOWWINDOW
+            si.wShowWindow = win32con.SW_SHOW
+            si.lpDesktop = "Winsta0\\Default"
+            h_proc, h_thread, pid, tid = win32process.CreateProcessAsUser(
+                h_dup,
+                None,
+                cmd,
+                None,
+                None,
+                False,
+                win32con.CREATE_NEW_CONSOLE | win32con.CREATE_UNICODE_ENVIRONMENT,
+                env,
+                os.path.dirname(exe_path),
+                si,
+            )
+            win32api.CloseHandle(h_thread)
+            win32api.CloseHandle(h_proc)
+            logger.info(
+                f"已在交互桌面启动 {browser_type} (pid={pid}, cdp_port={port})"
+            )
+            return {
+                "pid": pid,
+                "cdp_port": port,
+                "user_data_dir": user_data_dir,
+            }
+        finally:
+            win32api.CloseHandle(h_dup)
+    finally:
+        win32api.CloseHandle(h_token)
+
+
 # ---------------------------------------------------------------------------
 # 泄漏浏览器子进程回收
 # ---------------------------------------------------------------------------
@@ -160,9 +446,16 @@ _BROWSER_PROC_NAMES = (
 _ACTIVE_BROWSER_PIDS = set()
 
 
-def register_active_browser(browser) -> None:
-    """登记一个正在使用的浏览器实例，reap 时会跳过它，避免误杀在用的浏览器。"""
+def register_active_browser(browser, pid: Optional[int] = None) -> None:
+    """登记一个正在使用的浏览器实例，reap 时会跳过它，避免误杀在用的浏览器。
+
+    对于通过 CDP 连接的浏览器（如交互桌面启动），没有 ``browser.process``，
+    调用方可以直接传入 ``pid``。
+    """
     try:
+        if pid:
+            _ACTIVE_BROWSER_PIDS.add(int(pid))
+            return
         proc = getattr(browser, "process", None)
         if proc and getattr(proc, "pid", None):
             _ACTIVE_BROWSER_PIDS.add(int(proc.pid))
@@ -170,14 +463,46 @@ def register_active_browser(browser) -> None:
         pass
 
 
-def unregister_active_browser(browser) -> None:
+def unregister_active_browser(browser, pid: Optional[int] = None) -> None:
     """浏览器关闭后注销登记。"""
     try:
+        if pid:
+            _ACTIVE_BROWSER_PIDS.discard(int(pid))
+            return
         proc = getattr(browser, "process", None)
         if proc and getattr(proc, "pid", None):
             _ACTIVE_BROWSER_PIDS.discard(int(proc.pid))
     except Exception:
         pass
+
+
+def cleanup_interactive_profiles() -> int:
+    """清理交互桌面浏览器启动失败时遗留的 profile 目录。
+
+    ``launch_interactive_browser`` 会在 ``.pw_tmp`` 下创建
+    ``interactive_profile_<port>`` 目录。若当时派生失败/超时，这些目录不会被
+    回收，残留的 ``SingletonLock`` 等文件会让后续同名启动直接失败、浏览器进程
+    随即退出（报 Target page, context or browser has been closed）。本函数在每次
+    启动浏览器前清理这些残留目录。
+    """
+    try:
+        tmp = ensure_browser_temp_env()
+        removed = 0
+        for name in os.listdir(tmp):
+            if name.startswith("interactive_profile_"):
+                path = os.path.join(tmp, name)
+                try:
+                    import shutil
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed += 1
+                except Exception:
+                    pass
+        if removed:
+            logger.info(f"已清理 {removed} 个交互浏览器残留 profile 目录")
+        return removed
+    except Exception as e:
+        logger.warning(f"清理交互浏览器残留 profile 失败: {e}")
+        return 0
 
 
 def reap_stale_browser_processes(extra_names=None) -> int:
@@ -238,3 +563,16 @@ def reap_stale_browser_processes(extra_names=None) -> int:
     if killed:
         logger.info(f"已回收 {killed} 个泄漏的浏览器子进程")
     return killed
+
+
+# ---------------------------------------------------------------------------
+# 进程级临时目录重定向（必须在任意 async_playwright().start() 之前生效）
+# ---------------------------------------------------------------------------
+# 关键：Playwright 的 user-data-dir 由它的 Node 驱动进程在 start() 时创建，
+# 继承的是 start() 那一刻的 TEMP。若等到 launch 时才改 os.environ 已经太晚
+# （Node 进程已缓存）。因此在模块被 import 时就立即重定向，确保任何
+# async_playwright().start() 拿到的都是 .pw_tmp。
+try:
+    ensure_browser_temp_env()
+except Exception:
+    pass
