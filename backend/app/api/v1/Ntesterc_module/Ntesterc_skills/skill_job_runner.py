@@ -18,6 +18,40 @@ from app.api.v1.Ntesterc_module.Ntesterc_skills.model import ProjectSkillModel
 from app.infra.db import sqlalchemy as db_sa
 
 
+# ---------------------------------------------------------------------------
+# 并发控制与取消（借鉴 Multica：全局并发上限 20，单 skill 并发上限 6）
+# ---------------------------------------------------------------------------
+MAX_GLOBAL_CONCURRENT = int(os.getenv("SKILL_JOB_MAX_GLOBAL", "20"))
+MAX_PER_SKILL_CONCURRENT = int(os.getenv("SKILL_JOB_MAX_PER_SKILL", "6"))
+
+_global_sem = asyncio.Semaphore(MAX_GLOBAL_CONCURRENT)
+_skill_sems: dict[int, asyncio.Semaphore] = {}
+_running_tasks: dict[int, asyncio.Task] = {}
+
+
+def _get_skill_sem(skill_id: int) -> asyncio.Semaphore:
+    if skill_id not in _skill_sems:
+        _skill_sems[skill_id] = asyncio.Semaphore(MAX_PER_SKILL_CONCURRENT)
+    return _skill_sems[skill_id]
+
+
+async def _is_job_cancelled(job_id: int) -> bool:
+    """查询 DB 确认任务是否已被取消（由 cancel_skill_job 写入）"""
+    try:
+        async with db_sa.async_session_factory() as db:
+            status = (
+                await db.execute(
+                    select(SkillExecutionJobModel.status).where(
+                        SkillExecutionJobModel.id == job_id,
+                        SkillExecutionJobModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+            return status == "cancelled"
+    except Exception:
+        return False
+
+
 async def _next_event_seq(db: AsyncSession, job_id: int) -> int:
     r = (await db.execute(select(func.max(SkillExecutionEventModel.seq)).where(SkillExecutionEventModel.job_id == job_id))).scalar()
     return int(r or 0) + 1
@@ -295,7 +329,24 @@ async def _run_streaming(
 
     t_out = asyncio.create_task(_pump(proc.stdout, out_chunks, "info"))
     t_err = asyncio.create_task(_pump(proc.stderr, err_chunks, "error"))
+
+    async def _cancel_watcher() -> bool:
+        """每 2 秒检查 DB 是否被标记取消；发现取消则杀进程。"""
+        try:
+            while True:
+                await asyncio.sleep(2)
+                if await _is_job_cancelled(job_id):
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    return True
+        except asyncio.CancelledError:
+            return False
+
+    cancel_task = asyncio.create_task(_cancel_watcher())
     timed_out = False
+    cancelled = False
     try:
         await asyncio.wait_for(proc.wait(), timeout=timeout_s)
     except asyncio.TimeoutError:
@@ -308,6 +359,25 @@ async def _run_streaming(
             await proc.wait()
         except Exception:
             pass
+    except asyncio.CancelledError:
+        # 外部取消 task 时触发：杀进程并标记为取消
+        cancelled = True
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            await proc.wait()
+        except Exception:
+            pass
+        raise
+    finally:
+        cancel_task.cancel()
+        try:
+            await cancel_task
+        except asyncio.CancelledError:
+            pass
+
     await t_out
     await t_err
     if pending:
@@ -317,6 +387,22 @@ async def _run_streaming(
     rc = int(proc.returncode)
     out_text = "\n".join(out_chunks)
     err_text = "\n".join(err_chunks)
+
+    if cancelled:
+        await db.execute(
+            update(SkillExecutionJobModel)
+            .where(SkillExecutionJobModel.id == job_id)
+            .values(
+                status="cancelled",
+                finished_at=datetime.now(),
+                return_code=-1,
+                error_message="用户取消",
+                updated_by=user_id,
+            )
+        )
+        await db.commit()
+        await _append_event(db, job_id, "warn", "任务已取消", user_id)
+        return out_text, err_text, -1
 
     if timed_out:
         await db.execute(
@@ -337,19 +423,109 @@ async def _run_streaming(
     return out_text, err_text, rc
 
 
+async def _schedule_with_concurrency(job_id: int) -> None:
+    """获取全局 + 单 skill 信号量后再执行 worker；被取消时立即释放资源。"""
+    skill_id: Optional[int] = None
+    acquired_global = False
+    acquired_skill = False
+
+    # 先读出 skill_id 以获取对应的 per-skill 信号量
+    try:
+        async with db_sa.async_session_factory() as db:
+            job = (
+                await db.execute(
+                    select(SkillExecutionJobModel.skill_id).where(
+                        SkillExecutionJobModel.id == job_id,
+                        SkillExecutionJobModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+            if job:
+                skill_id = int(job)
+    except Exception:
+        logger.exception("schedule_skill_job lookup job failed job_id={}", job_id)
+
+    try:
+        await _global_sem.acquire()
+        acquired_global = True
+        if skill_id is not None:
+            await _get_skill_sem(skill_id).acquire()
+            acquired_skill = True
+
+        # 拿到资源后再检查一次是否已被取消
+        if await _is_job_cancelled(job_id):
+            logger.info("job_id={} was cancelled before starting, skip", job_id)
+            return
+
+        await run_skill_job_worker(job_id)
+    except asyncio.CancelledError:
+        logger.info("job_id={} cancelled during scheduling", job_id)
+        raise
+    finally:
+        if acquired_skill and skill_id is not None:
+            _get_skill_sem(skill_id).release()
+        if acquired_global:
+            _global_sem.release()
+
+
 def schedule_skill_job(job_id: int) -> None:
-    """在事件循环中调度异步 worker（非阻塞）。"""
+    """在事件循环中调度异步 worker（非阻塞），受全局/单 skill 并发上限控制。"""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        asyncio.run(run_skill_job_worker(job_id))
+        asyncio.run(_schedule_with_concurrency(job_id))
         return
 
     def _done(t: asyncio.Task) -> None:
+        _running_tasks.pop(job_id, None)
         try:
             t.result()
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             logger.warning("skill job task exception: {}", e)
 
-    task = loop.create_task(run_skill_job_worker(job_id))
+    task = loop.create_task(_schedule_with_concurrency(job_id))
+    _running_tasks[job_id] = task
     task.add_done_callback(_done)
+
+
+async def cancel_skill_job(job_id: int, cancelled_by: int = 1) -> bool:
+    """取消指定 job：DB 标记 + 终止运行中 task。可被 controller/service 调用。"""
+    # 1. DB 中把 pending/running 的任务标记为 cancelled
+    try:
+        async with db_sa.async_session_factory() as db:
+            result = await db.execute(
+                update(SkillExecutionJobModel)
+                .where(
+                    SkillExecutionJobModel.id == job_id,
+                    SkillExecutionJobModel.enabled_flag == 1,
+                    SkillExecutionJobModel.status.in_(["pending", "running"]),
+                )
+                .values(
+                    status="cancelled",
+                    finished_at=datetime.now(),
+                    return_code=-1,
+                    error_message="用户取消",
+                    updated_by=cancelled_by,
+                )
+            )
+            await db.commit()
+            db_marked = result.rowcount > 0
+    except Exception:
+        logger.exception("cancel_skill_job db update failed job_id={}", job_id)
+        db_marked = False
+
+    # 2. 如果 task 正在运行，取消它（子进程由 _run_streaming 的 watcher 负责 kill）
+    task = _running_tasks.pop(job_id, None)
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        return True
+
+    return db_marked

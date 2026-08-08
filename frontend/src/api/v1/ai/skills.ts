@@ -108,11 +108,23 @@ export function useSkillsApi() {
         data: fd,
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
+    listLocalClaudeSkills: (projectId: number) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/skills/local-claude`,
+        method: 'GET',
+      }),
+    importLocalClaudeSkill: (projectId: number, data: any) =>
+      request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/skills/import-local-claude`,
+        method: 'POST',
+        data,
+      }),
     // ===== 外部编程 Agent 集成（Claude Code / Codex / OpenCode 驱动 Playwright Test Agents / agent-device）=====
-    detectHarness: (projectId: number) =>
+    detectHarness: (projectId: number, params?: { custom_agents?: string }) =>
       request({
         url: `/v1/Ntesterc_skills/projects/${projectId}/external-agent/harness`,
         method: 'GET',
+        params,
       }),
     scaffoldPwTestAgents: (projectId: number, data: any) =>
       request({

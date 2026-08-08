@@ -22,23 +22,47 @@ DEFAULT_PW_TEST_AGENTS_INIT = "npx @playwright/test init-agents"
 AGENT_DEVICE_DEFAULT_CMD = "npx agent-device"
 
 
-def detect_external_agents() -> Dict[str, Dict[str, str]]:
-    """探测本机可用的外部 Agent CLI 二进制。"""
+def detect_external_agents(custom_agents: Optional[List[str]] = None) -> Dict[str, Dict[str, str]]:
+    """探测本机可用的外部 Agent CLI 二进制。
+
+    支持传入自定义 Agent 名称列表，与默认支持的 Agent 一起探测。
+    自定义 Agent 保留原始大小写作为展示 key，查找时转小写。
+    """
     result: Dict[str, Dict[str, str]] = {}
-    for name in SUPPORTED_AGENTS:
+    agents = list(SUPPORTED_AGENTS)
+    display_names: Dict[str, str] = {}
+    for raw in (custom_agents or []):
+        raw = (raw or "").strip()
+        name = raw.lower()
+        if name and name not in agents:
+            agents.append(name)
+            display_names[name] = raw
+    for name in agents:
+        # 自定义 Agent 若为绝对路径/含目录分隔符，直接按文件是否存在判定
+        if (os.path.isabs(name) or "\\" in name or "/" in name) and os.path.isfile(name):
+            key = display_names.get(name, name)
+            result[key] = {"binary": key, "available": True}
+            continue
         path = shutil.which(name) or shutil.which(f"{name}.cmd") or shutil.which(f"{name}.exe")
-        result[name] = {"binary": path or "", "available": bool(path)}
+        key = display_names.get(name, name)
+        result[key] = {"binary": path or "", "available": bool(path)}
     # npx 作为兜底（Playwright Test Agents / agent-device 常以 npx 包形式存在）
-    npx = shutil.which("npx") or shutil.which("npx.cmd")
-    result["npx"] = {"binary": npx or "", "available": bool(npx)}
+    if "npx" not in result and "npx" not in display_names:
+        npx = shutil.which("npx") or shutil.which("npx.cmd")
+        result["npx"] = {"binary": npx or "", "available": bool(npx)}
     return result
 
 
 def resolve_agent_binary(agent: str) -> Optional[str]:
-    info = detect_external_agents().get((agent or "").strip().lower())
+    """解析 Agent 二进制路径。支持自定义 Agent 名称（通过 PATH 直接查找）。"""
+    agent = (agent or "").strip().lower()
+    if not agent:
+        return None
+    info = detect_external_agents().get(agent)
     if info and info.get("available"):
         return info["binary"]
-    return None
+    # 允许任意自定义 Agent 名称
+    return shutil.which(agent) or shutil.which(f"{agent}.cmd") or shutil.which(f"{agent}.exe")
 
 
 def _shell_quote_arg(s: str) -> str:
@@ -82,8 +106,16 @@ def build_external_agent_command(
     Codex:       codex --approval-mode unchecked --mcp-config path -q "prompt"
     OpenCode:    opencode --mcp-config path -p "prompt"
     """
-    agent = (agent or "claude").strip().lower()
-    bin_path = resolve_agent_binary(agent) or agent
+    agent_raw = (agent or "claude").strip()
+    agent = agent_raw.lower()
+    # 绝对路径自定义 Agent：直接作为可执行文件，保留原始大小写，无需系统 PATH
+    if os.path.isabs(agent_raw) and os.path.isfile(agent_raw):
+        bin_path = agent_raw
+    else:
+        bin_path = resolve_agent_binary(agent) or agent
+    # 路径含空格时必须加引号，否则 cmd.exe 会按空格拆断
+    if " " in bin_path and not (bin_path.startswith('"') and bin_path.endswith('"')):
+        bin_path = _shell_quote_arg(bin_path)
 
     if agent == "claude":
         parts = [bin_path, "--permission-mode", permission_mode]

@@ -15,7 +15,9 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
+
+import yaml
 from fastapi import HTTPException, UploadFile
 from loguru import logger
 from sqlalchemy import delete, func, select
@@ -24,7 +26,7 @@ from app.api.v1.Ntesterc_module.Ntesterc_project.service import ProjectService
 from app.api.v1.Ntesterc_module.Ntesterc_project.model import ProjectMCPConfigModel
 from app.api.v1.Ntesterc_module.Ntesterc_skills.model import ProjectSkillModel
 from app.api.v1.Ntesterc_module.Ntesterc_skills.execution_model import SkillExecutionArtifactModel, SkillExecutionEventModel, SkillExecutionJobModel
-from app.api.v1.Ntesterc_module.Ntesterc_skills.skill_job_runner import schedule_skill_job
+from app.api.v1.Ntesterc_module.Ntesterc_skills.skill_job_runner import cancel_skill_job as runner_cancel_skill_job, schedule_skill_job
 from app.api.v1.Ntesterc_module.Ntesterc_skills import external_agent as EA
 from app.common.response import page_response, success_response
 
@@ -1182,6 +1184,116 @@ async def import_skill_from_folder(
         raise
 
 
+def _scan_local_claude_skills() -> List[Dict[str, Any]]:
+    """扫描本机 ~/.claude/skills/，返回可被导入的 Claude Code Skill 列表。
+
+    目录结构示例：~/.claude/skills/<skill-name>/SKILL.md
+    SKILL.md 支持 YAML frontmatter：name / description / tools。
+    """
+    root = Path.home() / ".claude" / "skills"
+    if not root.exists() or not root.is_dir():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for path in sorted(root.iterdir()):
+        if not path.is_dir():
+            continue
+        md_file = path / "SKILL.md"
+        if not md_file.exists():
+            md_file = path / "README.md"
+        if not md_file.exists():
+            continue
+
+        try:
+            content = md_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        meta: Dict[str, Any] = {}
+        body = content.strip()
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                try:
+                    meta = yaml.safe_load(parts[1]) or {}
+                    body = parts[2].strip()
+                except Exception:
+                    pass
+
+        name = str(meta.get("name") or path.name).strip()
+        description = str(meta.get("description") or "").strip()
+        if not description:
+            description = body.replace("#", "").replace("*", "").strip()[:200]
+
+        tools = meta.get("tools") or meta.get("allowed_tools") or []
+        if isinstance(tools, str):
+            tools = [t.strip() for t in tools.split(",") if t.strip()]
+        elif not isinstance(tools, list):
+            tools = []
+
+        items.append({
+            "name": name,
+            "local_name": path.name,
+            "description": description,
+            "allowed_tools": tools,
+            "path": str(path),
+            "md_file": str(md_file),
+            "content": body[:2000],
+        })
+    return items
+
+
+async def list_local_claude_skills(project_id: int, user_id: int, db: AsyncSession) -> dict:
+    """列出本机已安装的 Claude Code Skill。"""
+    await _check_member(project_id, user_id, db)
+    items = _scan_local_claude_skills()
+    return success_response(data={"items": items}, message="查询成功")
+
+
+async def import_local_claude_skill(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """把本机 ~/.claude/skills/<skill> 复制到项目 skill 目录并创建记录。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    local_name = str(data.get("local_name") or "").strip()
+    if not local_name:
+        raise HTTPException(status_code=400, detail="请选择要导入的本地 skill")
+
+    items = _scan_local_claude_skills()
+    skill = next((s for s in items if s["local_name"] == local_name), None)
+    if not skill:
+        raise HTTPException(status_code=404, detail="本地 skill 不存在")
+
+    name = _safe_skill_name(str(data.get("name") or skill["name"]))
+    await _assert_skill_names_available(project_id, user_id, db, [name])
+
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    dst = base_dir / f"{secrets.token_hex(6)}_{name}"
+    try:
+        shutil.copytree(Path(skill["path"]), dst)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"复制本地 skill 失败: {e}")
+
+    payload = {
+        "name": name,
+        "description": skill["description"],
+        "scenario_category": (data.get("scenario_category") or "").strip() or name,
+        "source_type": "claude-local",
+        "repo_url": None,
+        "skill_path": str(dst),
+        "entry_command": str(data.get("entry_command") or "").strip() or None,
+        "is_active": True,
+        "extra_config": {
+            "allowed_tools": ",".join(skill["allowed_tools"]),
+            "local_path": skill["path"],
+        },
+    }
+    res = await create_skill(project_id, user_id, db, payload)
+    return success_response(
+        data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1},
+        message="导入成功",
+    )
+
+
 async def get_skill_content(
     project_id: int,
     user_id: int,
@@ -1471,6 +1583,22 @@ async def get_skill_job(project_id: int, user_id: int, db: AsyncSession, job_id:
     )
 
 
+async def cancel_skill_job(project_id: int, user_id: int, db: AsyncSession, job_id: int) -> dict:
+    await _check_member(project_id, user_id, db)
+    j = (await db.execute(select(SkillExecutionJobModel).where(
+        SkillExecutionJobModel.id == job_id,
+        SkillExecutionJobModel.project_id == project_id,
+        SkillExecutionJobModel.user_id == user_id,
+        SkillExecutionJobModel.enabled_flag == 1,
+    ))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if j.status in ("succeeded", "failed", "cancelled"):
+        return success_response(data={"job_id": job_id, "status": j.status, "cancelled": False}, message="任务已结束，无需取消")
+    ok = await runner_cancel_skill_job(job_id, cancelled_by=user_id)
+    return success_response(data={"job_id": job_id, "status": "cancelled" if ok else j.status, "cancelled": ok}, message="取消成功" if ok else "取消失败或任务已结束")
+
+
 async def list_job_artifacts(project_id: int, user_id: int, db: AsyncSession, job_id: int) -> dict:
     await _check_member(project_id, user_id, db)
     j = (await db.execute(select(SkillExecutionJobModel).where(
@@ -1499,10 +1627,10 @@ async def list_job_artifacts(project_id: int, user_id: int, db: AsyncSession, jo
 EXTERNAL_AGENT_SKILL_PREFIX = "__external_agent__"
 
 
-async def detect_external_agents(project_id: int, user_id: int, db: AsyncSession) -> dict:
+async def detect_external_agents(project_id: int, user_id: int, db: AsyncSession, custom_agents: Optional[List[str]] = None) -> dict:
     """探测本机可用的外部 Agent 二进制。"""
     await _check_member(project_id, user_id, db)
-    return success_response(data=EA.detect_external_agents(), message="探测完成")
+    return success_response(data=EA.detect_external_agents(custom_agents), message="探测完成")
 
 
 async def _ensure_external_agent_skill(project_id: int, user_id: int, db: AsyncSession, agent: str, cwd: str) -> int:
@@ -1598,6 +1726,61 @@ async def _upsert_agent_device_mcp(project_id: int, user_id: int, db: AsyncSessi
     return int(m.id)
 
 
+AGENT_DEVICE_SESSION_KEY_VAR = "GENIUS_AGENT_SESSION_KEY"
+
+
+async def _get_or_create_agent_device_session_key(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    name: str = "agent-device",
+    command: Optional[str] = None,
+    args: Optional[list] = None,
+) -> str:
+    """获取/生成 agent-device 的人机共享 session_key，并持久化到 ProjectMCPConfig env。
+
+    复用规则：先查现有 ProjectMCPConfig.env，没有则生成并写入。key 在同一 project/user/name
+    下保持稳定，使得人和外部 Agent 能复用同一个设备 session。
+    """
+    name = name.strip() or "agent-device"
+    m = (await db.execute(select(ProjectMCPConfigModel).where(
+        ProjectMCPConfigModel.user_id == user_id,
+        ProjectMCPConfigModel.project_id == project_id,
+        ProjectMCPConfigModel.name == name,
+        ProjectMCPConfigModel.is_enabled == 1,
+        ProjectMCPConfigModel.enabled_flag == 1,
+    ))).scalar_one_or_none()
+    if m and m.env:
+        stored_env = m.env if isinstance(m.env, dict) else json.loads(m.env)
+        key = str(stored_env.get(AGENT_DEVICE_SESSION_KEY_VAR) or "").strip()
+        if key:
+            return key
+
+    key = f"genius-{project_id}-{user_id}-{name[:20]}-{secrets.token_hex(3)}"
+    env = {AGENT_DEVICE_SESSION_KEY_VAR: key}
+    if m:
+        existing_env = m.env if isinstance(m.env, dict) else json.loads(m.env or "{}")
+        existing_env[AGENT_DEVICE_SESSION_KEY_VAR] = key
+        m.env = existing_env
+        m.updated_by = user_id
+        await db.commit()
+        await db.refresh(m)
+    else:
+        await _upsert_agent_device_mcp(
+            project_id,
+            user_id,
+            db,
+            {
+                "name": name,
+                "command": command or EA.AGENT_DEVICE_DEFAULT_CMD,
+                "args": list(args or []),
+                "env": env,
+            },
+            scope="project",
+        )
+    return key
+
+
 async def _find_registered_agent_device(project_id: int, user_id: int, db: AsyncSession) -> Optional[str]:
     """若项目已登记 agent-device MCP，则生成临时 mcp.json 路径供 Claude Code 加载。"""
     m = (await db.execute(select(ProjectMCPConfigModel).where(
@@ -1647,10 +1830,17 @@ async def register_agent_device_mcp(project_id: int, user_id: int, db: AsyncSess
     scope = (data.get("scope") or "project").strip().lower()
     workspace_path = (data.get("workspace_path") or "").strip() or None
 
+    # 生成/复用人机共享的 agent-device session_key，并持久化到 env
+    session_key = await _get_or_create_agent_device_session_key(
+        project_id, user_id, db, name=name, command=command, args=args
+    )
+    env[AGENT_DEVICE_SESSION_KEY_VAR] = session_key
+    data["env"] = env
+
     await _upsert_agent_device_mcp(project_id, user_id, db, {"name": name, "command": command, "args": args, "env": env}, scope=scope)
     written = _sync_agent_device_mcp(name, command, args, env, scope, workspace_path)
     return success_response(
-        data={"name": name, "scope": scope, "written": written},
+        data={"name": name, "scope": scope, "session_key": session_key, "written": written},
         message="agent-device MCP 已注册",
     )
 
@@ -1717,21 +1907,35 @@ async def run_external_agent_job(project_id: int, user_id: int, db: AsyncSession
     cwd.mkdir(parents=True, exist_ok=True)
 
     mcp_config_path = None
+    agent_device_session_key: Optional[str] = None
     if kind == "agent-device":
         mcp = data.get("mcp") if isinstance(data.get("mcp"), dict) else None
         if mcp:
-            entry = EA.agent_device_server_entry(
-                mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD, mcp.get("args"), mcp.get("env")
+            mcp_name = (mcp.get("name") or "agent-device").strip()
+            mcp_env = mcp.get("env") if isinstance(mcp.get("env"), dict) else {}
+            agent_device_session_key = await _get_or_create_agent_device_session_key(
+                project_id,
+                user_id,
+                db,
+                name=mcp_name,
+                command=mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD,
+                args=mcp.get("args") if isinstance(mcp.get("args"), list) else [],
             )
-            mcp_config_path = str(EA.write_mcp_config_file([{"name": mcp.get("name") or "agent-device", "entry": entry}]))
+            mcp_env[AGENT_DEVICE_SESSION_KEY_VAR] = agent_device_session_key
+            mcp["env"] = mcp_env
+            entry = EA.agent_device_server_entry(
+                mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD, mcp.get("args"), mcp_env
+            )
+            mcp_config_path = str(EA.write_mcp_config_file([{"name": mcp_name, "entry": entry}]))
             await _upsert_agent_device_mcp(project_id, user_id, db, mcp)
         else:
+            agent_device_session_key = await _get_or_create_agent_device_session_key(project_id, user_id, db)
             mcp_config_path = await _find_registered_agent_device(project_id, user_id, db)
         if not prompt:
             prompt = EA.build_agent_device_prompt(
                 device_ref=device_ref,
                 task=(data.get("task") or "执行已规划的测试用例"),
-                session_name=session_id or "agent-device-session",
+                session_name=session_id or agent_device_session_key or "agent-device-session",
                 os_type=os_type,
             )
 
@@ -1739,7 +1943,7 @@ async def run_external_agent_job(project_id: int, user_id: int, db: AsyncSession
         raise HTTPException(status_code=400, detail="缺少 prompt（外部 Agent 执行指令）")
 
     skill_id_final = await _ensure_external_agent_skill(project_id, user_id, db, agent, str(cwd))
-    sess = session_id or f"ext-{secrets.token_hex(4)}"
+    sess = session_id or agent_device_session_key or f"ext-{secrets.token_hex(4)}"
     cmd = EA.build_external_agent_command(
         agent=agent, prompt=prompt, mcp_config_path=mcp_config_path, model=model, extra_args=extra_args
     )
@@ -1762,6 +1966,7 @@ async def run_external_agent_job(project_id: int, user_id: int, db: AsyncSession
             "device_ref": device_ref,
             "os_type": os_type,
             "mcp_config_path": mcp_config_path,
+            "session_key": agent_device_session_key,
             "prompt": prompt[:2000],
         },
         created_by=user_id,

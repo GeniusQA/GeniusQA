@@ -10,8 +10,17 @@
       <div class="toolbar-actions">
         <el-button type="success" @click="openEditDialog()">新建 Skill</el-button>
         <el-button type="primary" @click="openGitDialog">Git 导入</el-button>
-        <el-button @click="openUploadDialog('zip')">上传 ZIP 包</el-button>
-        <el-button @click="openUploadDialog('folder')">上传文件夹</el-button>
+        <el-dropdown split-button @click="openUploadDialog('zip')">
+          本地导入
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="openUploadDialog('zip')">上传 ZIP 包</el-dropdown-item>
+              <el-dropdown-item @click="openUploadDialog('folder')">上传文件夹</el-dropdown-item>
+              <el-dropdown-item divided @click="openLocalClaudeDialog">本机 Claude Skill</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button type="warning" @click="goToExternalAgent">Agents集成</el-button>
         <el-button type="danger" plain :disabled="!selectedIds.length" @click="onBatchDelete">
           批量删除{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
         </el-button>
@@ -231,6 +240,36 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="localClaudeVisible" title="本机 Claude Skill" width="720px">
+      <div v-loading="localClaudeLoading" class="local-claude-list">
+        <el-empty v-if="!localClaudeItems.length" description="未在 ~/.claude/skills/ 发现 Skill" />
+        <el-table v-else :data="localClaudeItems" max-height="420" size="small">
+          <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="allowed_tools" label="工具" min-width="120" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.allowed_tools?.join(', ') || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :loading="localClaudeImporting === row.local_name"
+                @click="onImportLocalClaude(row)"
+              >
+                导入
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="localClaudeVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="editDialogVisible" :title="editForm.id ? '编辑 Skill' : '新建 Skill'" width="620px">
       <el-form label-width="100px">
         <el-form-item label="技能名称">
@@ -267,11 +306,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile } from 'element-plus';
 import { useProjectApi } from '/@/api/v1/projects/project';
 import { skillsApi } from '/@/api/v1/ai/skills';
 
+const router = useRouter();
 const projectApi = useProjectApi();
 
 const loading = ref(false);
@@ -340,6 +381,11 @@ const editForm = reactive<any>({
   repo_url: '',
   skill_path: '',
 });
+
+const localClaudeVisible = ref(false);
+const localClaudeLoading = ref(false);
+const localClaudeImporting = ref<string>('');
+const localClaudeItems = ref<any[]>([]);
 
 const loadProjects = async () => {
   const res: any = await projectApi.getList({ page: 1, page_size: 100 });
@@ -623,6 +669,47 @@ const onBatchDelete = async () => {
   selectedIds.value = [];
   ElMessage.success(res?.message || '批量删除成功');
   await loadSkills();
+};
+
+const openLocalClaudeDialog = async () => {
+  if (!projectId.value) return;
+  localClaudeVisible.value = true;
+  localClaudeLoading.value = true;
+  localClaudeItems.value = [];
+  try {
+    const res: any = await skillsApi.listLocalClaudeSkills(projectId.value);
+    localClaudeItems.value = res?.data?.items || [];
+  } catch (e: any) {
+    ElMessage.error(e?.message || '读取本机 Claude Skill 失败');
+  } finally {
+    localClaudeLoading.value = false;
+  }
+};
+
+const goToExternalAgent = () => {
+  if (!projectId.value) {
+    ElMessage.warning('请先选择项目');
+    return;
+  }
+  router.push({ path: '/ai/skills/external-agent', query: { project_id: String(projectId.value) } });
+};
+
+const onImportLocalClaude = async (row: any) => {
+  if (!projectId.value) return;
+  localClaudeImporting.value = row.local_name;
+  try {
+    const res: any = await skillsApi.importLocalClaudeSkill(projectId.value, {
+      local_name: row.local_name,
+      name: row.name,
+      scenario_category: row.name,
+    });
+    ElMessage.success(res?.message || '导入成功');
+    await loadSkills();
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导入失败');
+  } finally {
+    localClaudeImporting.value = '';
+  }
 };
 
 const onViewContent = async (row: any) => {
