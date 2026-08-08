@@ -121,7 +121,8 @@ export function useUiAutomationApi() {
     pick: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
     getPick: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
     importCodegen: (data: any) => request.post('/v1/Ntesterc_ui/record/import-codegen', data),
-    importSide: (data: any) => request.post('/v1/Ntesterc_ui/record/import-side', data)
+    importSide: (data: any) => request.post('/v1/Ntesterc_ui/record/import-side', data),
+    codegenScript: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/codegen-script`)
   }
 
   return {

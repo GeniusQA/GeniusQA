@@ -63,10 +63,6 @@
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
             <template v-else>
-              <el-button :type="paused ? 'success' : 'warning'" @click="togglePause">
-                <el-icon><component :is="paused ? CaretRight : VideoPause" /></el-icon>
-                {{ paused ? '继续录制' : '暂停录制' }}
-              </el-button>
               <el-button type="danger" @click="stopRecord">
                 <el-icon><VideoCameraFilled /></el-icon> 停止录制
               </el-button>
@@ -74,24 +70,8 @@
           </div>
 
           <template v-if="running">
-            <el-divider>断言 / 拾取工具栏</el-divider>
-            <div class="assert-bar">
-              <el-button size="small" @click="setAssert('visible')">断言-可见性</el-button>
-              <el-button size="small" @click="setAssert('text')">断言-文本</el-button>
-              <el-button size="small" @click="setAssert('value')">断言-值</el-button>
-              <el-button size="small" @click="startPick">拾取定位器</el-button>
-            </div>
-            <el-alert
-              v-if="pickResult"
-              type="success"
-              :closable="true"
-              show-icon
-              :title="'已拾取定位器'"
-              :description="pickText"
-              style="margin-top:10px"
-            />
-            <el-alert type="info" :closable="false" show-icon title="提示"
-              description="录制依赖浏览器窗口捕获手动操作，请确保后端运行在有桌面环境的服务器上；若后端处于无桌面会话，系统会自动降级为无头模式，但此时无法手动录制。" />
+            <el-alert type="info" :closable="false" show-icon title="录制说明"
+              description="正在使用 Playwright 官方 codegen 录制：在弹出的浏览器中操作即可，脚本会实时生成；关闭浏览器窗口或点击“停止录制”后，步骤自动落库。断言请使用 codegen 内置的记录断言功能（点击目标元素旁的断言图标）。" />
             <el-button v-if="form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
               在新标签页打开目标页
             </el-button>
@@ -156,6 +136,17 @@
             </el-timeline-item>
           </el-timeline>
         </el-card>
+
+        <el-card shadow="never" style="margin-top:16px">
+          <template #header>
+            <div class="card-header">
+              <span>Codegen 实时脚本</span>
+              <el-tag v-if="running" type="success" effect="plain" size="small">录制中</el-tag>
+            </div>
+          </template>
+          <el-empty v-if="!codegenScript" description="尚未生成脚本，请在弹出的浏览器中操作" />
+          <pre v-else class="codegen-pre">{{ codegenScript }}</pre>
+        </el-card>
       </el-col>
     </el-row>
 
@@ -169,15 +160,6 @@
     >
       <div class="env-check-intro">
         开始录制前将自动检查后端服务、所选浏览器及目标 URL 是否就绪。
-        <el-alert
-          v-if="!form.headless"
-          type="warning"
-          :closable="false"
-          show-icon
-          style="margin-top:10px"
-          title="无头模式建议"
-          description="当前关闭无头模式。若后端以后台服务/SYSTEM 身份运行，可能无法弹出浏览器窗口，建议开启无头模式。"
-        />
       </div>
       <el-divider />
       <div class="env-check-list">
@@ -207,7 +189,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
+import { VideoCamera, VideoCameraFilled, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
 import { useWebManagementApi } from '/@/api/v1/testing/webManagement'
 
@@ -226,7 +208,7 @@ const running = ref(false)
 const paused = ref(false)
 const sessionId = ref<number | null>(null)
 const steps = ref<any[]>([])
-const pickResult = ref<any>(null)
+const codegenScript = ref('')
 const importCode = ref('')
 const importSide = ref('')
 const importTab = ref(engine.value === 'selenium' ? 'side' : 'codegen')
@@ -298,8 +280,6 @@ function syncToManage(caseId?: number) {
     query: { id: form.projectId, tab: 'testCases', caseId }
   })
 }
-
-const pickText = ref('')
 
 // 前置环境检测弹窗
 const envCheckVisible = ref(false)
@@ -506,7 +486,6 @@ async function doStartRecord() {
     sessionId.value = res.data.session_id
     running.value = true
     paused.value = false
-    pickResult.value = null
     steps.value = []
     startPolling()
     ElMessage.success('录制已启动，请在弹出的浏览器中操作')
@@ -532,7 +511,15 @@ async function stopRecord() {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer)
-  pollTimer = setInterval(refreshSteps, 1000)
+  pollTimer = setInterval(async () => {
+    await refreshSteps()
+    if (sessionId.value != null) {
+      try {
+        const r: any = await uiRecordApi.codegenScript(sessionId.value)
+        codegenScript.value = r?.data?.script || ''
+      } catch (e) { /* ignore */ }
+    }
+  }, 1000)
 }
 
 async function refreshSteps() {
@@ -541,66 +528,14 @@ async function refreshSteps() {
     const res: any = await uiRecordApi.steps(sessionId.value)
     steps.value = res.data.steps || []
     paused.value = !!res.data.paused
-    // 如果后端已暂停且轮询仍在跑，主动停掉避免无效请求
-    if (paused.value && pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
   } catch (e) {
     /* 忽略轮询错误 */
   }
 }
 
-async function togglePause() {
-  if (sessionId.value == null) return
-  try {
-    if (paused.value) {
-      await uiRecordApi.resume(sessionId.value)
-      paused.value = false
-      startPolling()
-      ElMessage.success('已继续录制')
-    } else {
-      await uiRecordApi.pause(sessionId.value)
-      paused.value = true
-      if (pollTimer) {
-        clearInterval(pollTimer)
-        pollTimer = null
-      }
-      ElMessage.info('已暂停录制，页面操作不再生成步骤')
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message || '操作失败')
-  }
-}
-
-async function setAssert(mode: string) {
-  if (sessionId.value == null) return
-  await uiRecordApi.assertMode(sessionId.value, { mode })
-  ElMessage.info(`已开启「${mode}」断言，请在浏览器中点击目标元素`)
-}
-
 function openRecordedPage() {
   if (form.url) {
     window.open(form.url, '_blank')
-  }
-}
-
-async function startPick() {
-  if (sessionId.value == null) return
-  await uiRecordApi.pick(sessionId.value)
-  ElMessage.info('已开启拾取，请点击浏览器中的元素')
-  // 轮询拾取结果
-  for (let i = 0; i < 20; i++) {
-    await new Promise((r) => setTimeout(r, 500))
-    try {
-      const res: any = await uiRecordApi.getPick(sessionId.value!)
-      if (res.data && res.data.locators && res.data.locators.length) {
-        pickResult.value = res.data
-        const top = res.data.locators[0]
-        pickText.value = `${top.strategy} = ${top.value}`
-        break
-      }
-    } catch (e) { /* ignore */ }
   }
 }
 
@@ -636,6 +571,19 @@ async function doImport(kind: 'codegen' | 'side') {
 .step-line { display: flex; align-items: center; gap: 8px; }
 .desc { color: #333; }
 .assert-info { margin-top: 4px; color: #67c23a; font-size: 12px; }
+.codegen-pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 460px;
+  overflow: auto;
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 12px;
+  border-radius: 6px;
+  margin: 0;
+}
 .env-check-intro { color: #606266; font-size: 14px; }
 .env-check-list { display: flex; flex-direction: column; gap: 16px; }
 .env-check-item { display: flex; align-items: flex-start; gap: 12px; }

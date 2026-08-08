@@ -1433,3 +1433,10 @@ async def import_side_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少 side_json 内容")
     result = await import_side(data.ui_project_id, user_id, data.name or "side导入用例", data.side_json)
     return success_response(data=result, message=".side 导入成功")
+
+
+@router.get("/record/{session_id}/codegen-script", summary="获取 codegen 实时生成脚本")
+async def get_record_codegen_script(session_id: int):
+    """返回 codegen 录制过程中实时累积的脚本文本，供前端实时展示。"""
+    script = RECORDER_MANAGER.get_codegen_script(session_id)
+    return success_response(data={'script': script})
