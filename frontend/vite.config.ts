@@ -108,6 +108,7 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
 		},
 		build: {
 			outDir: 'dist',
+			emptyOutDir: false,
 			chunkSizeWarningLimit: 1500,
 			// Lightning CSS 对历史写法更严格
 			cssMinify: 'esbuild',

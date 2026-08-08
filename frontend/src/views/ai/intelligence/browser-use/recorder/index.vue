@@ -550,6 +550,11 @@ async function refreshSteps() {
     const res: any = await uiRecordApi.steps(sessionId.value)
     steps.value = res.data.steps || []
     paused.value = !!res.data.paused
+    // 如果后端已暂停且轮询仍在跑，主动停掉避免无效请求
+    if (paused.value && pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
   } catch (e) {
     /* 忽略轮询错误 */
   }
@@ -561,10 +566,15 @@ async function togglePause() {
     if (paused.value) {
       await uiRecordApi.resume(sessionId.value)
       paused.value = false
+      startPolling()
       ElMessage.success('已继续录制')
     } else {
       await uiRecordApi.pause(sessionId.value)
       paused.value = true
+      if (pollTimer) {
+        clearInterval(pollTimer)
+        pollTimer = null
+      }
       ElMessage.info('已暂停录制，页面操作不再生成步骤')
     }
   } catch (e: any) {
