@@ -2038,8 +2038,7 @@ class WebManagementService:
                         elements_text = _json.dumps(elements_js, ensure_ascii=False, indent=2)
                         history_text = "\n".join(f"{i+1}. {h}" for i, h in enumerate(history)) or "（尚未执行任何步骤）"
 
-                        system_prompt = f"""你是一个 Web 自动化测试 Agent，正在逐步完成一个测试目标。
-你会看到当前页面的截图和页面可交互元素列表，请用多模态能力分析页面，决定【下一步】要执行的操作。
+                        system_prompt = f"""你是一个 Web 自动化测试 Agent，正在逐步完成一个测试目标。请用多模态能力分析当前页面截图和元素列表，决定【下一步】操作。
 
 【测试目标】{goal}
 【已执行步骤历史】
@@ -2051,10 +2050,16 @@ class WebManagementService:
 【页面URL】{page_url_now}
 【页面标题】{page_title}
 
+【完成判定规则 - 严格】
+- 必须完整执行测试目标中描述的所有动作，不能只做一部分就返回 done=true。
+- 例如目标包含"完成登录"时：仅仅进入登录页不算完成，必须完成"输入账号→输入密码→点击登录按钮"，并确认页面跳转或出现登录成功标志后，才能返回 done=true。
+- 如果当前页面仍有未填写的账号/密码输入框，且目标包含"登录/登入/填写账号"，则 done 必须为 false，下一步必须是填写或点击操作。
+- 只有在目标完全达成，或者遇到验证码/短信/人机验证等确实无法自动化的障碍时，才允许 done=true。
+
 请严格返回如下 JSON（不要任何解释文字）：
 {{
   "done": false,
-  "thought": "简要说明这一步为什么这么做",
+  "thought": "简要说明这一步为什么这么做以及离目标还差什么",
   "name": "这一步的中文描述",
   "action_type": 1步操作类型(整数),
   "action": {{
@@ -2070,7 +2075,7 @@ class WebManagementService:
   }}
 }}
 
-如果目标已经达成（或已无法继续，比如需要验证码），把 done 设为 true，action 填空操作（action_type=12, element=1 表示等待1秒兜底）。
+如果目标已经达成，把 done 设为 true，action 填 action_type=12, element=1 表示等待1秒兜底。
 
 【action_type 枚举】
 0=打开网页, 1=点击, 2=双击, 3=长按,
@@ -2087,7 +2092,7 @@ class WebManagementService:
 - 其次 text（locator_select=2）
 - 输入框用 placeholder（locator_select=5）
 - 按钮/链接用 role（locator_select=7）配合 element 填 role 名称如 "button"
-- element 字段只能从下方元素列表的 text/placeholder/id/role/ariaLabel 中选取
+- element 字段只能从下方元素列表的 text/placeholder/id/role/ariaLabel 中选取，不要编造
 
 只返回 JSON，不要解释。"""
 
@@ -2129,9 +2134,23 @@ class WebManagementService:
                             last_error = f"第{step_idx+1}步 JSON 解析失败: {str(e)}"
                             break
 
+                        # 兜底：如果 LLM 说完成，但页面上仍有未填的账号/密码框且我们提供了账号密码，
+                        # 则认定尚未完成，继续生成填写步骤
                         if decision.get("done") is True:
-                            done = True
-                            break
+                            if account and password and WebManagementService._page_has_unfilled_login_fields(elements_js):
+                                # 改写为未完成的等待步骤，让 LLM 下一步继续处理
+                                decision["done"] = False
+                                decision["action_type"] = 12
+                                decision["name"] = "等待页面稳定后填写登录信息"
+                                decision["action"] = {
+                                    "type": 1, "input": "", "element": "1",
+                                    "locator": 2, "locator_select": 2,
+                                    "assert": [], "before_wait": 1, "after_wait": 2,
+                                    "timeout": 15,
+                                }
+                            else:
+                                done = True
+                                break
 
                         # 校验 action_type
                         action_type = int(decision.get("action_type", -1))
@@ -2167,6 +2186,7 @@ class WebManagementService:
                                 "up_type": 1,
                                 "wait_time": 1,
                             },
+                            "step_number": step_idx + 1,
                         }
                         steps.append(step_obj)
                         history.append(decision.get("name") or f"步骤{step_idx+1}")
@@ -2264,6 +2284,37 @@ class WebManagementService:
                 return True, "兜底点击"
         except Exception as e:
             return False, str(e)
+
+    @staticmethod
+    def _page_has_unfilled_login_fields(elements: List[Dict[str, Any]]) -> bool:
+        """启发式判断页面上是否还有未填写的登录相关输入框（邮箱/用户名/密码）。"""
+        if not elements:
+            return False
+        has_user_field = False
+        has_pwd_field = False
+        for el in elements:
+            tag = (el.get("tag") or "").lower()
+            if tag != "input":
+                continue
+            itype = (el.get("type") or "").lower()
+            text = " ".join([
+                str(el.get("placeholder") or ""),
+                str(el.get("text") or ""),
+                str(el.get("ariaLabel") or ""),
+                str(el.get("name") or ""),
+            ]).lower()
+            value = str(el.get("value") or "").strip()
+            if itype == "password" or "密码" in text or "password" in text:
+                if not value:
+                    has_pwd_field = True
+            elif (
+                itype in ("email", "text", "tel") or
+                "邮箱" in text or "email" in text or
+                "账号" in text or "用户名" in text or "user" in text
+            ):
+                if not value:
+                    has_user_field = True
+        return has_user_field or has_pwd_field
 
     @staticmethod
     def _build_explore_locator(page, action: Dict[str, Any]):
