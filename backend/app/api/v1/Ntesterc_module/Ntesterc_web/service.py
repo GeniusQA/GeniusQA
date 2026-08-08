@@ -2098,6 +2098,9 @@ class WebManagementService:
 
                         user_text = (
                             f"当前页面可交互元素列表：\n{elements_text}\n\n"
+                            f"【禁止重复】如果上一步已经执行过某个点击/输入操作，绝对不要再次生成完全相同的操作。"
+                            f"例如上一步已经点击了 'USDT Withdrawal'，下一步就不应该再点它。"
+                            f"如果某个点击没有产生页面变化（URL 没变、菜单没展开），请换用 hover 或直接选择菜单内的子项。\n\n"
                             f"请决定下一步操作。如果目标已经完成，返回 done=true。"
                         )
 
@@ -2156,6 +2159,24 @@ class WebManagementService:
                         action_type = int(decision.get("action_type", -1))
                         if action_type not in (0,1,2,3,5,6,7,10,11,12,13,14,15,16,17,20,21):
                             last_error = f"第{step_idx+1}步 action_type 非法: {action_type}"
+                            break
+
+                        # 去重：如果这一步和最近 3 步的（类型+定位值+选择器）完全相同，则强制 LLM 重新决策
+                        dup_check = {
+                            "type": action_type,
+                            "element": str(action.get("element") or ""),
+                            "locator_select": int(action.get("locator_select") or 2),
+                        }
+                        recent = [
+                            {
+                                "type": s.get("type"),
+                                "element": str((s.get("action") or {}).get("element") or ""),
+                                "locator_select": int((s.get("action") or {}).get("locator_select") or 2),
+                            }
+                            for s in steps[-3:]
+                        ]
+                        if any(r == dup_check for r in recent):
+                            last_error = f"第{step_idx+1}步与近期步骤重复（{dup_check['element']}），AI 可能在原地打转。"
                             break
 
                         action = decision.get("action") or {}
@@ -2249,15 +2270,34 @@ class WebManagementService:
             if locator is None:
                 return False, f"无法构建定位器（element={element}, locator_select={locator_select}）"
 
+            before_url = page.url
+
             if t == 1 or t == 2 or t == 16:
-                if t == 2:
+                # 对可能是下拉菜单触发器的元素，先 hover/click 使其展开，再截图给 LLM 下一步识别子项
+                if t == 1:
+                    try:
+                        await locator.first.hover(timeout=5000)
+                        await page.wait_for_timeout(600)
+                        await locator.first.click(timeout=8000)
+                    except Exception:
+                        await locator.first.click(timeout=8000)
+                elif t == 2:
                     await locator.first.dblclick(timeout=8000)
-                elif t == 16:
-                    await locator.first.click(button="right", timeout=8000)
                 else:
-                    await locator.first.click(timeout=8000)
-                return True, "点击成功"
+                    await locator.first.click(button="right", timeout=8000)
+
+                # 点击后等待页面稳定，并检测是否真正产生变化
+                await page.wait_for_timeout(1200)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    pass
+                after_url = page.url
+                if before_url == after_url:
+                    return True, "点击成功（URL 未变化，可能是展开菜单）"
+                return True, f"点击成功，页面已跳转: {after_url}"
             elif t in (5, 6):
+                await locator.first.click(timeout=5000)
                 await locator.first.fill(value, timeout=8000)
                 return True, f"输入成功: {value[:3]}***" if len(value) > 3 else "输入成功"
             elif t == 7:
