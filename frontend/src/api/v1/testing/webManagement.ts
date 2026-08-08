@@ -316,6 +316,16 @@ export function useWebManagementApi() {
         data,
       });
     },
+
+    // AI 多步自动探索生成（方案 B+：循环截图+执行+决策）
+    ai_explore_generate_script: (data: { url: string; goal: string; account?: string; password?: string; max_steps?: number; viewport_width?: number; viewport_height?: number }) => {
+      return request({
+        url: '/v1/Ntesterc_web/web/ai_explore_generate_script',
+        method: 'POST',
+        data,
+        timeout: 600000,
+      });
+    },
   };
 }
 

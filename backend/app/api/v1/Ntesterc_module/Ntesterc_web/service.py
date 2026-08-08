@@ -1897,3 +1897,402 @@ class WebManagementService:
             "page_title": page_title,
             "elements_count": len(elements_js),
         }
+
+    # DOM 元素提取脚本（方案 B / B+ 共用）
+    _DOM_EXTRACT_JS = """() => {
+        const selectors = 'button, a, input, select, textarea, [role], [data-testid], [aria-label], [placeholder]';
+        const seen = new Set();
+        return Array.from(document.querySelectorAll(selectors))
+            .filter(el => {
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return false;
+                const style = getComputedStyle(el);
+                if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) === 0) return false;
+                const text = (el.textContent || el.value || el.placeholder || '').trim().substring(0, 80);
+                const key = el.tagName + '|' + text;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, 80)
+            .map(el => ({
+                tag: el.tagName.toLowerCase(),
+                text: (el.textContent || '').trim().substring(0, 60),
+                id: el.id || null,
+                name: el.getAttribute('name'),
+                type: el.getAttribute('type'),
+                placeholder: el.getAttribute('placeholder'),
+                role: el.getAttribute('role'),
+                ariaLabel: el.getAttribute('aria-label'),
+                testId: el.getAttribute('data-testid'),
+                title: el.getAttribute('title'),
+                className: (typeof el.className === 'string') ? el.className.split(' ').slice(0, 3).join(' ') : null,
+                href: el.tagName === 'A' ? el.getAttribute('href') : null,
+                value: el.tagName === 'INPUT' ? (el.value || '') : null,
+            }));
+    }"""
+
+    @staticmethod
+    async def ai_explore_and_generate_script(
+        url: str,
+        goal: str,
+        user_id: int,
+        account: str = "",
+        password: str = "",
+        browser_type: str = "msedge",
+        viewport_width: int = 1280,
+        viewport_height: int = 720,
+        max_steps: int = 15,
+    ) -> Dict[str, Any]:
+        """方案 B+：多步自动探索。
+
+        只给用户一个目标（和可选测试账号密码），AI 循环执行：
+        截图 → 提取页面元素 → LLM 决策下一步 → 在真实页面执行 → 再截图 → ...
+        直到 LLM 判定目标完成，或达到最大步数。
+        """
+        import base64
+        import json as _json
+        import platform as _platform
+        from playwright.async_api import async_playwright
+        from app.infra.db.sqlalchemy import async_session_factory
+        from app.api.v1.Ntesterc_module.Ntesterc_ai.llm_config.model import LLMConfigModel
+        from app.api.v1.Ntesterc_module.Ntesterc_intel.ai_model_service import AIModelService
+        from sqlalchemy import select as _select
+
+        # ---- 1. 获取默认多模态 LLM 配置 ----
+        async with async_session_factory() as db:
+            res = await db.execute(
+                _select(LLMConfigModel).where(
+                    LLMConfigModel.is_default == True,
+                    LLMConfigModel.is_active == True,
+                    LLMConfigModel.enabled_flag == 1,
+                )
+            )
+            llm_config = res.scalar_one_or_none()
+            if not llm_config:
+                res2 = await db.execute(
+                    _select(LLMConfigModel).where(
+                        LLMConfigModel.is_active == True,
+                        LLMConfigModel.enabled_flag == 1,
+                    ).limit(1)
+                )
+                llm_config = res2.scalar_one_or_none()
+        if not llm_config:
+            raise RuntimeError("未找到可用的LLM配置，请在系统设置中配置支持视觉的AI模型（如GPT-4o/Claude/Gemini等）")
+
+        # ---- 2. 启动 headless Playwright ----
+        browser_name = "chromium"
+        launch_kwargs: Dict[str, Any] = {
+            "headless": True,
+            "args": [
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        }
+        try:
+            async with async_playwright() as pw:
+                try:
+                    browser = await pw.chromium.launch(**launch_kwargs)
+                except Exception as launch_err:
+                    err_msg = str(launch_err)
+                    if "Executable doesn't exist" in err_msg or "executable doesn't exist" in err_msg.lower():
+                        raise RuntimeError(
+                            f"Playwright chromium 浏览器未安装。请在服务器执行：cd D:\\GeniusQA\\backend && .venv\\Scripts\\python.exe -m playwright install chromium"
+                        )
+                    raise RuntimeError(f"启动 Playwright 浏览器失败：{err_msg}")
+
+                context = await browser.new_context(
+                    viewport={"width": viewport_width, "height": viewport_height},
+                )
+                page = await context.new_page()
+                try:
+                    await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=15000)
+                    except Exception:
+                        pass
+
+                    steps: List[Dict[str, Any]] = []
+                    history: List[str] = []
+                    done = False
+                    last_error = ""
+
+                    for step_idx in range(int(max_steps)):
+                        # 截图
+                        screenshot_bytes = await page.screenshot(type="jpeg", quality=70)
+                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode()
+
+                        # 提取元素
+                        try:
+                            elements_js = await page.evaluate(WebManagementService._DOM_EXTRACT_JS)
+                        except Exception:
+                            elements_js = []
+
+                        page_title = await page.title()
+                        page_url_now = page.url
+
+                        # 构造 LLM 决策 prompt
+                        elements_text = _json.dumps(elements_js, ensure_ascii=False, indent=2)
+                        history_text = "\n".join(f"{i+1}. {h}" for i, h in enumerate(history)) or "（尚未执行任何步骤）"
+
+                        system_prompt = f"""你是一个 Web 自动化测试 Agent，正在逐步完成一个测试目标。
+你会看到当前页面的截图和页面可交互元素列表，请用多模态能力分析页面，决定【下一步】要执行的操作。
+
+【测试目标】{goal}
+【已执行步骤历史】
+{history_text}
+
+【测试账号】{account or '（未提供）'}
+【测试密码】{password or '（未提供）'}
+
+【页面URL】{page_url_now}
+【页面标题】{page_title}
+
+请严格返回如下 JSON（不要任何解释文字）：
+{{
+  "done": false,
+  "thought": "简要说明这一步为什么这么做",
+  "name": "这一步的中文描述",
+  "action_type": 1步操作类型(整数),
+  "action": {{
+    "type": 1,
+    "input": "输入文本（仅 type 5/6 需要，密码从测试密码取）",
+    "element": "定位值",
+    "locator": 2,
+    "locator_select": 1,
+    "assert": [],
+    "before_wait": 1,
+    "after_wait": 1,
+    "timeout": 15
+  }}
+}}
+
+如果目标已经达成（或已无法继续，比如需要验证码），把 done 设为 true，action 填空操作（action_type=12, element=1 表示等待1秒兜底）。
+
+【action_type 枚举】
+0=打开网页, 1=点击, 2=双击, 3=长按,
+5=直接输入, 6=追加输入, 7=清空输入框,
+10=if条件, 11=for循环, 12=等待(秒),
+13=打开新窗口, 14=切上一个窗口, 15=切下一个窗口,
+16=右键点击, 17=自定义JS, 20=刷新, 21=关闭标签页
+
+【locator 枚举】1=元素库(不用), 2=自定义选择器
+【locator_select 枚举】1=id, 2=text, 3=label, 4=title, 5=placeholder, 6=alt, 7=role
+
+【定位器选择规则】
+- 优先 id/data-testid（locator_select=1）
+- 其次 text（locator_select=2）
+- 输入框用 placeholder（locator_select=5）
+- 按钮/链接用 role（locator_select=7）配合 element 填 role 名称如 "button"
+- element 字段只能从下方元素列表的 text/placeholder/id/role/ariaLabel 中选取
+
+只返回 JSON，不要解释。"""
+
+                        user_text = (
+                            f"当前页面可交互元素列表：\n{elements_text}\n\n"
+                            f"请决定下一步操作。如果目标已经完成，返回 done=true。"
+                        )
+
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{screenshot_b64}", "detail": "high"},
+                                    },
+                                    {"type": "text", "text": user_text},
+                                ],
+                            },
+                        ]
+
+                        try:
+                            resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=1024)
+                            content = resp["choices"][0]["message"]["content"].strip()
+                        except Exception as e:
+                            last_error = f"第{step_idx+1}步 LLM 调用失败: {str(e)}"
+                            break
+
+                        start = content.find("{")
+                        end = content.rfind("}") + 1
+                        if start == -1 or end == 0:
+                            last_error = f"第{step_idx+1}步 LLM 返回无法解析：{content[:300]}"
+                            break
+
+                        try:
+                            decision = _json.loads(content[start:end])
+                        except _json.JSONDecodeError as e:
+                            last_error = f"第{step_idx+1}步 JSON 解析失败: {str(e)}"
+                            break
+
+                        if decision.get("done") is True:
+                            done = True
+                            break
+
+                        # 校验 action_type
+                        action_type = int(decision.get("action_type", -1))
+                        if action_type not in (0,1,2,3,5,6,7,10,11,12,13,14,15,16,17,20,21):
+                            last_error = f"第{step_idx+1}步 action_type 非法: {action_type}"
+                            break
+
+                        action = decision.get("action") or {}
+                        step_obj = {
+                            "name": decision.get("name") or f"步骤{step_idx+1}",
+                            "type": action_type,
+                            "children": [],
+                            "status": True,
+                            "action": {
+                                "type": int(action.get("type") or 1),
+                                "input": str(action.get("input") or ""),
+                                "element": str(action.get("element") or ""),
+                                "locator": int(action.get("locator") or 2),
+                                "locator_select": int(action.get("locator_select") or 2),
+                                "assert": action.get("assert") or [],
+                                "before_wait": int(action.get("before_wait") or 1),
+                                "after_wait": int(action.get("after_wait") or 1),
+                                "timeout": int(action.get("timeout") or 15),
+                                "target": "",
+                                "target_id": "",
+                                "target_type": 1,
+                                "target_locator": 1,
+                                "target_locator_select": 1,
+                                "element_id": None,
+                                "cookies": [],
+                                "localstorage": [],
+                                "sway_type": 1,
+                                "up_type": 1,
+                                "wait_time": 1,
+                            },
+                        }
+                        steps.append(step_obj)
+                        history.append(decision.get("name") or f"步骤{step_idx+1}")
+
+                        # ---- 在真实页面执行该动作 ----
+                        exec_ok, exec_msg = await WebManagementService._execute_explore_action(
+                            page, step_obj, account, password
+                        )
+                        if not exec_ok:
+                            last_error = f"第{step_idx+1}步执行失败: {exec_msg}"
+                            # 仍保留该步骤，但中断循环，让用户看到已生成的部分
+                            break
+
+                        # 执行后等待页面稳定
+                        try:
+                            await page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass
+                        await page.wait_for_timeout(800)
+
+                    return {
+                        "steps": steps,
+                        "done": done,
+                        "steps_count": len(steps),
+                        "last_error": last_error,
+                        "final_url": page.url,
+                        "final_title": await page.title(),
+                    }
+                finally:
+                    await context.close()
+                    await browser.close()
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"AI 探索生成失败: {str(e)}")
+
+    @staticmethod
+    async def _execute_explore_action(
+        page, step_obj: Dict[str, Any], account: str, password: str
+    ) -> tuple[bool, str]:
+        """在真实页面执行探索步骤的单个 action（点击/输入/等待等）。"""
+        t = int(step_obj.get("type") or -1)
+        action = step_obj.get("action") or {}
+        locator_select = int(action.get("locator_select") or 2)
+        element = str(action.get("element") or "")
+        value = str(action.get("input") or "")
+
+        # 账号密码自动替换（基于 placeholder/text/name 推断）
+        if t in (5, 6):
+            name_lower = (element or "").lower()
+            is_pwd = ("password" in name_lower) or ("密码" in (element or ""))
+            is_user = ("email" in name_lower) or ("账号" in (element or "")) or ("用户名" in (element or "")) or ("user" in name_lower) or ("邮箱" in (element or ""))
+            if is_pwd and password:
+                value = password
+            elif is_user and account:
+                value = account
+
+        try:
+            locator = WebManagementService._build_explore_locator(page, action)
+            if locator is None:
+                return False, f"无法构建定位器（element={element}, locator_select={locator_select}）"
+
+            if t == 1 or t == 2 or t == 16:
+                if t == 2:
+                    await locator.first.dblclick(timeout=8000)
+                elif t == 16:
+                    await locator.first.click(button="right", timeout=8000)
+                else:
+                    await locator.first.click(timeout=8000)
+                return True, "点击成功"
+            elif t in (5, 6):
+                await locator.first.fill(value, timeout=8000)
+                return True, f"输入成功: {value[:3]}***" if len(value) > 3 else "输入成功"
+            elif t == 7:
+                await locator.first.fill("", timeout=8000)
+                return True, "清空成功"
+            elif t == 12:
+                sec = int(action.get("element") or 1)
+                await page.wait_for_timeout(sec * 1000)
+                return True, f"等待{sec}秒"
+            elif t == 0:
+                target = element or value
+                if target:
+                    await page.goto(target, timeout=30000)
+                    return True, f"打开网页: {target}"
+                return False, "打开网页缺少 URL"
+            elif t == 20:
+                await page.reload(timeout=30000)
+                return True, "刷新页面"
+            elif t == 13:
+                return True, "新窗口(探索模式暂不处理)"
+            else:
+                # 兜底：尝试点击
+                await locator.first.click(timeout=8000)
+                return True, "兜底点击"
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def _build_explore_locator(page, action: Dict[str, Any]):
+        """根据 action 构建 Playwright locator。"""
+        locator_select = int(action.get("locator_select") or 2)
+        element = str(action.get("element") or "")
+        if not element:
+            return None
+        try:
+            if locator_select == 1:
+                if action.get("id"):
+                    return page.locator(f"#{action['id']}")
+                return page.locator(f"[id='{element}']")
+            elif locator_select == 2:
+                return page.get_by_text(element, exact=False)
+            elif locator_select == 3:
+                return page.get_by_label(element)
+            elif locator_select == 4:
+                return page.get_by_title(element)
+            elif locator_select == 5:
+                return page.get_by_placeholder(element)
+            elif locator_select == 6:
+                return page.get_by_alt_text(element)
+            elif locator_select == 7:
+                return page.get_by_role(element)
+            else:
+                return page.locator(element)
+        except Exception:
+            try:
+                return page.locator(element)
+            except Exception:
+                return None

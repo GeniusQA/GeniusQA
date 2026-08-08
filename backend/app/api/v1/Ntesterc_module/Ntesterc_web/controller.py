@@ -673,3 +673,55 @@ async def ai_generate_script(
         return success_response(data, message="AI 生成脚本成功")
     except Exception as e:
         return error_response(f"AI 生成脚本失败：{str(e)}")
+
+
+@router.post("/web/ai_explore_generate_script")
+async def ai_explore_generate_script(
+    request: Request,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """方案 B+：多步自动探索。
+
+    只给目标网站 + 目标描述（可选测试账号密码），AI 循环执行：
+    截图 → 分析页面 → 决策下一步 → 真实执行 → 再截图 → ...，直到目标完成或达到最大步数。
+
+    Body:
+        url: 目标网站地址
+        goal: 测试目标（自然语言，例如：完成用户登录）
+        account: 可选，测试账号
+        password: 可选，测试密码
+        max_steps: 可选，最大探索步数（默认 15）
+        viewport_width / viewport_height: 可选，视口尺寸
+    """
+    try:
+        body = await body_to_json(request)
+        url = str(body.get("url") or "").strip()
+        if not url:
+            return error_response("url 不能为空")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = "https://" + url
+
+        goal = str(body.get("goal") or body.get("description") or "").strip()
+        if not goal:
+            return error_response("goal 不能为空（请描述测试目标，例如：完成用户登录）")
+
+        account = str(body.get("account") or "").strip()
+        password = str(body.get("password") or "").strip()
+        max_steps = int(body.get("max_steps") or 15)
+        vw = int(body.get("viewport_width") or 1280)
+        vh = int(body.get("viewport_height") or 720)
+
+        data = await WebManagementService.ai_explore_and_generate_script(
+            url=url,
+            goal=goal,
+            user_id=current_user_id,
+            account=account,
+            password=password,
+            browser_type="chromium",
+            viewport_width=vw,
+            viewport_height=vh,
+            max_steps=max_steps,
+        )
+        return success_response(data, message="AI 探索生成完成")
+    except Exception as e:
+        return error_response(f"AI 探索生成失败：{str(e)}")

@@ -1418,16 +1418,18 @@
         description="输入目标网页地址和测试需求，AI 会自动打开网页截图、分析页面元素，并生成可执行的测试步骤。生成后可手动微调。"
       />
       <el-form :model="aiGenerateForm" label-width="100px">
+        <el-form-item label="生成模式" required>
+          <el-radio-group v-model="aiGenerateForm.mode">
+            <el-radio value="single">单页生成</el-radio>
+            <el-radio value="explore">自动探索</el-radio>
+          </el-radio-group>
+          <div class="ai-mode-tip">
+            <span v-if="aiGenerateForm.mode === 'single'">根据当前页面截图生成该页面的操作步骤，需你写明每一步做什么。</span>
+            <span v-else>只需告诉 AI 最终目标，它会自动点击、跳转、填表，多页面逐步完成（更慢、更耗 token）。</span>
+          </div>
+        </el-form-item>
         <el-form-item label="目标网址" required>
           <el-input v-model="aiGenerateForm.url" placeholder="https://example.com/login" clearable />
-        </el-form-item>
-        <el-form-item label="浏览器" required>
-          <el-select v-model="aiGenerateForm.browser_type" style="width: 100%">
-            <el-option label="Microsoft Edge" value="msedge" />
-            <el-option label="Google Chrome" value="chrome" />
-            <el-option label="Chromium" value="chromium" />
-            <el-option label="Firefox" value="firefox" />
-          </el-select>
         </el-form-item>
         <el-form-item label="视口尺寸">
           <el-space>
@@ -1436,18 +1438,33 @@
             <el-input-number v-model="aiGenerateForm.viewport_height" :min="240" :max="2160" controls-position="right" style="width: 120px" />
           </el-space>
         </el-form-item>
-        <el-form-item label="测试需求" required>
+        <el-form-item :label="aiGenerateForm.mode === 'explore' ? '测试目标' : '测试需求'" required>
           <el-input
             v-model="aiGenerateForm.description"
             type="textarea"
             :rows="4"
-            placeholder="例如：打开登录页，输入用户名 admin，密码 123456，点击登录按钮，然后断言页面跳转到 Dashboard"
+            :placeholder="aiGenerateForm.mode === 'explore'
+              ? '例如：通过首页 USDT 出金菜单进入用户登录页，并使用账号 888888@gmail.com / 密码*** 完成登录'
+              : '例如：打开登录页，输入用户名 admin，密码 123456，点击登录按钮，然后断言页面跳转到 Dashboard'"
           />
         </el-form-item>
+        <template v-if="aiGenerateForm.mode === 'explore'">
+          <el-form-item label="测试账号">
+            <el-input v-model="aiGenerateForm.account" placeholder="如 888888@gmail.com" clearable />
+          </el-form-item>
+          <el-form-item label="测试密码">
+            <el-input v-model="aiGenerateForm.password" type="password" placeholder="测试账号密码" show-password clearable />
+          </el-form-item>
+          <el-form-item label="最大步数">
+            <el-input-number v-model="aiGenerateForm.max_steps" :min="3" :max="30" controls-position="right" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="aiGenerateVisible = false">取消</el-button>
-        <el-button type="primary" :loading="aiGenerating" @click="executeAiGenerate">开始生成</el-button>
+        <el-button type="primary" :loading="aiGenerating" @click="executeAiGenerate">
+          {{ aiGenerateForm.mode === 'explore' ? '开始探索' : '开始生成' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -1632,8 +1649,12 @@ const resetCreateResourceForm = () => {
 const aiGenerateVisible = ref(false)
 const aiGenerating = ref(false)
 const aiGenerateForm = ref({
+  mode: 'single',
   url: '',
   description: '',
+  account: '',
+  password: '',
+  max_steps: 15,
   browser_type: 'msedge',
   viewport_width: 1280,
   viewport_height: 720,
@@ -1646,8 +1667,12 @@ const showAiGenerateDialog = () => {
 
 const resetAiGenerateForm = () => {
   aiGenerateForm.value = {
+    mode: 'single',
     url: '',
     description: '',
+    account: '',
+    password: '',
+    max_steps: 15,
     browser_type: 'msedge',
     viewport_width: 1280,
     viewport_height: 720,
@@ -1660,22 +1685,33 @@ const executeAiGenerate = async () => {
     return
   }
   if (!aiGenerateForm.value.description.trim()) {
-    ElMessage.warning('请输入测试需求描述')
+    ElMessage.warning(aiGenerateForm.value.mode === 'explore' ? '请输入测试目标' : '请输入测试需求描述')
     return
   }
   aiGenerating.value = true
   try {
-    const { ai_generate_script } = useWebManagementApi()
-    const res: any = await ai_generate_script({
-      url: aiGenerateForm.value.url.trim(),
-      description: aiGenerateForm.value.description.trim(),
-      browser_type: aiGenerateForm.value.browser_type,
-      viewport_width: aiGenerateForm.value.viewport_width,
-      viewport_height: aiGenerateForm.value.viewport_height,
-    })
+    const { ai_generate_script, ai_explore_generate_script } = useWebManagementApi()
+    const isExplore = aiGenerateForm.value.mode === 'explore'
+    const res: any = isExplore
+      ? await ai_explore_generate_script({
+          url: aiGenerateForm.value.url.trim(),
+          goal: aiGenerateForm.value.description.trim(),
+          account: aiGenerateForm.value.account.trim(),
+          password: aiGenerateForm.value.password.trim(),
+          max_steps: aiGenerateForm.value.max_steps,
+          viewport_width: aiGenerateForm.value.viewport_width,
+          viewport_height: aiGenerateForm.value.viewport_height,
+        })
+      : await ai_generate_script({
+          url: aiGenerateForm.value.url.trim(),
+          description: aiGenerateForm.value.description.trim(),
+          browser_type: 'chromium',
+          viewport_width: aiGenerateForm.value.viewport_width,
+          viewport_height: aiGenerateForm.value.viewport_height,
+        })
     const steps = res?.data?.steps
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
-      ElMessage.warning('AI 未生成有效步骤，请调整需求描述后重试')
+      ElMessage.warning('AI 未生成有效步骤，请调整目标描述后重试')
       return
     }
     // 插入到当前脚本步骤列表末尾
@@ -1685,7 +1721,13 @@ const executeAiGenerate = async () => {
         list.push({ ...s })
       }
     }
-    ElMessage.success(`AI 已生成 ${steps.length} 个步骤，请在下方检查并微调后保存`)
+    const tail = isExplore
+      ? (res?.data?.done ? '目标已完成' : `探索到 ${steps.length} 步（未判定完成，可继续微调）`)
+      : `AI 已生成 ${steps.length} 个步骤`
+    ElMessage.success(`${tail}，请在下方检查并保存`)
+    if (res?.data?.last_error) {
+      ElMessage.warning(`探索中断：${res.data.last_error}`)
+    }
     aiGenerateVisible.value = false
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || 'AI 生成失败，请检查网络或模型配置')
