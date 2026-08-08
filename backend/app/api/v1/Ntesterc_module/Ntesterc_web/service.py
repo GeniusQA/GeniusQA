@@ -1833,8 +1833,8 @@ class WebManagementService:
         except Exception as e:
             raise RuntimeError(f"LLM调用失败: {str(e)}")
 
-        # 提取 JSON（用平衡括号扫描，避免多余文本/截断导致解析失败）
-        block = WebManagementService._extract_json_block(content)
+        # 提取 JSON（用平衡括号扫描，避免多余文本/截断导致解析失败；脚本步骤预期是数组 []）
+        block = WebManagementService._extract_json_block(content, prefer_list=True)
         if block is None:
             raise RuntimeError(f"AI未返回有效的步骤JSON（非JSON或被截断），原始回复前300字符：{content[:300]}")
 
@@ -1932,10 +1932,17 @@ class WebManagementService:
     }"""
 
     @staticmethod
-    def _extract_json_block(text: str):
+    def _extract_json_block(text: str, prefer_object: bool = False, prefer_list: bool = False):
         """从可能含多余文本的 LLM 回复中，提取第一个括号平衡的 JSON 块（数组 [] 或对象 {}）。
-        返回可传给 json.loads 的字符串；若找不到完整闭合块（被截断/无 JSON）则返回 None。"""
-        for opener, closer in (("[", "]"), ("{", "}")):
+        返回可传给 json.loads 的字符串；若找不到完整闭合块（被截断/无 JSON）则返回 None。
+        prefer_object=True 时优先找 {}；prefer_list=True 时优先找 []。"""
+        pairs = (("[", "]"), ("{", "}"))
+        if prefer_object:
+            pairs = (("{", "}"), ("[", "]"))
+        elif prefer_list:
+            pairs = (("[", "]"), ("{", "}"))
+
+        for opener, closer in pairs:
             start = text.find(opener)
             if start == -1:
                 continue
@@ -2159,7 +2166,7 @@ class WebManagementService:
                                 parse_err = f"第{step_idx+1}步 LLM 调用失败: {str(e)}"
                                 break
 
-                            block = WebManagementService._extract_json_block(content)
+                            block = WebManagementService._extract_json_block(content, prefer_object=True)
                             if block is None:
                                 parse_err = f"第{step_idx+1}步 LLM 返回无法解析（非JSON或被截断）：{content[:300]}"
                                 # 把错误反馈给模型，要求仅返回完整 JSON 后重试
@@ -2173,6 +2180,12 @@ class WebManagementService:
                                 parse_err = f"第{step_idx+1}步 JSON 解析失败: {str(e)}，原始回复：{content[:300]}"
                                 messages.append({"role": "assistant", "content": content})
                                 messages.append({"role": "user", "content": f"JSON 解析失败：{str(e)}。请重新返回合法且完整的单个 JSON 对象（务必含闭合大括号）。"})
+                                continue
+
+                            if not isinstance(decision, dict):
+                                parse_err = f"第{step_idx+1}步 LLM 返回了 {type(decision).__name__} 而非 JSON 对象：{content[:300]}"
+                                messages.append({"role": "assistant", "content": content})
+                                messages.append({"role": "user", "content": "你的回复必须是单个 JSON 对象（{...}），不能是数组。请重新只返回 JSON 对象。"})
                                 continue
                             break
 
