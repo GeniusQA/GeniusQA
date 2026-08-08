@@ -13,20 +13,20 @@
             <el-form-item label="用例名称">
               <el-input v-model="form.name" placeholder="留空自动命名" />
             </el-form-item>
-            <el-form-item label="所属脚本库">
+            <el-form-item label="所属脚本库" required>
               <el-select v-model="form.scriptMenuId" placeholder="选择脚本库" clearable filterable style="width:100%">
                 <el-option v-for="n in scriptLibraryOptions" :key="n.id" :label="n.name" :value="n.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="所属脚本">
+            <el-form-item label="所属脚本" required>
               <el-select v-model="form.scriptId" placeholder="选择脚本" clearable filterable :disabled="!form.scriptMenuId" style="width:100%">
                 <el-option v-for="n in scriptOptions" :key="n.id" :label="n.name" :value="n.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="起始 URL">
+            <el-form-item label="起始 URL" required>
               <el-input v-model="form.url" placeholder="https://example.com" />
             </el-form-item>
-            <el-form-item label="浏览器">
+            <el-form-item label="浏览器" required>
               <el-select v-model="form.browserType" style="width:100%">
                 <el-option label="Microsoft Edge" value="edge" />
                 <el-option label="Google Chrome" value="chrome" />
@@ -56,10 +56,10 @@
           <el-divider />
 
           <div class="actions">
-            <el-button type="info" :disabled="!form.projectId" @click="saveRecorderConfig">
+            <el-button type="info" :disabled="!canStart" @click="saveRecorderConfig">
               <el-icon><FolderChecked /></el-icon> 保存配置
             </el-button>
-            <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="openEnvCheck">
+            <el-button v-if="!running" type="primary" :disabled="!canStart" @click="openEnvCheck">
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
             <template v-else>
@@ -342,6 +342,18 @@ const scriptOptions = computed(() => {
   return (lib?.children || []).filter((n: any) => n.type === 2)
 })
 
+const canStart = computed(() => {
+  if (!form.projectId || !form.scriptMenuId || !form.scriptId || !form.browserType) return false
+  const url = (form.url || '').trim()
+  if (!url) return false
+  try {
+    new URL(url)
+    return true
+  } catch {
+    return false
+  }
+})
+
 watch(() => form.scriptMenuId, () => {
   form.scriptId = null
 })
@@ -396,6 +408,29 @@ function openEnvCheck() {
     ElMessage.warning('请先选择 UI 项目')
     return
   }
+  if (!form.scriptMenuId) {
+    ElMessage.warning('请选择所属脚本库')
+    return
+  }
+  if (!form.scriptId) {
+    ElMessage.warning('请选择所属脚本')
+    return
+  }
+  if (!form.browserType) {
+    ElMessage.warning('请选择浏览器')
+    return
+  }
+  const url = (form.url || '').trim()
+  if (!url) {
+    ElMessage.warning('请填写起始 URL')
+    return
+  }
+  try {
+    new URL(url)
+  } catch {
+    ElMessage.warning('起始 URL 格式不正确，请以 http:// 或 https:// 开头')
+    return
+  }
   envCheckVisible.value = true
   runEnvCheck()
 }
@@ -442,8 +477,8 @@ async function runEnvCheck() {
   check3.status = 'checking'
   const url = (form.url || '').trim()
   if (!url) {
-    check3.status = 'success'
-    check3.message = '未填写起始 URL，将使用 about:blank'
+    check3.status = 'error'
+    check3.message = '未填写起始 URL'
   } else {
     try {
       new URL(url)

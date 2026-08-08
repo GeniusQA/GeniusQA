@@ -56,21 +56,39 @@ else { Write-Log "Redis ready." }
 $listening = netstat -ano 2>$null | Select-String ':8100.*LISTEN'
 if ($listening) { Write-Log "Port 8100 now listening (another instance), exit."; exit 0 }
 
-# 6) 启动后端守护进程（通过 WMI 创建，脱离父进程树且无窗口）
+# 6) 启动后端守护循环
+#    使用 pythonw.exe（GUI 子系统，无控制台窗口）运行 guard_loop.py：
+#    - 完全隐藏，不弹窗、不到任务栏；
+#    - 后端在交互式桌面会话，Playwright codegen 录制可正常弹出浏览器。
 $backendDir = 'D:\GeniusQA\backend'
-$serviceBat = Join-Path $backendDir 'run-as-service.bat'
+$pythonw = Join-Path $backendDir '.venv\Scripts\pythonw.exe'
+$guardScript = Join-Path $backendDir 'guard_loop.py'
 
-try {
-    $cmdLine = "cmd.exe /c `"$serviceBat`""
-    $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
-        -Arguments @{CommandLine = $cmdLine; CurrentDirectory = $backendDir}
-    if ($res.ReturnValue -eq 0) {
-        Write-Log ("Started run-as-service.bat via WMI PID=" + $res.ProcessId)
-    } else {
-        Write-Log ("FATAL: WMI Create returned " + $res.ReturnValue)
+if (Test-Path $pythonw) {
+    try {
+        $p = Start-Process -FilePath $pythonw `
+            -ArgumentList "`"$guardScript`"" `
+            -WorkingDirectory $backendDir `
+            -WindowStyle Hidden `
+            -PassThru
+        Write-Log ("Started guard_loop.py via pythonw PID=" + $p.Id)
+    } catch {
+        Write-Log ("FATAL: Failed to start guard_loop: " + $_.Exception.Message)
     }
-} catch {
-    Write-Log ("FATAL: Failed to start backend: " + $_.Exception.Message)
+} else {
+    # 降级：pythonw 不存在则回退到 cmd 最小化窗口
+    Write-Log "WARNING: pythonw.exe not found, fallback to cmd minimized"
+    $serviceBat = Join-Path $backendDir 'run-as-service.bat'
+    try {
+        $p = Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList "/c `"$serviceBat`"" `
+            -WorkingDirectory $backendDir `
+            -WindowStyle Minimized `
+            -PassThru
+        Write-Log ("Started run-as-service.bat PID=" + $p.Id + " (fallback)")
+    } catch {
+        Write-Log ("FATAL: Fallback failed: " + $_.Exception.Message)
+    }
 }
 
 Write-Log "=== Autostart done ==="
