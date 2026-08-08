@@ -91,7 +91,6 @@ try {
 Write-Step "Killing python/pythonw processes (loop) ..."
 for ($i = 0; $i -lt 5; $i++) {
     $procs = Get-PythonProcs
-    $systemProcs = $procs | Where-Object { $_.User -eq "SYSTEM" -or $_.SessionId -eq 0 }
     if (-not $procs) {
         Write-Step "No python/pythonw processes found."
         break
