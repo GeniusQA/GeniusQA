@@ -74,6 +74,15 @@ foreach ($path in $regPaths) {
 
 # 3. Remove related scheduled tasks
 Write-Step "Removing related scheduled tasks ..."
+# Hard-coded names left by install-persistent-services.bat
+$hardTaskNames = @("GeniusQA-Backend", "GeniusQA-Restart-Backend", "GeniusQA-Restart")
+foreach ($tn in $hardTaskNames) {
+    Write-Step "Deleting scheduled task (if exists): $tn"
+    schtasks /delete /tn "$tn" /f 2>$null | Out-Null
+    if (Test-Path "C:\Windows\System32\Tasks\$tn") {
+        Remove-Item "C:\Windows\System32\Tasks\$tn" -Force -ErrorAction SilentlyContinue
+    }
+}
 try {
     $tasks = schtasks /query /fo csv /v 2>$null | ConvertFrom-Csv -ErrorAction SilentlyContinue
     foreach ($t in $tasks) {
@@ -85,6 +94,18 @@ try {
     }
 } catch {
     Write-Step "Failed to enumerate scheduled tasks: $_"
+}
+# Also ensure legacy XML files are gone
+$legacyXmlPaths = @(
+    "C:\Windows\System32\Tasks\GeniusQA-Backend",
+    "C:\Windows\System32\Tasks\GeniusQA-Restart-Backend",
+    "C:\Windows\System32\Tasks\GeniusQA-Restart"
+)
+foreach ($xp in $legacyXmlPaths) {
+    if (Test-Path $xp) {
+        Write-Step "Removing legacy task XML: $xp"
+        Remove-Item $xp -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # 4. Kill python processes repeatedly until no SYSTEM python remains
