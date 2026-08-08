@@ -630,3 +630,46 @@ async def group_add_script(
         return success_response(data, message="请求成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/web/ai_generate_script")
+async def ai_generate_script(
+    request: Request,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """方案 B：打开网页截图+提取元素 → 多模态 LLM 生成脚本步骤 JSON。
+    
+    Body:
+        url: 目标网页地址
+        description: 测试需求描述（自然语言）
+        browser_type: 可选，浏览器类型（msedge/chrome/firefox），默认 msedge
+        viewport_width: 可选，视口宽度，默认 1280
+        viewport_height: 可选，视口高度，默认 720
+    """
+    try:
+        body = await body_to_json(request)
+        url = str(body.get("url") or "").strip()
+        if not url:
+            return error_response("url 不能为空")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = "https://" + url
+
+        description = str(body.get("description") or "").strip()
+        if not description:
+            return error_response("description 不能为空")
+
+        browser_type = str(body.get("browser_type") or "msedge").strip().lower()
+        vw = int(body.get("viewport_width") or 1280)
+        vh = int(body.get("viewport_height") or 720)
+
+        data = await WebManagementService.ai_generate_script(
+            url=url,
+            description=description,
+            user_id=current_user_id,
+            browser_type=browser_type,
+            viewport_width=vw,
+            viewport_height=vh,
+        )
+        return success_response(data, message="AI 生成脚本成功")
+    except Exception as e:
+        return error_response(f"AI 生成脚本失败：{str(e)}")

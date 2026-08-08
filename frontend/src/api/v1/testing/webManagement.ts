@@ -307,6 +307,15 @@ export function useWebManagementApi() {
         data,
       });
     },
+
+    // AI 生成脚本步骤（方案 B：截图+DOM→LLM）
+    ai_generate_script: (data: { url: string; description: string; browser_type?: string; viewport_width?: number; viewport_height?: number }) => {
+      return request({
+        url: '/v1/Ntesterc_web/web/ai_generate_script',
+        method: 'POST',
+        data,
+      });
+    },
   };
 }
 

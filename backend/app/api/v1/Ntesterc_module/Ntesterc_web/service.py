@@ -1617,3 +1617,263 @@ class WebManagementService:
             results.append(item)
 
         return results
+
+    @staticmethod
+    async def ai_generate_script(
+        url: str,
+        description: str,
+        user_id: int,
+        browser_type: str = "msedge",
+        viewport_width: int = 1280,
+        viewport_height: int = 720,
+    ) -> Dict[str, Any]:
+        """方案 B：启动 headless Playwright 打开目标页，截图 + 提取页面可交互元素，
+        发给多模态 LLM，AI 根据真实页面信息生成平台脚本步骤 JSON。"""
+        import base64
+        import json as _json
+        import platform as _platform
+        from playwright.async_api import async_playwright
+        from app.infra.db.sqlalchemy import async_session_factory
+        from app.api.v1.Ntesterc_module.Ntesterc_ai.llm_config.model import LLMConfigModel
+        from app.api.v1.Ntesterc_module.Ntesterc_intel.ai_model_service import AIModelService
+        from sqlalchemy import select as _select
+
+        # ---- 1. 获取默认多模态 LLM 配置 ----
+        async with async_session_factory() as db:
+            res = await db.execute(
+                _select(LLMConfigModel).where(
+                    LLMConfigModel.is_default == True,
+                    LLMConfigModel.is_active == True,
+                    LLMConfigModel.enabled_flag == 1,
+                )
+            )
+            llm_config = res.scalar_one_or_none()
+            if not llm_config:
+                res2 = await db.execute(
+                    _select(LLMConfigModel).where(
+                        LLMConfigModel.is_active == True,
+                        LLMConfigModel.enabled_flag == 1,
+                    ).limit(1)
+                )
+                llm_config = res2.scalar_one_or_none()
+        if not llm_config:
+            raise RuntimeError("未找到可用的LLM配置，请在系统设置中配置支持视觉的AI模型（如GPT-4o/Claude/Gemini等）")
+
+        # ---- 2. 启动 headless Playwright 打开页面 ----
+        launch_config = {
+            "chrome":  {"browser": "chromium", "channel": "chrome"},
+            "msedge":  {"browser": "chromium", "channel": "msedge"},
+            "firefox": {"browser": "firefox", "channel": None},
+            "webkit":  {"browser": "webkit", "channel": None},
+            "chromium":{"browser": "chromium", "channel": None},
+        }
+        cfg = launch_config.get(browser_type.lower(), launch_config["msedge"])
+        _is_linux = _platform.system().lower() != "windows"
+        channel = None if _is_linux else cfg.get("channel")
+
+        async with async_playwright() as pw:
+            launch_kwargs = {"headless": True}
+            if channel:
+                launch_kwargs["channel"] = channel
+            browser = await getattr(pw, cfg["browser"]).launch(**launch_kwargs)
+            context = await browser.new_context(
+                viewport={"width": viewport_width, "height": viewport_height},
+            )
+            page = await context.new_page()
+            try:
+                await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception:
+                    pass  # networkidle 不是必须的
+
+                # 3. 截图
+                screenshot_bytes = await page.screenshot(type="jpeg", quality=70)
+                screenshot_b64 = base64.b64encode(screenshot_bytes).decode()
+
+                # 4. 提取页面可交互元素
+                elements_js = await page.evaluate("""() => {
+                    const selectors = 'button, a, input, select, textarea, [role], [data-testid], [aria-label], [placeholder]';
+                    const seen = new Set();
+                    return Array.from(document.querySelectorAll(selectors))
+                        .filter(el => {
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) return false;
+                            const style = getComputedStyle(el);
+                            if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) === 0) return false;
+                            const text = (el.textContent || el.value || el.placeholder || '').trim().substring(0, 80);
+                            const key = el.tagName + '|' + text;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        })
+                        .slice(0, 80)
+                        .map(el => ({
+                            tag: el.tagName.toLowerCase(),
+                            text: (el.textContent || '').trim().substring(0, 60),
+                            id: el.id || null,
+                            name: el.getAttribute('name'),
+                            type: el.getAttribute('type'),
+                            placeholder: el.getAttribute('placeholder'),
+                            role: el.getAttribute('role'),
+                            ariaLabel: el.getAttribute('aria-label'),
+                            testId: el.getAttribute('data-testid'),
+                            title: el.getAttribute('title'),
+                            className: (typeof el.className === 'string') ? el.className.split(' ').slice(0, 3).join(' ') : null,
+                            href: el.tagName === 'A' ? el.getAttribute('href') : null,
+                            value: el.tagName === 'INPUT' ? (el.value || '') : null,
+                        }));
+                }""")
+
+                page_title = await page.title()
+                page_url = page.url
+
+            finally:
+                await context.close()
+                await browser.close()
+
+        # ---- 5. 构造 prompt 发给多模态 LLM ----
+        elements_text = _json.dumps(elements_js, ensure_ascii=False, indent=2)
+
+        system_prompt = f"""你是一个 Web 自动化测试专家。用户会给你：
+1. 一张网页截图
+2. 页面可交互元素列表（JSON格式，含 tag/text/id/placeholder/role/ariaLabel/testId 等属性）
+3. 测试需求描述
+
+请分析截图和元素列表，生成一个平台可执行的测试脚本步骤数组。
+
+【页面URL】{page_url}
+【页面标题】{page_title}
+【视口】{viewport_width}x{viewport_height}
+
+【步骤格式要求】严格返回 JSON 数组，每个步骤格式如下：
+{{
+  "name": "步骤描述",
+  "type": 步骤类型(整数),
+  "action": {{
+    "type": 1,
+    "input": "输入文本（仅 type 5/6 需要）",
+    "element": "定位值",
+    "locator": 2,
+    "locator_select": 定位策略(整数),
+    "assert": [],
+    "before_wait": 1,
+    "after_wait": 1,
+    "timeout": 15
+  }}
+}}
+
+【type 枚举】
+0=打开网页(element填URL), 1=点击, 2=双击, 3=长按,
+5=直接输入, 6=追加输入, 7=清空输入框,
+10=if条件, 11=for循环, 12=等待(秒),
+13=打开新窗口, 14=切上一个窗口, 15=切下一个窗口,
+16=右键点击, 17=自定义JS脚本, 20=刷新页面, 21=关闭标签页
+
+【locator 枚举】1=从元素库(不用), 2=自定义选择器
+【locator_select 枚举】1=id, 2=text, 3=label, 4=title, 5=placeholder, 6=alt, 7=role
+
+【定位器选择规则】
+- 优先用 id/data-testid（locator_select=1）
+- 其次用 text（locator_select=2）
+- 输入框用 placeholder（locator_select=5）
+- 按钮/链接用 role（locator_select=7）配合element填role名称如"button"
+- element 字段必须直接从下方元素列表中选取，不要凭空编造
+
+只返回 JSON 数组，不要任何解释文字。"""
+
+        user_text = (
+            f"页面可交互元素列表：\n{elements_text}\n\n"
+            f"测试需求：{description}\n\n"
+            f"请根据截图和上面的元素列表，生成完整的测试脚本步骤 JSON 数组。"
+            f"每个步骤的 element 定位值必须来自元素列表中的 text/placeholder/id/role/ariaLabel 字段，不要编造。"
+        )
+
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{screenshot_b64}", "detail": "high"},
+                    },
+                    {"type": "text", "text": user_text},
+                ],
+            },
+        ]
+
+        # ---- 6. 调用 LLM ----
+        try:
+            resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=4096)
+            content = resp["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            raise RuntimeError(f"LLM调用失败: {str(e)}")
+
+        # 提取 JSON
+        start = content.find("[")
+        end = content.rfind("]") + 1
+        if start == -1 or end == 0:
+            raise RuntimeError(f"AI未返回有效的步骤JSON数组，原始回复前300字符：{content[:300]}")
+
+        try:
+            steps = _json.loads(content[start:end])
+        except _json.JSONDecodeError as e:
+            raise RuntimeError(f"AI返回的JSON解析失败: {str(e)}，原始回复：{content[:500]}")
+
+        if not isinstance(steps, list):
+            raise RuntimeError("AI返回的不是JSON数组")
+
+        # ---- 7. 基本校验 & 补全默认值 ----
+        validated = []
+        for i, s in enumerate(steps):
+            if not isinstance(s, dict):
+                continue
+            t = int(s.get("type", -1))
+            # type 必须在已知范围内
+            if t not in (0,1,2,3,5,6,7,10,11,12,13,14,15,16,17,20,21):
+                continue
+
+            action = s.get("action") or {}
+            step = {
+                "name": s.get("name") or f"步骤{i+1}",
+                "type": t,
+                "children": s.get("children") or [],
+                "status": True,
+                "action": {
+                    "type": int(action.get("type") or 1),
+                    "input": str(action.get("input") or ""),
+                    "element": str(action.get("element") or ""),
+                    "locator": int(action.get("locator") or 2),
+                    "locator_select": int(action.get("locator_select") or 2),
+                    "assert": action.get("assert") or [],
+                    "before_wait": int(action.get("before_wait") or 1),
+                    "after_wait": int(action.get("after_wait") or 1),
+                    "timeout": int(action.get("timeout") or 15),
+                    "target": "",
+                    "target_id": "",
+                    "target_type": 1,
+                    "target_locator": 1,
+                    "target_locator_select": 1,
+                    "element_id": None,
+                    "cookies": [],
+                    "localstorage": [],
+                    "sway_type": 1,
+                    "up_type": 1,
+                    "wait_time": 1,
+                },
+            }
+            validated.append(step)
+
+        if not validated:
+            raise RuntimeError("AI生成的步骤全部校验不通过，请检查需求描述或LLM配置")
+
+        return {
+            "steps": validated,
+            "page_url": page_url,
+            "page_title": page_title,
+            "elements_count": len(elements_js),
+        }

@@ -184,6 +184,9 @@
                       <!-- 暂不启用 AI 脚本录入，仅保留自定义步骤入口
                       <el-button type="primary" plain @click="ai_script_input()">AI 脚本录入</el-button>
                       -->
+                      <el-button type="success" plain @click="showAiGenerateDialog()">
+                        <el-icon class="el-icon--left"><MagicStick /></el-icon>AI 生成步骤
+                      </el-button>
                       <el-button type="primary" @click="run_script(item)">立即调试</el-button>
                       <el-button type="success" @click="save_web_script_handler(item.id)">保存</el-button>
                     </div>
@@ -1401,6 +1404,52 @@
         <el-button type="primary" :loading="createResourceSubmitting" @click="submitCreateResource">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- AI 生成脚本步骤弹窗 -->
+    <el-dialog
+      v-model="aiGenerateVisible"
+      title="AI 生成测试步骤"
+      width="560px"
+      destroy-on-close
+      append-to-body
+      @closed="resetAiGenerateForm"
+    >
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px"
+        description="输入目标网页地址和测试需求，AI 会自动打开网页截图、分析页面元素，并生成可执行的测试步骤。生成后可手动微调。"
+      />
+      <el-form :model="aiGenerateForm" label-width="100px">
+        <el-form-item label="目标网址" required>
+          <el-input v-model="aiGenerateForm.url" placeholder="https://example.com/login" clearable />
+        </el-form-item>
+        <el-form-item label="浏览器" required>
+          <el-select v-model="aiGenerateForm.browser_type" style="width: 100%">
+            <el-option label="Microsoft Edge" value="msedge" />
+            <el-option label="Google Chrome" value="chrome" />
+            <el-option label="Chromium" value="chromium" />
+            <el-option label="Firefox" value="firefox" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="视口尺寸">
+          <el-space>
+            <el-input-number v-model="aiGenerateForm.viewport_width" :min="320" :max="3840" controls-position="right" style="width: 120px" />
+            <el-text size="small" type="info">×</el-text>
+            <el-input-number v-model="aiGenerateForm.viewport_height" :min="240" :max="2160" controls-position="right" style="width: 120px" />
+          </el-space>
+        </el-form-item>
+        <el-form-item label="测试需求" required>
+          <el-input
+            v-model="aiGenerateForm.description"
+            type="textarea"
+            :rows="4"
+            placeholder="例如：打开登录页，输入用户名 admin，密码 123456，点击登录按钮，然后断言页面跳转到 Dashboard"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="aiGenerateVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiGenerating" @click="executeAiGenerate">开始生成</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -1423,6 +1472,7 @@ import {
   ArrowLeft,
   Monitor,
   VideoCamera,
+  MagicStick,
 } from '@element-plus/icons-vue'
 import NtestercDialog from '/@/components/ntesterc/NtestercDialog.vue'
 import NtestercUploadFiles from '/@/components/ntesterc/NtestercUploadFiles.vue'
@@ -1576,6 +1626,72 @@ const createResourceForm = ref<{
 
 const resetCreateResourceForm = () => {
   createResourceForm.value = { resourceType: 2, name: '', pid: undefined }
+}
+
+// ---- AI 生成步骤（方案 B） ----
+const aiGenerateVisible = ref(false)
+const aiGenerating = ref(false)
+const aiGenerateForm = ref({
+  url: '',
+  description: '',
+  browser_type: 'msedge',
+  viewport_width: 1280,
+  viewport_height: 720,
+})
+
+const showAiGenerateDialog = () => {
+  resetAiGenerateForm()
+  aiGenerateVisible.value = true
+}
+
+const resetAiGenerateForm = () => {
+  aiGenerateForm.value = {
+    url: '',
+    description: '',
+    browser_type: 'msedge',
+    viewport_width: 1280,
+    viewport_height: 720,
+  }
+}
+
+const executeAiGenerate = async () => {
+  if (!aiGenerateForm.value.url.trim()) {
+    ElMessage.warning('请输入目标网址')
+    return
+  }
+  if (!aiGenerateForm.value.description.trim()) {
+    ElMessage.warning('请输入测试需求描述')
+    return
+  }
+  aiGenerating.value = true
+  try {
+    const { ai_generate_script } = useWebManagementApi()
+    const res: any = await ai_generate_script({
+      url: aiGenerateForm.value.url.trim(),
+      description: aiGenerateForm.value.description.trim(),
+      browser_type: aiGenerateForm.value.browser_type,
+      viewport_width: aiGenerateForm.value.viewport_width,
+      viewport_height: aiGenerateForm.value.viewport_height,
+    })
+    const steps = res?.data?.steps
+    if (!steps || !Array.isArray(steps) || steps.length === 0) {
+      ElMessage.warning('AI 未生成有效步骤，请调整需求描述后重试')
+      return
+    }
+    // 插入到当前脚本步骤列表末尾
+    const list = script_list.value
+    if (list && Array.isArray(list)) {
+      for (const s of steps) {
+        list.push({ ...s })
+      }
+    }
+    ElMessage.success(`AI 已生成 ${steps.length} 个步骤，请在下方检查并微调后保存`)
+    aiGenerateVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || 'AI 生成失败，请检查网络或模型配置')
+  } finally {
+    aiGenerating.value = false
+  }
 }
 
 const openCreateResourceDialog = (kind: 'script' | 'folder') => {
