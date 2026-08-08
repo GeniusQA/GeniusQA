@@ -62,7 +62,7 @@ Write-Step "删除相关计划任务 ..."
 $tasks = schtasks /query /fo csv /v 2>$null | ConvertFrom-Csv -ErrorAction SilentlyContinue
 foreach ($t in $tasks) {
     $tn = $t.TaskName
-    if ($tn -and ($tn -match "GeniusQA|backend|run-as-service|force-restart")) {
+    if ($tn -and ($tn -match "GeniusQA|run-as-service|force-restart|start-backend")) {
         Write-Step "删除计划任务: $tn"
         schtasks /delete /tn "$tn" /f 2>$null | Out-Null
     }
