@@ -2093,12 +2093,12 @@ class WebManagementService:
 - 如果当前页面仍有未填写的账号/密码输入框，且目标包含"登录/登入/填写账号"，则 done 必须为 false，下一步必须是填写或点击操作。
 - 只有在目标完全达成，或者遇到验证码/短信/人机验证等确实无法自动化的障碍时，才允许 done=true。
 
-请严格返回如下 JSON（不要任何解释文字）：
+【最重要】请严格返回如下 JSON（不要任何解释文字，不要 markdown 代码块，不要换行符分隔多个 JSON）：
 {{
   "done": false,
   "thought": "简要说明这一步为什么这么做以及离目标还差什么",
   "name": "这一步的中文描述",
-  "action_type": 1步操作类型(整数),
+  "action_type": 1,
   "action": {{
     "type": 1,
     "input": "输入文本（仅 type 5/6 需要，密码从测试密码取）",
@@ -2112,7 +2112,14 @@ class WebManagementService:
   }}
 }}
 
-如果目标已经达成，把 done 设为 true，action 填 action_type=12, element=1 表示等待1秒兜底。
+如果目标已经达成，返回：
+{{
+  "done": true,
+  "thought": "目标已完成",
+  "name": "结束",
+  "action_type": 12,
+  "action": {{"type":1,"input":"","element":"1","locator":2,"locator_select":2,"assert":[],"before_wait":1,"after_wait":1,"timeout":15}}
+}}
 
 【action_type 枚举】
 0=打开网页, 1=点击, 2=双击, 3=长按,
@@ -2160,11 +2167,18 @@ class WebManagementService:
                         parse_err = ""
                         for attempt in range(3):
                             try:
-                                resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=1500)
-                                content = resp["choices"][0]["message"]["content"].strip()
+                                resp = await AIModelService.call_openai_compatible_api(llm_config, messages, max_tokens=2048)
+                                content = (resp["choices"][0]["message"].get("content") or "").strip()
                             except Exception as e:
                                 parse_err = f"第{step_idx+1}步 LLM 调用失败: {str(e)}"
                                 break
+
+                            if not content:
+                                parse_err = f"第{step_idx+1}步 LLM 返回空内容"
+                                # 空回复大概率是上下文/图片过大导致，重试时去掉图片只给元素列表
+                                messages.append({"role": "assistant", "content": "（空回复）"})
+                                messages.append({"role": "user", "content": "请根据当前页面元素列表返回单个 JSON 对象，不要解释文字。"})
+                                continue
 
                             block = WebManagementService._extract_json_block(content, prefer_object=True)
                             if block is None:
@@ -2284,6 +2298,16 @@ class WebManagementService:
                         except Exception:
                             pass
                         await page.wait_for_timeout(800)
+
+                        # 快捷完成：如果这一步看起来是点击登录/登入按钮，且页面已离开登录页、没有未填登录框，自动结束
+                        if (
+                            action_type == 1
+                            and any(k in (step_obj.get("name") or "").lower() for k in ("登录", "登入", "login", "sign in", "submit"))
+                            and "login" not in page.url.lower()
+                            and not WebManagementService._page_has_unfilled_login_fields(await page.evaluate(WebManagementService._DOM_EXTRACT_JS))
+                        ):
+                            done = True
+                            break
 
                     return {
                         "steps": steps,
