@@ -194,9 +194,9 @@ const isIsDark = computed(() => {
 .layout-setting-appearance {
   //outline: auto !important;
   //outline: 1px solid black !important;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 8px;
   width: 100%;
 
 
