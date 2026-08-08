@@ -51,10 +51,6 @@
             <el-form-item label="时区">
               <el-input v-model="form.timezone" placeholder="如 Asia/Shanghai" clearable />
             </el-form-item>
-            <el-form-item label="无头模式">
-              <el-switch v-model="form.headless" active-text="开启" inactive-text="关闭" />
-              <span class="hint">后台服务/无桌面环境建议开启</span>
-            </el-form-item>
           </el-form>
 
           <el-divider />
@@ -95,11 +91,9 @@
               style="margin-top:10px"
             />
             <el-alert type="info" :closable="false" show-icon title="提示"
-              :description="form.headless
-                ? '无头模式：浏览器在后台运行，不会弹出窗口。点击下方“打开被录页面”可在新标签页查看目标页面，但当前标签页的操作不会被录制。'
-                : '在弹出的浏览器中操作后，点击下方断言/拾取按钮，再点击页面元素即可捕获。录制步骤会实时显示到右侧。'" />
-            <el-button v-if="form.headless && form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
-              打开被录页面
+              description="录制依赖浏览器窗口捕获手动操作，请确保后端运行在有桌面环境的服务器上；若后端处于无桌面会话，系统会自动降级为无头模式，但此时无法手动录制。" />
+            <el-button v-if="form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
+              在新标签页打开目标页
             </el-button>
           </template>
         </el-card>
@@ -248,7 +242,6 @@ const form = reactive({
   colorScheme: '',
   locale: '',
   timezone: '',
-  headless: false,
   scriptMenuId: null as number | null,
   scriptId: null as number | null,
 })
@@ -256,7 +249,7 @@ const form = reactive({
 const RECORDER_CONFIG_KEY = 'ui-recorder-config'
 const CONFIG_FIELDS: (keyof typeof form)[] = [
   'projectId', 'url', 'browserType', 'viewportWidth', 'viewportHeight',
-  'colorScheme', 'locale', 'timezone', 'headless', 'scriptMenuId', 'scriptId',
+  'colorScheme', 'locale', 'timezone', 'scriptMenuId', 'scriptId',
 ]
 
 /** 从项目列表中选出最近更新/创建的项目作为默认项 */
@@ -505,7 +498,6 @@ async function doStartRecord() {
     color_scheme: form.colorScheme || undefined,
     locale: form.locale || undefined,
     timezone: form.timezone || undefined,
-    headless: form.headless,
     script_menu_id: form.scriptMenuId || undefined,
     script_id: form.scriptId || undefined,
   }
@@ -517,8 +509,7 @@ async function doStartRecord() {
     pickResult.value = null
     steps.value = []
     startPolling()
-    const tip = form.headless ? '录制已启动（无头模式），请继续操作' : '录制已启动，请在弹出的浏览器中操作'
-    ElMessage.success(tip)
+    ElMessage.success('录制已启动，请在弹出的浏览器中操作')
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '启动录制失败')
   }

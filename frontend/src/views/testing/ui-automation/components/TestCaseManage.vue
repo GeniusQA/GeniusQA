@@ -193,11 +193,11 @@
             选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
-        <el-form-item label="无头模式">
-          <el-switch v-model="executeForm.headless" />
-          <span style="margin-left: 10px; color: #909399; font-size: 12px">
-            无头模式下浏览器不显示界面
-          </span>
+        <el-form-item label="执行模式">
+          <el-radio-group v-model="executeForm.runMode">
+            <el-radio label="formal">正式执行（无头，后台运行）</el-radio>
+            <el-radio label="debug">调试执行（有头，显示窗口）</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="超时时间(ms)">
           <el-input-number v-model="executeForm.timeout" :min="5000" :max="300000" :step="5000" style="width: 100%" />
@@ -247,11 +247,11 @@
             选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
-        <el-form-item label="无头模式">
-          <el-switch v-model="batchExecuteForm.headless" />
-          <span style="margin-left: 10px; color: #909399; font-size: 12px">
-            无头模式下浏览器不显示界面
-          </span>
+        <el-form-item label="执行模式">
+          <el-radio-group v-model="batchExecuteForm.runMode">
+            <el-radio label="formal">正式执行（无头，后台运行）</el-radio>
+            <el-radio label="debug">调试执行（有头，显示窗口）</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="并行执行">
           <el-switch v-model="batchExecuteForm.parallel" />
@@ -431,7 +431,7 @@ const executeForm = reactive({
   engine_type: 'playwright',
   browser_type: 'msedge',
   channel: '',
-  headless: true,
+  runMode: 'formal' as 'formal' | 'debug',
   timeout: 30000
 })
 
@@ -621,8 +621,10 @@ const handleExecute = async (row: any) => {
 const handleExecuteSubmit = async () => {
   executeLoading.value = true
   try {
-    const payload = { ...executeForm }
-    if (!payload.channel) delete (payload as any).channel
+    const payload: any = { ...executeForm }
+    payload.headless = payload.runMode === 'formal'
+    delete payload.runMode
+    if (!payload.channel) delete payload.channel
     const res = await uiTestCaseApi.execute(currentExecuteTestCaseId.value, payload)
     currentExecutionId.value = res.data.execution_id
     ElMessage.success('测试用例开始执行')
@@ -655,7 +657,7 @@ const batchExecuteForm = reactive({
   engine_type: 'playwright',
   browser_type: 'msedge',
   channel: '',
-  headless: true,
+  runMode: 'formal' as 'formal' | 'debug',
   parallel: false,
   max_workers: 1,
   timeout: 30000
@@ -669,8 +671,10 @@ const handleBatchExecuteSubmit = async () => {
     const test_case_ids = selectedTestCases.value.map((item: any) => item.id)
     
     // 调用批量执行API
-    const payload = { ...batchExecuteForm }
-    if (!payload.channel) delete (payload as any).channel
+    const payload: any = { ...batchExecuteForm }
+    payload.headless = payload.runMode === 'formal'
+    delete payload.runMode
+    if (!payload.channel) delete payload.channel
     const res = await uiTestCaseApi.batchExecute({
       ui_project_id: props.uiProjectId,
       test_case_ids,
