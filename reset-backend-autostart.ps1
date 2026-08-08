@@ -1,10 +1,9 @@
-#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     彻底清理旧的 GeniusQA 后端自启动项，杀掉所有 SYSTEM/session-0 残留进程，
     并以当前登录用户重新注册新的 pythonw 无窗口启动方式。
 .DESCRIPTION
-    必须以管理员身份运行一次（右键 -> 使用 PowerShell 运行）。
+    双击即可运行。若当前没有管理员权限，脚本会自动重新以管理员身份启动。
     它会：
     1. 删除启动文件夹中旧的快捷方式；
     2. 删除 HKLM/HKCU 中旧的自启动注册表项；
@@ -17,6 +16,16 @@ param()
 
 $ErrorActionPreference = "Continue"
 Set-StrictMode -Off
+
+# 自动请求管理员权限
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "[reset] 需要管理员权限，正在重新以管理员身份启动 ..." -ForegroundColor Yellow
+    $scriptPath = $MyInvocation.MyCommand.Path
+    if (-not $scriptPath) { $scriptPath = $PSCommandPath }
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs -Wait
+    exit
+}
 
 $projectRoot = "D:\GeniusQA"
 $startBackend = "$projectRoot\start-backend.ps1"
