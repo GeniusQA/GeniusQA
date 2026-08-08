@@ -56,17 +56,19 @@ else { Write-Log "Redis ready." }
 $listening = netstat -ano 2>$null | Select-String ':8100.*LISTEN'
 if ($listening) { Write-Log "Port 8100 now listening (another instance), exit."; exit 0 }
 
-# 6) 启动后端守护进程
+# 6) 启动后端守护进程（通过 WMI 创建，脱离父进程树且无窗口）
 $backendDir = 'D:\GeniusQA\backend'
 $serviceBat = Join-Path $backendDir 'run-as-service.bat'
 
 try {
-    $p = Start-Process -FilePath 'cmd.exe' `
-        -ArgumentList "/c `"$serviceBat`"" `
-        -WorkingDirectory $backendDir `
-        -WindowStyle Hidden `
-        -PassThru
-    Write-Log ("Started run-as-service.bat PID=" + $p.Id)
+    $cmdLine = "cmd.exe /c `"$serviceBat`""
+    $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
+        -Arguments @{CommandLine = $cmdLine; CurrentDirectory = $backendDir}
+    if ($res.ReturnValue -eq 0) {
+        Write-Log ("Started run-as-service.bat via WMI PID=" + $res.ProcessId)
+    } else {
+        Write-Log ("FATAL: WMI Create returned " + $res.ReturnValue)
+    }
 } catch {
     Write-Log ("FATAL: Failed to start backend: " + $_.Exception.Message)
 }

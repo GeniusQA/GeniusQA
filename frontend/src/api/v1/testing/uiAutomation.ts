@@ -115,6 +115,8 @@ export function useUiAutomationApi() {
     start: (uiProjectId: number, data: any) => request.post(`/v1/Ntesterc_ui/projects/${uiProjectId}/record/start`, data),
     stop: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/stop`),
     steps: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/steps`),
+    pause: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/pause`),
+    resume: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/resume`),
     assertMode: (sessionId: number, data: any) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/assert-mode`, data),
     pick: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
     getPick: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/pick`),

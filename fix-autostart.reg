@@ -1,4 +1,4 @@
 Windows Registry Editor Version 5.00
 
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run]
-"GeniusQA-Backend"="powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"D:\\GeniusQA\\start-backend.ps1\""
+"GeniusQA-Backend"="powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File \"D:\\GeniusQA\\start-backend.ps1\""

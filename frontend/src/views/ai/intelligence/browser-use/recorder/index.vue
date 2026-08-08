@@ -13,6 +13,16 @@
             <el-form-item label="用例名称">
               <el-input v-model="form.name" placeholder="留空自动命名" />
             </el-form-item>
+            <el-form-item label="所属脚本库">
+              <el-select v-model="form.scriptMenuId" placeholder="选择脚本库" clearable filterable style="width:100%">
+                <el-option v-for="n in scriptLibraryOptions" :key="n.id" :label="n.name" :value="n.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="所属脚本">
+              <el-select v-model="form.scriptId" placeholder="选择脚本" clearable filterable :disabled="!form.scriptMenuId" style="width:100%">
+                <el-option v-for="n in scriptOptions" :key="n.id" :label="n.name" :value="n.id" />
+              </el-select>
+            </el-form-item>
             <el-form-item label="起始 URL">
               <el-input v-model="form.url" placeholder="https://example.com" />
             </el-form-item>
@@ -205,9 +215,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
+import { useWebManagementApi } from '/@/api/v1/testing/webManagement'
 
 const route = useRoute()
 const router = useRouter()
+const { web_menu, menu_script_list } = useWebManagementApi()
 
 // 根据入口参数决定当前是 Playwright 还是 Selenium 录制模式
 const engine = computed(() => {
@@ -237,12 +249,25 @@ const form = reactive({
   locale: '',
   timezone: '',
   headless: false,
+  scriptMenuId: null as number | null,
+  scriptId: null as number | null,
 })
 
 const RECORDER_CONFIG_KEY = 'ui-recorder-config'
 const CONFIG_FIELDS: (keyof typeof form)[] = [
-  'url', 'browserType', 'viewportWidth', 'viewportHeight', 'colorScheme', 'locale', 'timezone', 'headless'
+  'projectId', 'url', 'browserType', 'viewportWidth', 'viewportHeight',
+  'colorScheme', 'locale', 'timezone', 'headless', 'scriptMenuId', 'scriptId',
 ]
+
+/** 从项目列表中选出最近更新/创建的项目作为默认项 */
+function findLatestProject(list: any[]): any | null {
+  if (!list?.length) return null
+  const ts = (p: any) => {
+    const v = p.updated_at || p.created_at || p.update_time || p.create_time
+    return v ? new Date(v).getTime() : 0
+  }
+  return [...list].sort((a, b) => ts(b) - ts(a))[0]
+}
 
 function saveRecorderConfig() {
   try {
@@ -315,20 +340,68 @@ async function applyProjectConfig(pid: number | null) {
 
 watch(() => form.projectId, applyProjectConfig)
 
+const webMenuTree = ref<any[]>([])
+
+async function loadWebMenuTree() {
+  try {
+    const res: any = await web_menu({})
+    webMenuTree.value = res.data || []
+  } catch {
+    /* ignore */
+  }
+}
+
+const scriptLibraryOptions = computed(() => {
+  const flat: any[] = []
+  function walk(nodes: any[]) {
+    for (const n of nodes || []) {
+      if (n.type === 0 || n.type === 1) flat.push(n)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(webMenuTree.value)
+  return flat
+})
+
+const scriptOptions = computed(() => {
+  if (!form.scriptMenuId) return []
+  const lib = scriptLibraryOptions.value.find((n) => n.id === form.scriptMenuId)
+  return (lib?.children || []).filter((n: any) => n.type === 2)
+})
+
+watch(() => form.scriptMenuId, () => {
+  form.scriptId = null
+})
+
 onMounted(async () => {
   try {
     const res: any = await uiProjectApi.list({ page: 1, page_size: 200 })
     projects.value = res.data?.items || res.data || []
+    const projectIdSet = new Set(projects.value.map((p) => p.id).filter(Boolean))
+
+    // 先加载历史输入（可能包含上次使用的 projectId）
+    loadRecorderConfig()
+
+    // 决定默认 projectId：URL 参数 > 本地记忆 > 最近项目
+    let pid: number | null = null
     const rawQid = route.query.projectId
     if (rawQid) {
-      const pid = Number(rawQid)
-      if (!isNaN(pid) && pid > 0) {
-        form.projectId = pid
-        await applyProjectConfig(pid)
-      }
+      const qid = Number(rawQid)
+      if (!isNaN(qid) && qid > 0) pid = qid
     }
-    // 最后加载历史输入，覆盖项目默认值
-    loadRecorderConfig()
+    if (!pid && form.projectId && projectIdSet.has(form.projectId)) {
+      pid = form.projectId
+    }
+    if (!pid && projects.value.length) {
+      const latest = findLatestProject(projects.value)
+      pid = latest?.id ?? null
+    }
+
+    if (pid) {
+      form.projectId = pid
+      await applyProjectConfig(pid)
+    }
+    await loadWebMenuTree()
   } catch (e) {
     ElMessage.error('加载 UI 项目失败')
   }
@@ -433,6 +506,8 @@ async function doStartRecord() {
     locale: form.locale || undefined,
     timezone: form.timezone || undefined,
     headless: form.headless,
+    script_menu_id: form.scriptMenuId || undefined,
+    script_id: form.scriptId || undefined,
   }
   try {
     const res: any = await uiRecordApi.start(form.projectId, payload)

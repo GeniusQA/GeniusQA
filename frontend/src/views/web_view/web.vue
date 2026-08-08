@@ -44,44 +44,46 @@
       <div v-if="pageMode === 'list'" class="wa-home-list">
         <el-card shadow="never" class="wa-list-card">
           <el-table
-            class="wa-script-table"
+            class="wa-script-table wa-script-table--tree"
             v-loading="loading"
-            :data="homeResourceRows"
+            :data="homeResourceTree"
+            :row-key="(row: any) => row.id"
+            :tree-props="{ children: 'children' }"
+            default-expand-all
             stripe
             border
             style="width: 100%"
             empty-text="暂无目录与脚本，请先新建或刷新"
             @row-click="onHomeResourceRowClick"
           >
-            <el-table-column label="类型" width="108" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.menuType === 2 ? 'primary' : 'warning'" effect="dark" size="small">
-                  {{ row.menuType === 2 ? '脚本' : '脚本库' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="名称" min-width="180" show-overflow-tooltip>
+            <el-table-column label="名称" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
                 <el-space :size="8" alignment="center">
-                  <el-icon class="wa-res-icon" :class="row.menuType === 2 ? 'wa-res-icon--script' : 'wa-res-icon--folder'">
-                    <ChromeFilled v-if="row.menuType === 2" />
+                  <el-icon class="wa-res-icon" :class="row.type === 2 ? 'wa-res-icon--script' : 'wa-res-icon--folder'">
+                    <ChromeFilled v-if="row.type === 2" />
                     <Folder v-else />
                   </el-icon>
                   <span>{{ row.name }}</span>
                 </el-space>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="112" align="center">
+            <el-table-column label="类型" width="108" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.statusTagType" size="small">{{ row.statusLabel }}</el-tag>
+                <el-tag :type="row.type === 2 ? 'primary' : 'warning'" effect="dark" size="small">
+                  {{ row.type === 2 ? '脚本' : '脚本库' }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="groupPath" label="所属分组" min-width="200" show-overflow-tooltip />
+            <el-table-column label="状态" width="112" align="center">
+              <template #default="{ row }">
+                <el-tag :type="statusTagTypeFor(row)" size="small">{{ statusLabelFor(row) }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="268" fixed="right" align="center">
               <template #default="{ row }">
                 <el-space :size="8" wrap alignment="center" class="wa-table-actions">
                   <el-button type="primary" size="small" :plain="false" @click.stop="openResourceFromList(row)">
-                    {{ row.menuType === 2 ? '进入编辑' : '进入管理' }}
+                    {{ row.type === 2 ? '进入编辑' : '进入管理' }}
                   </el-button>
                   <el-button type="danger" size="small" :plain="false" @click.stop="deleteResourceFromList(row)">
                     删除
@@ -1499,27 +1501,6 @@ function getMenuNode(m: Map<any, any>, pid: any): any {
   return m.get(pid) ?? m.get(Number(pid)) ?? m.get(String(pid))
 }
 
-/**
- * 用 pid 向上解析「所属分组」（不依赖子节点是否挂在 children 下，避免树结构异常时路径丢失）
- */
-function groupPathForScript(script: any, m: Map<any, any>): string {
-  const names: string[] = []
-  let pid = script.pid
-  let guard = 0
-  while (!isRootPid(pid) && guard++ < 64) {
-    const p = getMenuNode(m, pid)
-    if (!p) break
-    if (p.type === 0 || p.type === 1) {
-      names.unshift(p.name)
-    }
-    pid = p.pid
-  }
-  if (names.length) return names.join(' / ')
-  const direct = getMenuNode(m, script.pid)
-  if (direct?.name && direct.type !== 2) return String(direct.name)
-  return '—'
-}
-
 /** 脚本库节点完整路径（用于新建脚本选父级） */
 function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   const chain: string[] = []
@@ -1533,46 +1514,44 @@ function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   return chain.filter(Boolean).join(' / ')
 }
 
-/** 首页列表：脚本库 + 脚本，含类型与状态展示 */
-const homeResourceRows = computed(() => {
-  const flat = flattenWebMenuTree(tree_data.value)
-  const m = nodeByIdMap(flat)
-  const rows: Array<{
-    id: number
-    name: string
-    groupPath: string
-    menuType: 1 | 2
-    statusLabel: string
-    statusTagType: 'success' | 'info' | 'warning' | 'danger'
-    raw: any
-  }> = []
-  for (const n of flat) {
-    if (n.type !== 1 && n.type !== 2) continue
-    const groupPath = groupPathForScript({ pid: n.pid, id: n.id }, m)
-    let statusLabel = '正常'
-    let statusTagType: 'success' | 'info' | 'warning' | 'danger' = 'success'
-    if (n.status === false || n.enabled === false || n.disabled === true) {
-      statusLabel = '停用'
-      statusTagType = 'danger'
-    } else if (n.type === 1) {
-      statusLabel = '目录'
-      statusTagType = 'info'
-    } else {
-      statusLabel = '就绪'
-      statusTagType = 'success'
+/** 根据节点计算状态标签文案 */
+function statusLabelFor(n: any): string {
+  if (n.status === false || n.enabled === false || n.disabled === true) return '停用'
+  if (n.type === 1) return '目录'
+  return '就绪'
+}
+
+/** 根据节点计算状态标签类型 */
+function statusTagTypeFor(n: any): 'success' | 'info' | 'warning' | 'danger' {
+  if (n.status === false || n.enabled === false || n.disabled === true) return 'danger'
+  if (n.type === 1) return 'info'
+  return 'success'
+}
+
+/** 把后端菜单树转换为首页树形表格数据。
+ *  - type=0（历史文件夹/默认分组）作为透明容器：不显示为独立行，
+ *    直接把它下面的脚本库/脚本提升到父级。
+ *  - type=1（脚本库）和 type=2（脚本）保留并展示真实的从属关系。
+ */
+function buildResourceTree(nodes: any[]): any[] {
+  const result: any[] = []
+  for (const n of nodes || []) {
+    if (!n) continue
+    if (n.type === 0) {
+      // 历史文件夹仅作为层级桥梁，子节点提升到当前层级
+      if (n.children?.length) {
+        result.push(...buildResourceTree(n.children))
+      }
+      continue
     }
-    rows.push({
-      id: n.id,
-      name: n.name,
-      groupPath,
-      menuType: n.type,
-      statusLabel,
-      statusTagType,
-      raw: n,
-    })
+    const children = n.children?.length ? buildResourceTree(n.children) : []
+    result.push({ ...n, children })
   }
-  return rows
-})
+  return result
+}
+
+/** 首页列表：脚本库 + 脚本，以树形结构展示从属关系 */
+const homeResourceTree = computed(() => buildResourceTree(tree_data.value))
 
 /** 新建脚本：所有可作为父级的脚本库/脚本组 */
 const folderParentOptions = computed(() => {
@@ -1603,11 +1582,8 @@ const openCreateResourceDialog = (kind: 'script' | 'folder') => {
   resetCreateResourceForm()
   createResourceForm.value.resourceType = kind === 'folder' ? 1 : 2
   const opts = folderParentOptions.value
-  if (!opts.length) {
-    ElMessage.warning('目录数据未就绪或无可用父级，请先刷新页面')
-    return
-  }
-  createResourceForm.value.pid = opts[0].value
+  // 脚本库可建在根（无父级）；脚本必须挂在脚本库下，默认选中第一个可用父级
+  createResourceForm.value.pid = opts.length ? opts[0].value : undefined
   createResourceVisible.value = true
 }
 
@@ -1666,20 +1642,20 @@ const openScriptFromList = async (row: { id: number }) => {
   await openScriptByIdFromApi(row.id)
 }
 
-const openResourceFromList = async (row: { menuType: 1 | 2; id: number; raw: any }) => {
-  if (row.menuType === 2) await openScriptFromList(row)
-  else await web_menu_click(row.raw)
+const openResourceFromList = async (row: { type: 1 | 2; id: number }) => {
+  if (row.type === 2) await openScriptFromList(row)
+  else await web_menu_click(row)
 }
 
-const onHomeResourceRowClick = (row: { menuType: 1 | 2; id: number; raw: any }) => {
+const onHomeResourceRowClick = (row: { type: 1 | 2; id: number }) => {
   openResourceFromList(row)
 }
 
-const deleteResourceFromList = (row: { id: number; name: string; menuType: 1 | 2 }) => {
-  const kind = row.menuType === 2 ? '脚本' : '脚本库'
+const deleteResourceFromList = (row: { id: number; name: string; type: 1 | 2 }) => {
+  const kind = row.type === 2 ? '脚本' : '脚本库'
   ElMessageBox.confirm(`确定删除${kind}「${row.name}」吗？`, '提示', { type: 'warning' })
     .then(async () => {
-      const res: any = await del_web_menu({ id: row.id, type: row.menuType })
+      const res: any = await del_web_menu({ id: row.id, type: row.type })
       ElMessage.success(res.message || '已删除')
       if (pageMode.value === 'script' && tab_list.value[0]?.id === row.id) {
         goBackToList()
@@ -1695,8 +1671,9 @@ const submitCreateResource = async () => {
     ElMessage.warning(createResourceForm.value.resourceType === 2 ? '请输入脚本名称' : '请输入脚本库名称')
     return
   }
-  if (createResourceForm.value.pid == null) {
-    ElMessage.warning('请选择父级位置')
+  // 脚本必须挂在脚本库下；脚本库允许建在根（pid 传 0）
+  if (createResourceForm.value.resourceType === 2 && createResourceForm.value.pid == null) {
+    ElMessage.warning('请选择父级位置（脚本须挂在脚本库下）')
     return
   }
   try {
@@ -1704,7 +1681,7 @@ const submitCreateResource = async () => {
     const res: any = await add_web_menu({
       name,
       type: createResourceForm.value.resourceType,
-      pid: createResourceForm.value.pid,
+      pid: createResourceForm.value.pid ?? 0,
     })
     ElMessage.success(res.message || '创建成功')
     createResourceVisible.value = false
@@ -1713,8 +1690,8 @@ const submitCreateResource = async () => {
       const newId = res.data?.id
       if (newId) await openScriptByIdFromApi(Number(newId))
     }
-  } catch {
-    ElMessage.error('创建失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '创建失败')
   } finally {
     createResourceSubmitting.value = false
   }
@@ -1828,7 +1805,10 @@ const web_menu_click = async (node: any) => {
   try {
     if (node.type === 1) {
       const res: any = await menu_script_list({ id: node.id })
-      table_list.value = res.data
+      table_list.value = (res.data || []).map((item: any) => ({
+        ...item,
+        step: item.step == null || item.step === 0 ? 1 : item.step,
+      }))
       if (pageMode.value === 'script') {
         tab_list.value = []
         tab_active.value = ''

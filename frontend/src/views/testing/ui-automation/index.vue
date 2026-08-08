@@ -444,9 +444,12 @@ const handleGenerateCodeSubmit = async () => {
   try {
     const res = await uiProjectApi.generateCode(currentProjectId.value, codeForm)
     generatedFiles.value = res.data.files || []
-    if (generatedFiles.value.length > 0) {
-      activeCodeTab.value = generatedFiles.value[0].filename
+    if (generatedFiles.value.length === 0) {
+      ElMessage.warning(res.message || '当前项目下没有页面对象，无法生成代码。请先在页面对象管理中创建页面对象。')
+      codeDialogVisible.value = false
+      return
     }
+    activeCodeTab.value = generatedFiles.value[0].filename
     codeDialogVisible.value = false
     codePreviewVisible.value = true
     ElMessage.success('代码生成成功')
