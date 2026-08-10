@@ -1,5 +1,5 @@
 <template>
-  <el-form ref="loginFormRef" :model="state.ruleForm" :rules="loginRules" size="large" class="login-content-form">
+  <el-form ref="loginFormRef" :model="state.ruleForm" :rules="loginRules" size="large" class="login-content-form" :validate-on-rule-change="false">
     <el-form-item class="login-animation1" prop="userName">
       <el-input text placeholder="请输入用户名" v-model="state.ruleForm.userName" clearable
                 autocomplete="off">
@@ -97,18 +97,18 @@ const state = reactive({
 const loginRules = computed(() => {
   const rules: Record<string, any[]> = {
     userName: [
-      { required: true, message: '请输入用户名', trigger: 'blur' },
-      { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符', trigger: 'blur' }
+      { required: true, message: '请输入用户名' },
+      { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符' }
     ],
     password: [
-      { required: true, message: '请输入密码', trigger: 'blur' },
-      { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' }
+      { required: true, message: '请输入密码' },
+      { min: 6, max: 20, message: '密码长度在 6 到 20 个字符' }
     ],
   };
   if (captchaEnable.value) {
     rules.code = [
-      { required: true, message: '请输入验证码', trigger: 'blur' },
-      { min: 3, max: 8, message: '验证码长度不正确', trigger: 'blur' },
+      { required: true, message: '请输入验证码' },
+      { min: 3, max: 8, message: '验证码长度不正确' },
     ];
   }
   return rules;
