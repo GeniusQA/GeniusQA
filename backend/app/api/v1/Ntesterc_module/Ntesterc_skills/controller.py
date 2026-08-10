@@ -136,6 +136,18 @@ async def import_skill_folder(
     return await S.import_skill_from_folder(project_id, current_user_id, db, files, paths, scenario_category, entry_command)
 
 
+@router.post("/projects/{project_id}/import/markdown", summary="上传 Markdown 文件自动转 Skill")
+async def import_skill_markdown(
+    project_id: int,
+    file: UploadFile = File(...),
+    scenario_category: Optional[str] = Query(None, description="场景分类"),
+    skill_name: Optional[str] = Query(None, description="技能名称，默认取 Markdown frontmatter 的 name"),
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    return await S.import_skill_from_markdown(project_id, current_user_id, db, file, scenario_category, skill_name)
+
+
 @router.get("/projects/{project_id}/skills/local-claude", summary="列出本机 Claude Code Skill")
 async def list_local_claude_skills(
     project_id: int,

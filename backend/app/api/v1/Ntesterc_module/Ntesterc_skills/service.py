@@ -1184,6 +1184,81 @@ async def import_skill_from_folder(
         raise
 
 
+async def import_skill_from_markdown(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    file: UploadFile,
+    scenario_category: Optional[str] = None,
+    skill_name: Optional[str] = None,
+) -> dict:
+    """上传单个 Markdown 文件自动转 Skill：解析 frontmatter 取名/描述，落盘为 SKILL.md 并建记录。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    filename = file.filename or "skill.md"
+    if not filename.lower().endswith((".md", ".markdown")):
+        raise HTTPException(status_code=400, detail="仅支持 Markdown 文件（.md / .markdown）")
+
+    raw = await file.read()
+    text = _smart_decode(raw).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Markdown 文件内容为空")
+
+    # 解析 YAML frontmatter（--- ... ---），兼容 name/description/allowed-tools
+    meta: dict = {}
+    body = text
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            try:
+                parsed = yaml.safe_load(parts[1])
+                if isinstance(parsed, dict):
+                    meta = parsed
+                body = parts[2].strip()
+            except Exception:
+                pass
+
+    name = _safe_skill_name(str(skill_name or meta.get("name") or Path(filename).stem or "skill"))
+    description = str(meta.get("description") or "").strip()
+    if not description:
+        # 取正文首段非标题文本作为描述兜底
+        for line in body.splitlines():
+            s = line.strip().lstrip("#").strip()
+            if s:
+                description = s[:200]
+                break
+        if not description:
+            description = name
+    allowed = str(meta.get("allowed-tools") or meta.get("allowed_tools") or "").strip()
+
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    dst = base_dir / f"{secrets.token_hex(6)}_{name}"
+    dst.mkdir(parents=True, exist_ok=True)
+    (dst / "SKILL.md").write_text(text, encoding="utf-8")
+
+    await _assert_skill_names_available(project_id, user_id, db, [name])
+    res = await create_skill(
+        project_id,
+        user_id,
+        db,
+        {
+            "name": name,
+            "description": description,
+            "scenario_category": (scenario_category or "").strip() or name,
+            "source_type": "markdown",
+            "repo_url": None,
+            "skill_path": str(dst),
+            "entry_command": "",
+            "is_active": True,
+            "extra_config": {"allowed_tools": allowed, "markdown": True},
+        },
+    )
+    return success_response(
+        data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1},
+        message="Markdown 已转为 Skill 并导入成功",
+    )
+
+
 def _scan_local_claude_skills() -> List[Dict[str, Any]]:
     """扫描本机 ~/.claude/skills/，返回可被导入的 Claude Code Skill 列表。
 

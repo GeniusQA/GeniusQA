@@ -108,6 +108,17 @@ export function useSkillsApi() {
         data: fd,
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
+    importMarkdown: (projectId: number, file: File, params?: { scenario_category?: string; skill_name?: string }) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return request({
+        url: `/v1/Ntesterc_skills/projects/${projectId}/import/markdown`,
+        method: 'POST',
+        params,
+        data: fd,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
     listLocalClaudeSkills: (projectId: number) =>
       request({
         url: `/v1/Ntesterc_skills/projects/${projectId}/skills/local-claude`,

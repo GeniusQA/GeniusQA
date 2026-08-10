@@ -170,6 +170,7 @@
           <el-radio-group v-model="uploadMode">
             <el-radio-button label="zip">上传 ZIP 包</el-radio-button>
             <el-radio-button label="folder">上传文件夹</el-radio-button>
+            <el-radio-button label="markdown">上传 Markdown</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="分类" required>
@@ -188,6 +189,21 @@
           >
             <el-button>选择 ZIP</el-button>
           </el-upload>
+        </el-form-item>
+        <el-form-item v-else-if="uploadMode === 'markdown'" label="Markdown" required>
+          <el-upload
+            ref="markdownRef"
+            :key="uploadKey"
+            :show-file-list="true"
+            :auto-upload="false"
+            accept=".md,.markdown"
+            :limit="1"
+            :on-change="onMarkdownFileChange"
+            :on-remove="() => (uploadForm.markdownFile = null)"
+          >
+            <el-button>选择 Markdown</el-button>
+          </el-upload>
+          <div class="folder-placeholder">支持 .md / .markdown；可含 YAML frontmatter（name / description / allowed-tools）</div>
         </el-form-item>
         <el-form-item v-else label="文件夹" required>
           <input
@@ -354,13 +370,15 @@ const uploadDialogVisible = ref(false);
 const uploadSubmitting = ref(false);
 const uploadRef = ref<any>(null);
 const uploadKey = ref(0);
-const uploadMode = ref<'zip' | 'folder'>('zip');
+const uploadMode = ref<'zip' | 'folder' | 'markdown'>('zip');
+const markdownRef = ref<any>(null);
 const folderInputRef = ref<HTMLInputElement | null>(null);
 const folderName = ref('');
 const folderFiles = ref<File[]>([]);
-const uploadForm = reactive<{ scenario_category: string; file: File | null }>({
+const uploadForm = reactive<{ scenario_category: string; file: File | null; markdownFile: File | null }>({
   scenario_category: '',
   file: null,
+  markdownFile: null,
 });
 
 const contentDialogVisible = ref(false);
@@ -505,11 +523,13 @@ const submitGitImport = async () => {
 const resetUploadForm = () => {
   uploadForm.scenario_category = '';
   uploadForm.file = null;
+  uploadForm.markdownFile = null;
   uploadMode.value = 'zip';
   folderName.value = '';
   folderFiles.value = [];
   uploadKey.value += 1;
   uploadRef.value?.clearFiles?.();
+  markdownRef.value?.clearFiles?.();
   if (folderInputRef.value) {
     folderInputRef.value.value = '';
   }
@@ -523,6 +543,10 @@ const openUploadDialog = (mode: 'zip' | 'folder' = 'zip') => {
 
 const onUploadFileChange = (file: UploadFile) => {
   uploadForm.file = (file.raw as File) || null;
+};
+
+const onMarkdownFileChange = (file: UploadFile) => {
+  uploadForm.markdownFile = (file.raw as File) || null;
 };
 
 const onFolderChange = (e: Event) => {
@@ -553,6 +577,14 @@ const submitUploadImport = async () => {
         return;
       }
       res = await skillsApi.importUpload(projectId.value, uploadForm.file, {
+        scenario_category: uploadForm.scenario_category.trim(),
+      });
+    } else if (uploadMode.value === 'markdown') {
+      if (!uploadForm.markdownFile) {
+        ElMessage.warning('请选择 Markdown 文件');
+        return;
+      }
+      res = await skillsApi.importMarkdown(projectId.value, uploadForm.markdownFile, {
         scenario_category: uploadForm.scenario_category.trim(),
       });
     } else {
