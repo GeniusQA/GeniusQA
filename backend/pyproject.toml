@@ -64,7 +64,7 @@ dependencies = [
     # UI 自动化
     "selenium==4.40.0",
     "webdriver-manager==4.0.2",
-    "playwright==1.40.0",
+    "playwright==1.62.0",
     "opencv-python==4.10.0.84",
     "Appium-Python-Client==4.2.0; sys_platform != 'win32'",
     # API 限流

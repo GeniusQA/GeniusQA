@@ -8,6 +8,8 @@ from typing import Dict, Any, List
 from datetime import datetime
 from playwright.sync_api import sync_playwright, Page
 
+import os
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,25 +37,79 @@ class SyncExecutionEngine:
         
         try:
             # 获取配置
-            browser_type = config.get('browser_type', 'chromium')
+            browser_type = config.get('browser_type', 'msedge')
             headless = config.get('headless', True)
+            # 后端运行于无桌面环境（session 0 / SYSTEM）时，有头浏览器无法创建窗口会立即退出，
+            # 必须强制无头，否则报 Target page, context or browser has been closed
+            try:
+                from .browser_path_config import is_headless_required
+                if is_headless_required() and not headless:
+                    logger.warning(
+                        "后端运行于无桌面环境(session 0/SYSTEM)，已强制将测试浏览器切换为无头模式"
+                    )
+                    headless = True
+            except Exception:
+                pass
             channel = config.get('channel', None)
-            
+
+            # 与浏览器检查页/录制器一致的映射
+            browser_map = {
+                'edge': ('chromium', 'msedge'),
+                'chrome': ('chromium', 'chrome'),
+                'firefox': ('firefox', None),
+                'safari': ('webkit', None),
+                'msedge': ('chromium', 'msedge'),
+                'chromium': ('chromium', None),
+                'webkit': ('webkit', None),
+            }
+            launcher_name, inferred_channel = browser_map.get(browser_type, ('chromium', None))
+            channel = channel or inferred_channel
+
+            # 读取自定义浏览器路径（优先使用）
+            try:
+                from .browser_path_config import get_browser_path
+                custom_path = get_browser_path(browser_type)
+            except Exception:
+                custom_path = None
+
+            # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+            try:
+                from .browser_path_config import reap_stale_browser_processes
+                reap_stale_browser_processes()
+            except Exception:
+                pass
+
             # 启动 Playwright
             with sync_playwright() as p:
-                # 选择浏览器
-                if browser_type == 'firefox':
-                    self.browser = p.firefox.launch(headless=headless)
-                elif browser_type == 'webkit':
-                    self.browser = p.webkit.launch(headless=headless)
-                else:  # chromium, chrome, edge
-                    launch_options = {'headless': headless}
-                    if channel:
-                        launch_options['channel'] = channel
-                    self.browser = p.chromium.launch(**launch_options)
-                
+                launcher = getattr(p, launcher_name)
+                launch_options = {
+                    'headless': headless,
+                    'args': [
+                        '--disable-blink-features=AutomationControlled',
+                        '--no-sandbox',
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                    ]
+                }
+                # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+                from .browser_path_config import get_browser_launch_env
+                launch_options['env'] = get_browser_launch_env()
+                if custom_path and os.path.exists(custom_path):
+                    launch_options['executable_path'] = custom_path
+                    launch_options.pop('channel', None)
+                elif channel:
+                    launch_options['channel'] = channel
+                self.browser = launcher.launch(**launch_options)
+                try:
+                    from .browser_path_config import register_active_browser
+                    register_active_browser(self.browser)
+                except Exception:
+                    pass
+
                 browser_info = f"{browser_type}"
-                if channel:
+                if custom_path and os.path.exists(custom_path):
+                    browser_info += f" (custom_path={custom_path})"
+                elif channel:
                     browser_info += f" (channel={channel})"
                 browser_info += f", headless={headless}"
                 logs.append(f"✓ 浏览器启动成功: {browser_info}")
@@ -132,6 +188,11 @@ class SyncExecutionEngine:
                         break
                 
                 # 关闭浏览器
+                try:
+                    from .browser_path_config import unregister_active_browser
+                    unregister_active_browser(self.browser)
+                except Exception:
+                    pass
                 self.browser.close()
                 logs.append(f"✓ 浏览器已关闭")
             

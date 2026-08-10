@@ -56,7 +56,7 @@ class ExecutionEngine:
         
         try:
             # 获取配置
-            browser_type = config.get('browser_type', 'chromium')
+            browser_type = config.get('browser_type', 'msedge')
             headless = config.get('headless', True)
             channel = config.get('channel', None)  # 新增：浏览器渠道
             

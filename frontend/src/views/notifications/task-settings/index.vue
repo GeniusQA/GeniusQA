@@ -31,10 +31,11 @@
             v-model="queryParams.task_type"
             placeholder="请选择任务类型"
             clearable
-            style="width: 120px"
+            style="width: 160px"
           >
-            <el-option label="API测试" value="API" />
-            <el-option label="UI测试" value="UI" />
+            <el-option label="APP自动化" value="APP" />
+            <el-option label="WEB自动化" value="WEB_UI" />
+            <el-option label="API自动化" value="API" />
           </el-select>
         </el-form-item>
         <el-form-item label="通知配置" prop="notification_config_id">
@@ -86,13 +87,13 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="任务ID" prop="task_id" width="100" align="center" />
-        <el-table-column label="任务类型" prop="task_type" width="100" align="center">
+        <el-table-column label="任务类型" prop="task_type" width="120" align="center">
           <template #default="scope">
             <el-tag
-              :type="scope.row.task_type === 'API' ? 'primary' : 'success'"
+              :type="getTaskTypeTag(scope.row.task_type)"
               size="small"
             >
-              {{ scope.row.task_type === 'API' ? 'API测试' : 'UI测试' }}
+              {{ getTaskTypeLabel(scope.row.task_type) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -189,8 +190,9 @@
             placeholder="请选择任务类型"
             style="width: 100%"
           >
-            <el-option label="API测试" value="API" />
-            <el-option label="UI测试" value="UI" />
+            <el-option label="APP自动化" value="APP" />
+            <el-option label="WEB自动化" value="WEB_UI" />
+            <el-option label="API自动化" value="API" />
           </el-select>
         </el-form-item>
         <el-form-item label="通知配置" prop="notification_config_id">
@@ -284,6 +286,21 @@ const rules = {
   notification_config_id: [
     { required: true, message: '通知配置不能为空', trigger: 'change' }
   ]
+}
+
+// 任务类型选项：与定时任务保持一致
+const taskTypeOptions = [
+  { label: 'APP自动化', value: 'APP', tagType: 'success' },
+  { label: 'WEB自动化', value: 'WEB_UI', tagType: 'warning' },
+  { label: 'API自动化', value: 'API', tagType: 'info' }
+]
+
+const getTaskTypeLabel = (value: string) => {
+  return taskTypeOptions.find(item => item.value === value)?.label || value
+}
+
+const getTaskTypeTag = (value: string) => {
+  return (taskTypeOptions.find(item => item.value === value)?.tagType as any) || ''
 }
 
 // 获取设置列表

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,18 +12,41 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 from pathlib import Path
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
+
+import yaml
 from fastapi import HTTPException, UploadFile
+from loguru import logger
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.Ntesterc_module.Ntesterc_project.service import ProjectService
+from app.api.v1.Ntesterc_module.Ntesterc_project.model import ProjectMCPConfigModel
 from app.api.v1.Ntesterc_module.Ntesterc_skills.model import ProjectSkillModel
 from app.api.v1.Ntesterc_module.Ntesterc_skills.execution_model import SkillExecutionArtifactModel, SkillExecutionEventModel, SkillExecutionJobModel
+from app.api.v1.Ntesterc_module.Ntesterc_skills.skill_job_runner import cancel_skill_job as runner_cancel_skill_job, schedule_skill_job
+from app.api.v1.Ntesterc_module.Ntesterc_skills import external_agent as EA
 from app.common.response import page_response, success_response
 
-SKILL_ROOT = Path(os.getenv("SKILL_UPLOAD_DIR", "uploads/skills"))
+
+def _resolve_skill_root() -> Path:
+    """
+    解析 skill 文件根目录，优先使用显式环境变量，否则跟随 portable 项目根目录，
+    保证无论 uvicorn worker 从哪个目录启动，skill 都稳定落在项目根目录的 uploads/skills 下。
+    """
+    if os.getenv("SKILL_UPLOAD_DIR"):
+        return Path(os.environ["SKILL_UPLOAD_DIR"]).resolve()
+    portable_root = (os.environ.get("NT_PORTABLE_ROOT") or "").strip()
+    if portable_root:
+        return Path(portable_root) / "uploads" / "skills"
+    backend_dir = Path(__file__).resolve().parents[5]
+    project_root = backend_dir.parent
+    return project_root / "uploads" / "skills"
+
+
+SKILL_ROOT = _resolve_skill_root()
 DEFAULT_RUNNER_TYPE = (os.getenv("SKILL_RUNNER_TYPE") or "local").strip().lower()  # local/docker
 
 
@@ -588,88 +612,486 @@ async def batch_delete_skills(
     )
 
 
+def _normalize_repo_url(url: str) -> str:
+    """
+    统一仓库 URL：忽略 .git 后缀、尾部斜杠、大小写。
+    用于把 https://github.com/obra/superpowers 与 https://github.com/obra/superpowers.git 视为同一仓库。
+    """
+    s = (url or "").strip().lower()
+    if s.endswith(".git"):
+        s = s[:-4]
+    return s.rstrip("/")
+
+
+def _git_hash(repo_url: str) -> str:
+    """仓库 URL 的 8 位确定性哈希，同一仓库永远得到同一值。"""
+    return hashlib.sha256(_normalize_repo_url(repo_url).encode("utf-8")).hexdigest()[:8]
+
+
+def _find_existing_repo_dir(base_dir: Path, repo_hash: str) -> Optional[Path]:
+    """
+    查找已存在的同仓库目录（兼容旧版 hash_label 目录名）。
+    优先返回同名精确目录，其次是含有 skill 内容的有效 git 目录。
+    """
+    candidates: list[Path] = []
+    for d in base_dir.iterdir():
+        if d.is_dir() and d.name.startswith(repo_hash):
+            if _is_valid_git_repo(d) and ((d / "skills").exists() or (d / "SKILL.md").exists()):
+                candidates.append(d)
+    if not candidates:
+        return None
+    exact = next((c for c in candidates if c.name == repo_hash), None)
+    if exact:
+        return exact
+    # 优先最短名称，减少 URL 类长标签目录被误用
+    return sorted(candidates, key=lambda p: (len(p.name), p.name))[0]
+
+
+def _git_env() -> dict:
+    env = os.environ.copy()
+    proxy = os.getenv("SKILL_IMPORT_PROXY")
+    if proxy:
+        env["http_proxy"] = proxy
+        env["https_proxy"] = proxy
+    return env
+
+
+def _run_git(args: List[str], *, cwd: Optional[Path] = None, timeout: int = 240):
+    return subprocess.run(
+        ["git"] + list(args),
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=_git_env(),
+    )
+
+
+def _is_valid_git_repo(dst: Path) -> bool:
+    return dst.exists() and (dst / ".git").is_dir() and (dst / ".git" / "HEAD").is_file()
+
+
+def _cleanup_dst_for_resync(dst: Path) -> None:
+    """删除目录以便重新克隆；若删除失败（文件被占用）则重命名为 .broken 备份，避免 already exists。"""
+    if not dst.exists():
+        return
+    try:
+        shutil.rmtree(dst, ignore_errors=True)
+    except Exception:
+        pass
+    if dst.exists():
+        broken = dst.with_name(f"{dst.name}.broken_{int(time.time())}")
+        try:
+            dst.rename(broken)
+        except Exception:
+            shutil.rmtree(dst, ignore_errors=True)
+
+
+def _sync_git_repo(repo_url: str, dst: Path, branch: Optional[str] = None) -> None:
+    """
+    确保 dst 含有 repo_url 的最新内容。
+    - 已存在且是完整 git 仓库时优先原地 fetch + reset --hard 更新；
+    - fetch 失败但本地已有内容时保留本地版本（兼容后端 SYSTEM 进程偶发网络问题）；
+    - 否则（首次/损坏的 .git）清理后重新浅克隆，支持重试与 HTTP/1.1 降级。
+    """
+    http11 = ["--config", "http.version=HTTP/1.1"]
+
+    if _is_valid_git_repo(dst):
+        try:
+            fetch = _run_git(["fetch", "--depth", "1", "origin"] + http11, cwd=dst, timeout=180)
+            if fetch.returncode == 0:
+                _run_git(["reset", "--hard", "FETCH_HEAD"] + http11, cwd=dst)
+                _run_git(["clean", "-fd"], cwd=dst)
+                return
+            logger.warning(f"git fetch 失败: {fetch.stderr or fetch.stdout}")
+        except Exception as e:
+            logger.warning(f"git 原地更新异常: {e}")
+        # 本地已有 skill 内容则保留，避免网络抖动导致导入失败
+        if (dst / "skills").exists() or (dst / "SKILL.md").exists():
+            logger.info(f"保留本地仓库内容: {dst}")
+            return
+        logger.warning("本地仓库无有效内容，将重新克隆")
+
+    # 非有效仓库或更新失败 -> 清理后克隆（带重试）
+    _cleanup_dst_for_resync(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    clone_args = ["clone", "--depth", "1"] + http11
+    if branch:
+        clone_args += ["--branch", branch]
+    clone_args += [repo_url, str(dst)]
+
+    last_err = ""
+    for attempt in range(1, 4):
+        cp = _run_git(clone_args, timeout=240)
+        if cp.returncode == 0:
+            return
+        last_err = (cp.stderr or cp.stdout or "unknown").strip()
+        logger.warning(f"git clone 第 {attempt} 次失败: {last_err}")
+        if attempt < 3:
+            time.sleep(2 ** attempt)
+    _cleanup_dst_for_resync(dst)
+    raise HTTPException(status_code=400, detail=f"拉取仓库失败: {last_err}")
+
+
+async def _get_enabled_skills_by_repo(
+    project_id: int, user_id: int, repo_url: str, db: AsyncSession
+) -> dict:
+    """返回 {name.lower(): model}，用于重复导入时原地更新而非新建。按规范化后的 repo_url 匹配。"""
+    norm_target = _normalize_repo_url(repo_url)
+    stmt = select(ProjectSkillModel).where(
+        ProjectSkillModel.project_id == project_id,
+        ProjectSkillModel.user_id == user_id,
+        ProjectSkillModel.enabled_flag == 1,
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return {(r.name or "").lower(): r for r in rows if _normalize_repo_url(r.repo_url or "") == norm_target}
+
+
 async def import_skill_from_git(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
     await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
     repo_url = str(data.get("repo_url") or "").strip()
     if not repo_url:
         raise HTTPException(status_code=400, detail="repo_url 不能为空")
+    scenario_category = (data.get("scenario_category") or "").strip() or None
     name = _safe_skill_name(str(data.get("name") or Path(repo_url).stem or "skill"))
     base_dir = SKILL_ROOT / str(project_id) / str(user_id)
     base_dir.mkdir(parents=True, exist_ok=True)
-    dst = base_dir / f"{secrets.token_hex(6)}_{name}"
+    # 目录只由仓库 hash 决定：无论分类/名称怎么填，同一仓库永远复用同一目录
+    repo_hash = _git_hash(repo_url)
+    dst = _find_existing_repo_dir(base_dir, repo_hash) or (base_dir / repo_hash)
+
     try:
-        subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, str(dst)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=True,
-        )
+        _sync_git_repo(repo_url, dst, branch=data.get("branch"))
+    except HTTPException:
+        raise
     except Exception as e:
-        shutil.rmtree(dst, ignore_errors=True)
         raise HTTPException(status_code=400, detail=f"拉取仓库失败: {e}")
 
-    payload = {
-        "scenario_category": data.get("scenario_category"),
-        "source_type": "gitee" if "gitee.com" in repo_url else "github" if "github.com" in repo_url else "git",
-        "repo_url": repo_url,
-        "is_active": True,
-    }
+    source_type = "gitee" if "gitee.com" in repo_url else "github" if "github.com" in repo_url else "git"
+    entry_command = str(data.get("entry_command") or "").strip() or None
+    existing = await _get_enabled_skills_by_repo(project_id, user_id, repo_url, db)
+
+    created_ids: List[int] = []
+    updated_ids: List[int] = []
+    new_records: List[ProjectSkillModel] = []
+
+    def _build_extra(*, pack_root: Optional[str] = None, allowed_tools: str = "", fallback: Optional[dict] = None) -> dict:
+        extra = dict(fallback) if isinstance(fallback, dict) else {}
+        if pack_root:
+            extra["pack_root"] = pack_root
+        if allowed_tools:
+            extra["allowed_tools"] = allowed_tools
+        return extra
+
+    def _prepare_record(skill_name: str, skill_path: str, description, extra: dict) -> None:
+        rec = existing.pop(skill_name.lower(), None)
+        if rec is not None:
+            # 该技能已存在且来源相同 -> 原地更新
+            rec.skill_path = skill_path
+            rec.description = description
+            rec.scenario_category = scenario_category or rec.scenario_category or skill_name
+            rec.source_type = source_type
+            rec.repo_url = repo_url
+            rec.entry_command = entry_command
+            rec.extra_config = extra
+            rec.updated_by = user_id
+            updated_ids.append(int(rec.id))
+            return
+        # 新建记录（稍后批量校验名称并写入）
+        new_records.append(
+            ProjectSkillModel(
+                project_id=project_id,
+                user_id=user_id,
+                name=skill_name,
+                description=description,
+                scenario_category=scenario_category or skill_name,
+                source_type=source_type,
+                repo_url=repo_url,
+                skill_path=skill_path,
+                entry_command=entry_command,
+                is_active=True,
+                extra_config=extra,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+        )
 
     try:
-        # If repo is a skill pack (multi-SKILL.md layout), create one record per SKILL.md under /skills
         pack = _scan_skill_pack(dst)
         if pack:
-            names = [_safe_skill_name(item["name"]) for item in pack]
-            await _assert_skill_names_available(project_id, user_id, db, names)
-            created_ids: List[int] = []
             for item in pack:
                 skill_name = _safe_skill_name(item["name"])
-                extra = {
-                    "allowed_tools": item.get("allowed_tools") or "",
-                    "pack_root": str(dst),
-                }
-                res = await create_skill(
-                    project_id,
-                    user_id,
-                    db,
-                    {
-                        "name": skill_name,
-                        "description": item.get("description"),
-                        "scenario_category": payload.get("scenario_category") or skill_name,
-                        "source_type": payload["source_type"],
-                        "repo_url": repo_url,
-                        "skill_path": str(item["skill_dir"]),
-                        "entry_command": str(data.get("entry_command") or "").strip() or None,
-                        "is_active": True,
-                        "extra_config": extra,
-                    },
+                extra = _build_extra(
+                    pack_root=str(dst),
+                    allowed_tools=item.get("allowed_tools") or "",
                 )
-                created_ids.append(int(((res or {}).get("data") or {}).get("id") or 0))
-            return success_response(data={"created": created_ids, "count": len(created_ids)}, message="导入成功")
+                _prepare_record(skill_name, str(item["skill_dir"]), item.get("description"), extra)
+        else:
+            extra = _build_extra(fallback=data.get("extra_config") if isinstance(data.get("extra_config"), dict) else {})
+            _prepare_record(
+                name,
+                str(dst),
+                str(data.get("description") or _parse_skill_description(dst)),
+                extra,
+            )
 
-        await _assert_skill_names_available(project_id, user_id, db, [name])
-        # Fallback: treat repo root as a single skill
-        res = await create_skill(
-            project_id,
-            user_id,
-            db,
-            {
-                "name": name,
-                "description": str(data.get("description") or _parse_skill_description(dst)),
-                "scenario_category": payload.get("scenario_category"),
-                "source_type": payload["source_type"],
-                "repo_url": repo_url,
-                "skill_path": str(dst),
-                "entry_command": str(data.get("entry_command") or "").strip() or None,
-                "is_active": True,
-                "extra_config": data.get("extra_config") if isinstance(data.get("extra_config"), dict) else {},
-            },
-        )
-        return success_response(data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1}, message="导入成功")
+        if new_records:
+            new_names = [m.name for m in new_records]
+            await _assert_skill_names_available(project_id, user_id, db, new_names)
+            for m in new_records:
+                db.add(m)
+
+        await db.flush()
+        await db.commit()
     except Exception:
-        shutil.rmtree(dst, ignore_errors=True)
+        await db.rollback()
         raise
+
+    created_ids = [int(m.id) for m in new_records]
+    total = created_ids + updated_ids
+    msg = "导入成功"
+    if created_ids and updated_ids:
+        msg = f"导入成功（新增 {len(created_ids)} 个，更新 {len(updated_ids)} 个）"
+    elif updated_ids and not created_ids:
+        msg = f"导入成功（已更新 {len(updated_ids)} 个，目录原地刷新）"
+    elif created_ids and not updated_ids:
+        msg = f"导入成功（新增 {len(created_ids)} 个）"
+    return success_response(
+        data={"created": created_ids, "updated": updated_ids, "count": len(total)},
+        message=msg,
+    )
+
+
+async def preview_skill_from_git(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """拉取仓库并扫描其中所有 Skill，但**不写入数据库**，返回预览列表供前端勾选。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    repo_url = str(data.get("repo_url") or "").strip()
+    if not repo_url:
+        raise HTTPException(status_code=400, detail="repo_url 不能为空")
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    repo_hash = _git_hash(repo_url)
+    dst = _find_existing_repo_dir(base_dir, repo_hash) or (base_dir / repo_hash)
+
+    try:
+        _sync_git_repo(repo_url, dst, branch=data.get("branch"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"拉取仓库失败: {e}")
+
+    existing = await _get_enabled_skills_by_repo(project_id, user_id, repo_url, db)
+    pack = _scan_skill_pack(dst)
+    skills: List[dict] = []
+    if pack:
+        for item in pack:
+            skill_name = _safe_skill_name(item["name"])
+            skills.append({
+                "name": skill_name,
+                "display_name": str(item["name"]),
+                "description": item.get("description") or "",
+                "allowed_tools": item.get("allowed_tools") or "",
+                "already_imported": skill_name.lower() in existing,
+            })
+    else:
+        fallback_name = _safe_skill_name(str(data.get("name") or Path(repo_url).stem or "skill"))
+        skills.append({
+            "name": fallback_name,
+            "display_name": str(data.get("name") or Path(repo_url).stem or "skill"),
+            "description": _parse_skill_description(dst),
+            "allowed_tools": "",
+            "already_imported": fallback_name.lower() in existing,
+        })
+
+    return success_response(
+        data={
+            "repo_url": repo_url,
+            "repo_hash": repo_hash,
+            "skills": skills,
+        },
+        message=f"预览完成，共发现 {len(skills)} 个 Skill",
+    )
+
+
+async def import_selected_skills(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """仅导入用户在预览中勾选的 Skill（其余忽略），同仓库重复导入原地更新。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    repo_url = str(data.get("repo_url") or "").strip()
+    if not repo_url:
+        raise HTTPException(status_code=400, detail="repo_url 不能为空")
+    raw_selected = data.get("selected") or []
+    if not isinstance(raw_selected, list) or not [s for s in raw_selected if str(s).strip()]:
+        raise HTTPException(status_code=400, detail="请至少选择一个要导入的 Skill")
+    selected_set = {str(s).strip().lower() for s in raw_selected}
+
+    scenario_category = (data.get("scenario_category") or "").strip() or None
+    source_type = "gitee" if "gitee.com" in repo_url else "github" if "github.com" in repo_url else "git"
+    entry_command = str(data.get("entry_command") or "").strip() or None
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    repo_hash = _git_hash(repo_url)
+    dst = _find_existing_repo_dir(base_dir, repo_hash) or (base_dir / repo_hash)
+
+    try:
+        _sync_git_repo(repo_url, dst, branch=data.get("branch"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"拉取仓库失败: {e}")
+
+    existing = await _get_enabled_skills_by_repo(project_id, user_id, repo_url, db)
+    created_ids: List[int] = []
+    updated_ids: List[int] = []
+    new_records: List[ProjectSkillModel] = []
+    selected_found: set[str] = set()
+
+    def _build_extra(*, pack_root: Optional[str] = None, allowed_tools: str = "", fallback: Optional[dict] = None) -> dict:
+        extra = dict(fallback) if isinstance(fallback, dict) else {}
+        if pack_root:
+            extra["pack_root"] = pack_root
+        if allowed_tools:
+            extra["allowed_tools"] = allowed_tools
+        return extra
+
+    def _prepare_record(skill_name: str, skill_path: str, description, extra: dict) -> None:
+        if skill_name.lower() not in selected_set:
+            return
+        selected_found.add(skill_name.lower())
+        rec = existing.pop(skill_name.lower(), None)
+        if rec is not None:
+            rec.skill_path = skill_path
+            rec.description = description
+            rec.scenario_category = scenario_category or rec.scenario_category or skill_name
+            rec.source_type = source_type
+            rec.repo_url = repo_url
+            rec.entry_command = entry_command
+            rec.extra_config = extra
+            rec.updated_by = user_id
+            updated_ids.append(int(rec.id))
+            return
+        new_records.append(
+            ProjectSkillModel(
+                project_id=project_id,
+                user_id=user_id,
+                name=skill_name,
+                description=description,
+                scenario_category=scenario_category or skill_name,
+                source_type=source_type,
+                repo_url=repo_url,
+                skill_path=skill_path,
+                entry_command=entry_command,
+                is_active=True,
+                extra_config=extra,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+        )
+
+    try:
+        pack = _scan_skill_pack(dst)
+        if pack:
+            for item in pack:
+                skill_name = _safe_skill_name(item["name"])
+                extra = _build_extra(
+                    pack_root=str(dst),
+                    allowed_tools=item.get("allowed_tools") or "",
+                )
+                _prepare_record(skill_name, str(item["skill_dir"]), item.get("description"), extra)
+        else:
+            name = _safe_skill_name(str(data.get("name") or Path(repo_url).stem or "skill"))
+            extra = _build_extra(fallback=data.get("extra_config") if isinstance(data.get("extra_config"), dict) else {})
+            _prepare_record(
+                name,
+                str(dst),
+                str(data.get("description") or _parse_skill_description(dst)),
+                extra,
+            )
+
+        if not selected_found:
+            raise HTTPException(status_code=400, detail="所选 Skill 在仓库中未找到对应内容")
+
+        if new_records:
+            new_names = [m.name for m in new_records]
+            await _assert_skill_names_available(project_id, user_id, db, new_names)
+            for m in new_records:
+                db.add(m)
+
+        await db.flush()
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    created_ids = [int(m.id) for m in new_records]
+    total = created_ids + updated_ids
+    msg = "导入成功"
+    if created_ids and updated_ids:
+        msg = f"导入成功（新增 {len(created_ids)} 个，更新 {len(updated_ids)} 个）"
+    elif updated_ids and not created_ids:
+        msg = f"导入成功（已更新 {len(updated_ids)} 个，目录原地刷新）"
+    elif created_ids and not updated_ids:
+        msg = f"导入成功（新增 {len(created_ids)} 个）"
+    return success_response(
+        data={"created": created_ids, "updated": updated_ids, "count": len(total)},
+        message=msg,
+    )
+
+
+async def _import_skills_from_local_dir(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    dst: Path,
+    scenario_category: Optional[str],
+    entry_command: Optional[str],
+    fallback_name: str,
+) -> dict:
+    """从已准备好的本地目录导入 Skill：优先识别 <dst>/skills/**/SKILL.md 的 skill pack，否则整体作为单个 skill。"""
+    pack = _scan_skill_pack(dst)
+    if pack:
+        names = [_safe_skill_name(item["name"]) for item in pack]
+        await _assert_skill_names_available(project_id, user_id, db, names)
+        created_ids: List[int] = []
+        for item in pack:
+            skill_name = _safe_skill_name(item["name"])
+            extra = {
+                "allowed_tools": item.get("allowed_tools") or "",
+                "pack_root": str(dst),
+            }
+            res = await create_skill(
+                project_id,
+                user_id,
+                db,
+                {
+                    "name": skill_name,
+                    "description": item.get("description"),
+                    "scenario_category": scenario_category or skill_name,
+                    "source_type": "upload",
+                    "repo_url": None,
+                    "skill_path": str(item["skill_dir"]),
+                    "entry_command": (entry_command or "").strip() or None,
+                    "is_active": True,
+                    "extra_config": extra,
+                },
+            )
+            created_ids.append(int(((res or {}).get("data") or {}).get("id") or 0))
+        return success_response(data={"created": created_ids, "count": len(created_ids)}, message="导入成功")
+
+    name = _safe_skill_name(fallback_name or "skill")
+    await _assert_skill_names_available(project_id, user_id, db, [name])
+    payload = {
+        "name": name,
+        "description": _parse_skill_description(dst),
+        "scenario_category": scenario_category,
+        "source_type": "upload",
+        "repo_url": None,
+        "skill_path": str(dst),
+        "entry_command": (entry_command or "").strip() or None,
+        "is_active": True,
+        "extra_config": {},
+    }
+    res = await create_skill(project_id, user_id, db, payload)
+    return success_response(data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1}, message="导入成功")
 
 
 async def import_skill_from_upload(
@@ -706,53 +1128,245 @@ async def import_skill_from_upload(
             pass
 
     try:
-        pack = _scan_skill_pack(dst)
-        if pack:
-            names = [_safe_skill_name(item["name"]) for item in pack]
-            await _assert_skill_names_available(project_id, user_id, db, names)
-            created_ids: List[int] = []
-            for item in pack:
-                skill_name = _safe_skill_name(item["name"])
-                extra = {
-                    "allowed_tools": item.get("allowed_tools") or "",
-                    "pack_root": str(dst),
-                }
-                res = await create_skill(
-                    project_id,
-                    user_id,
-                    db,
-                    {
-                        "name": skill_name,
-                        "description": item.get("description"),
-                        "scenario_category": scenario_category or skill_name,
-                        "source_type": "upload",
-                        "repo_url": None,
-                        "skill_path": str(item["skill_dir"]),
-                        "entry_command": (entry_command or "").strip() or None,
-                        "is_active": True,
-                        "extra_config": extra,
-                    },
-                )
-                created_ids.append(int(((res or {}).get("data") or {}).get("id") or 0))
-            return success_response(data={"created": created_ids, "count": len(created_ids)}, message="导入成功")
-
-        await _assert_skill_names_available(project_id, user_id, db, [name])
-        payload = {
-            "name": name,
-            "description": _parse_skill_description(dst),
-            "scenario_category": scenario_category,
-            "source_type": "upload",
-            "repo_url": None,
-            "skill_path": str(dst),
-            "entry_command": (entry_command or "").strip() or None,
-            "is_active": True,
-            "extra_config": {},
-        }
-        res = await create_skill(project_id, user_id, db, payload)
-        return success_response(data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1}, message="导入成功")
+        return await _import_skills_from_local_dir(project_id, user_id, db, dst, scenario_category, entry_command, name)
     except Exception:
         shutil.rmtree(dst, ignore_errors=True)
         raise
+
+
+async def import_skill_from_folder(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    files: List[UploadFile],
+    paths: Optional[List[str]],
+    scenario_category: Optional[str] = None,
+    entry_command: Optional[str] = None,
+) -> dict:
+    """上传本地文件夹导入 Skill：浏览器通过 webkitdirectory 发送多文件，后端按相对路径落盘。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    if not files:
+        raise HTTPException(status_code=400, detail="未收到任何文件")
+
+    # 统一去除浏览器自动加上的顶层文件夹名，使 SKILL.md 或 skills/ 直接落在 dst 下
+    rels = [str(p).replace("\\", "/") if p else (f.filename or "") for p, f in zip(paths or [], files)]
+    rels = [r or (f.filename or "") for r, f in zip(rels, files)]
+    first_parts = [r.split("/") for r in rels if r]
+    common_root = ""
+    if first_parts and all(len(p) > 1 and p[0] == first_parts[0][0] for p in first_parts):
+        common_root = first_parts[0][0]
+
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    dst = base_dir / f"{secrets.token_hex(6)}_folder"
+    dst.mkdir(parents=True, exist_ok=True)
+
+    try:
+        for idx, f in enumerate(files):
+            rel = rels[idx]
+            if common_root and rel.startswith(common_root + "/"):
+                rel = rel[len(common_root) + 1:]
+            if not rel:
+                rel = f.filename or f"file_{idx}"
+            target = dst / rel.replace("/", os.sep)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = await f.read()
+                target.write_bytes(data)
+            except Exception as e:
+                shutil.rmtree(dst, ignore_errors=True)
+                raise HTTPException(status_code=400, detail=f"写入文件失败 {rel}: {e}")
+
+        fallback_name = _safe_skill_name(common_root or Path(files[0].filename or "skill").name or "skill")
+        return await _import_skills_from_local_dir(project_id, user_id, db, dst, scenario_category, entry_command, fallback_name)
+    except Exception:
+        shutil.rmtree(dst, ignore_errors=True)
+        raise
+
+
+async def import_skill_from_markdown(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    file: UploadFile,
+    scenario_category: Optional[str] = None,
+    skill_name: Optional[str] = None,
+) -> dict:
+    """上传单个 Markdown 文件自动转 Skill：解析 frontmatter 取名/描述，落盘为 SKILL.md 并建记录。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    filename = file.filename or "skill.md"
+    if not filename.lower().endswith((".md", ".markdown")):
+        raise HTTPException(status_code=400, detail="仅支持 Markdown 文件（.md / .markdown）")
+
+    raw = await file.read()
+    text = _smart_decode(raw).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Markdown 文件内容为空")
+
+    # 解析 YAML frontmatter（--- ... ---），兼容 name/description/allowed-tools
+    meta: dict = {}
+    body = text
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            try:
+                parsed = yaml.safe_load(parts[1])
+                if isinstance(parsed, dict):
+                    meta = parsed
+                body = parts[2].strip()
+            except Exception:
+                pass
+
+    name = _safe_skill_name(str(skill_name or meta.get("name") or Path(filename).stem or "skill"))
+    description = str(meta.get("description") or "").strip()
+    if not description:
+        # 取正文首段非标题文本作为描述兜底
+        for line in body.splitlines():
+            s = line.strip().lstrip("#").strip()
+            if s:
+                description = s[:200]
+                break
+        if not description:
+            description = name
+    allowed = str(meta.get("allowed-tools") or meta.get("allowed_tools") or "").strip()
+
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    dst = base_dir / f"{secrets.token_hex(6)}_{name}"
+    dst.mkdir(parents=True, exist_ok=True)
+    (dst / "SKILL.md").write_text(text, encoding="utf-8")
+
+    await _assert_skill_names_available(project_id, user_id, db, [name])
+    res = await create_skill(
+        project_id,
+        user_id,
+        db,
+        {
+            "name": name,
+            "description": description,
+            "scenario_category": (scenario_category or "").strip() or name,
+            "source_type": "markdown",
+            "repo_url": None,
+            "skill_path": str(dst),
+            "entry_command": "",
+            "is_active": True,
+            "extra_config": {"allowed_tools": allowed, "markdown": True},
+        },
+    )
+    return success_response(
+        data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1},
+        message="Markdown 已转为 Skill 并导入成功",
+    )
+
+
+def _scan_local_claude_skills() -> List[Dict[str, Any]]:
+    """扫描本机 ~/.claude/skills/，返回可被导入的 Claude Code Skill 列表。
+
+    目录结构示例：~/.claude/skills/<skill-name>/SKILL.md
+    SKILL.md 支持 YAML frontmatter：name / description / tools。
+    """
+    root = Path.home() / ".claude" / "skills"
+    if not root.exists() or not root.is_dir():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for path in sorted(root.iterdir()):
+        if not path.is_dir():
+            continue
+        md_file = path / "SKILL.md"
+        if not md_file.exists():
+            md_file = path / "README.md"
+        if not md_file.exists():
+            continue
+
+        try:
+            content = md_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        meta: Dict[str, Any] = {}
+        body = content.strip()
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                try:
+                    meta = yaml.safe_load(parts[1]) or {}
+                    body = parts[2].strip()
+                except Exception:
+                    pass
+
+        name = str(meta.get("name") or path.name).strip()
+        description = str(meta.get("description") or "").strip()
+        if not description:
+            description = body.replace("#", "").replace("*", "").strip()[:200]
+
+        tools = meta.get("tools") or meta.get("allowed_tools") or []
+        if isinstance(tools, str):
+            tools = [t.strip() for t in tools.split(",") if t.strip()]
+        elif not isinstance(tools, list):
+            tools = []
+
+        items.append({
+            "name": name,
+            "local_name": path.name,
+            "description": description,
+            "allowed_tools": tools,
+            "path": str(path),
+            "md_file": str(md_file),
+            "content": body[:2000],
+        })
+    return items
+
+
+async def list_local_claude_skills(project_id: int, user_id: int, db: AsyncSession) -> dict:
+    """列出本机已安装的 Claude Code Skill。"""
+    await _check_member(project_id, user_id, db)
+    items = _scan_local_claude_skills()
+    return success_response(data={"items": items}, message="查询成功")
+
+
+async def import_local_claude_skill(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """把本机 ~/.claude/skills/<skill> 复制到项目 skill 目录并创建记录。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    local_name = str(data.get("local_name") or "").strip()
+    if not local_name:
+        raise HTTPException(status_code=400, detail="请选择要导入的本地 skill")
+
+    items = _scan_local_claude_skills()
+    skill = next((s for s in items if s["local_name"] == local_name), None)
+    if not skill:
+        raise HTTPException(status_code=404, detail="本地 skill 不存在")
+
+    name = _safe_skill_name(str(data.get("name") or skill["name"]))
+    await _assert_skill_names_available(project_id, user_id, db, [name])
+
+    base_dir = SKILL_ROOT / str(project_id) / str(user_id)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    dst = base_dir / f"{secrets.token_hex(6)}_{name}"
+    try:
+        shutil.copytree(Path(skill["path"]), dst)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"复制本地 skill 失败: {e}")
+
+    payload = {
+        "name": name,
+        "description": skill["description"],
+        "scenario_category": (data.get("scenario_category") or "").strip() or name,
+        "source_type": "claude-local",
+        "repo_url": None,
+        "skill_path": str(dst),
+        "entry_command": str(data.get("entry_command") or "").strip() or None,
+        "is_active": True,
+        "extra_config": {
+            "allowed_tools": ",".join(skill["allowed_tools"]),
+            "local_path": skill["path"],
+        },
+    }
+    res = await create_skill(project_id, user_id, db, payload)
+    return success_response(
+        data={"created": [((res or {}).get("data") or {}).get("id")], "count": 1},
+        message="导入成功",
+    )
 
 
 async def get_skill_content(
@@ -1044,6 +1658,22 @@ async def get_skill_job(project_id: int, user_id: int, db: AsyncSession, job_id:
     )
 
 
+async def cancel_skill_job(project_id: int, user_id: int, db: AsyncSession, job_id: int) -> dict:
+    await _check_member(project_id, user_id, db)
+    j = (await db.execute(select(SkillExecutionJobModel).where(
+        SkillExecutionJobModel.id == job_id,
+        SkillExecutionJobModel.project_id == project_id,
+        SkillExecutionJobModel.user_id == user_id,
+        SkillExecutionJobModel.enabled_flag == 1,
+    ))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if j.status in ("succeeded", "failed", "cancelled"):
+        return success_response(data={"job_id": job_id, "status": j.status, "cancelled": False}, message="任务已结束，无需取消")
+    ok = await runner_cancel_skill_job(job_id, cancelled_by=user_id)
+    return success_response(data={"job_id": job_id, "status": "cancelled" if ok else j.status, "cancelled": ok}, message="取消成功" if ok else "取消失败或任务已结束")
+
+
 async def list_job_artifacts(project_id: int, user_id: int, db: AsyncSession, job_id: int) -> dict:
     await _check_member(project_id, user_id, db)
     j = (await db.execute(select(SkillExecutionJobModel).where(
@@ -1062,4 +1692,369 @@ async def list_job_artifacts(project_id: int, user_id: int, db: AsyncSession, jo
     )).scalars().all()
     items = [{"id": int(r.id), "kind": r.kind, "name": r.name, "relative_path": r.relative_path, "size": r.size} for r in rows]
     return success_response(data={"job_id": job_id, "items": items}, message="查询成功")
+
+
+# ============================================================================
+# 外部编程 Agent 集成（Claude Code / Codex / OpenCode 驱动 Playwright Test Agents / agent-device）
+# 复用既有 Skill Job / Event / Artifact 体系，零新建表。
+# ============================================================================
+
+EXTERNAL_AGENT_SKILL_PREFIX = "__external_agent__"
+
+
+async def detect_external_agents(project_id: int, user_id: int, db: AsyncSession, custom_agents: Optional[List[str]] = None) -> dict:
+    """探测本机可用的外部 Agent 二进制。"""
+    await _check_member(project_id, user_id, db)
+    return success_response(data=EA.detect_external_agents(custom_agents), message="探测完成")
+
+
+async def _ensure_external_agent_skill(project_id: int, user_id: int, db: AsyncSession, agent: str, cwd: str) -> int:
+    """为外部 Agent 复用 Skill 表：返回一个稳定的虚拟 Skill id（external-agent 分类）。"""
+    name = f"{EXTERNAL_AGENT_SKILL_PREFIX}{agent}"
+    stmt = select(ProjectSkillModel).where(
+        ProjectSkillModel.project_id == project_id,
+        ProjectSkillModel.user_id == user_id,
+        ProjectSkillModel.name == name,
+        ProjectSkillModel.enabled_flag == 1,
+    )
+    m = (await db.execute(stmt)).scalar_one_or_none()
+    if m:
+        if m.skill_path != str(cwd):
+            m.skill_path = str(cwd)
+            await db.commit()
+        return int(m.id)
+    m = ProjectSkillModel(
+        project_id=project_id,
+        user_id=user_id,
+        name=name,
+        description=f"外部编程 Agent（{agent}）执行器，复用 Skill Job 实时日志与产物体系",
+        scenario_category="external-agent",
+        source_type="builtin",
+        skill_path=str(cwd),
+        entry_command="",
+        is_active=True,
+        extra_config={"agent": agent, "external": True},
+        created_by=user_id,
+        updated_by=user_id,
+    )
+    db.add(m)
+    await db.commit()
+    await db.refresh(m)
+    return int(m.id)
+
+
+async def _resolve_cwd(project_id: int, user_id: int, db: AsyncSession, *, skill_id: Optional[int], workdir: str) -> Path:
+    if skill_id:
+        m = (await db.execute(select(ProjectSkillModel).where(
+            ProjectSkillModel.id == int(skill_id),
+            ProjectSkillModel.project_id == project_id,
+            ProjectSkillModel.user_id == user_id,
+            ProjectSkillModel.enabled_flag == 1,
+        ))).scalar_one_or_none()
+        if m and m.skill_path and Path(m.skill_path).exists():
+            return Path(m.skill_path)
+    if workdir and Path(workdir).exists():
+        return Path(workdir)
+    cwd = SKILL_ROOT / str(project_id) / str(user_id) / "external-agent"
+    cwd.mkdir(parents=True, exist_ok=True)
+    return cwd
+
+
+async def _upsert_agent_device_mcp(project_id: int, user_id: int, db: AsyncSession, mcp: dict, scope: str = "project") -> int:
+    """把 agent-device 登记进项目 MCP 配置表（便于复用与导出到 Claude/Cursor）。"""
+    name = (mcp.get("name") or "agent-device").strip()
+    stmt = select(ProjectMCPConfigModel).where(
+        ProjectMCPConfigModel.user_id == user_id,
+        ProjectMCPConfigModel.project_id == project_id,
+        ProjectMCPConfigModel.name == name,
+    )
+    m = (await db.execute(stmt)).scalar_one_or_none()
+    command = mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD
+    args = mcp.get("args") or []
+    env = mcp.get("env") or {}
+    if m:
+        m.transport = "stdio"
+        m.command = command
+        m.args = args
+        m.env = env
+        m.scope = scope
+        m.is_enabled = True
+        m.updated_by = user_id
+    else:
+        m = ProjectMCPConfigModel(
+            user_id=user_id,
+            project_id=project_id,
+            scope=scope,
+            name=name,
+            transport="stdio",
+            command=command,
+            args=args,
+            env=env,
+            is_enabled=True,
+            description="agent-device MCP（外部 Agent 驱动设备测试）",
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(m)
+    await db.commit()
+    await db.refresh(m)
+    return int(m.id)
+
+
+AGENT_DEVICE_SESSION_KEY_VAR = "GENIUS_AGENT_SESSION_KEY"
+
+
+async def _get_or_create_agent_device_session_key(
+    project_id: int,
+    user_id: int,
+    db: AsyncSession,
+    name: str = "agent-device",
+    command: Optional[str] = None,
+    args: Optional[list] = None,
+) -> str:
+    """获取/生成 agent-device 的人机共享 session_key，并持久化到 ProjectMCPConfig env。
+
+    复用规则：先查现有 ProjectMCPConfig.env，没有则生成并写入。key 在同一 project/user/name
+    下保持稳定，使得人和外部 Agent 能复用同一个设备 session。
+    """
+    name = name.strip() or "agent-device"
+    m = (await db.execute(select(ProjectMCPConfigModel).where(
+        ProjectMCPConfigModel.user_id == user_id,
+        ProjectMCPConfigModel.project_id == project_id,
+        ProjectMCPConfigModel.name == name,
+        ProjectMCPConfigModel.is_enabled == 1,
+        ProjectMCPConfigModel.enabled_flag == 1,
+    ))).scalar_one_or_none()
+    if m and m.env:
+        stored_env = m.env if isinstance(m.env, dict) else json.loads(m.env)
+        key = str(stored_env.get(AGENT_DEVICE_SESSION_KEY_VAR) or "").strip()
+        if key:
+            return key
+
+    key = f"genius-{project_id}-{user_id}-{name[:20]}-{secrets.token_hex(3)}"
+    env = {AGENT_DEVICE_SESSION_KEY_VAR: key}
+    if m:
+        existing_env = m.env if isinstance(m.env, dict) else json.loads(m.env or "{}")
+        existing_env[AGENT_DEVICE_SESSION_KEY_VAR] = key
+        m.env = existing_env
+        m.updated_by = user_id
+        await db.commit()
+        await db.refresh(m)
+    else:
+        await _upsert_agent_device_mcp(
+            project_id,
+            user_id,
+            db,
+            {
+                "name": name,
+                "command": command or EA.AGENT_DEVICE_DEFAULT_CMD,
+                "args": list(args or []),
+                "env": env,
+            },
+            scope="project",
+        )
+    return key
+
+
+async def _find_registered_agent_device(project_id: int, user_id: int, db: AsyncSession) -> Optional[str]:
+    """若项目已登记 agent-device MCP，则生成临时 mcp.json 路径供 Claude Code 加载。"""
+    m = (await db.execute(select(ProjectMCPConfigModel).where(
+        ProjectMCPConfigModel.user_id == user_id,
+        ProjectMCPConfigModel.project_id == project_id,
+        ProjectMCPConfigModel.name == "agent-device",
+        ProjectMCPConfigModel.is_enabled == 1,
+        ProjectMCPConfigModel.enabled_flag == 1,
+    ))).scalar_one_or_none()
+    if not m:
+        return None
+    entry = EA.agent_device_server_entry(m.command or EA.AGENT_DEVICE_DEFAULT_CMD, m.args, m.env)
+    return str(EA.write_mcp_config_file([{"name": m.name, "entry": entry}]))
+
+
+def _sync_agent_device_mcp(name: str, command: str, args: list, env: dict, scope: str, workspace_path: Optional[str]) -> dict:
+    """把 agent-device 同步到本机 N-Tester/Claude/Cursor 的 mcp.json。"""
+    if scope == "project" and not workspace_path:
+        return {"skipped": True, "reason": "project 作用域需要 workspace_path"}
+    try:
+        from app.api.v1.Ntesterc_module.Ntesterc_project.mcp_file_sync import sync_config_to_files
+
+        class _Cfg:
+            scope = scope
+            name = name
+            transport = "stdio"
+            command = command
+            args = args
+            env = env
+            url = ""
+            headers = {}
+            auth_type = "none"
+            auth_config = {}
+
+        return sync_config_to_files(_Cfg(), workspace_path=workspace_path)
+    except Exception as e:  # 同步失败不影响 Agent 调用
+        return {"error": str(e)[:500]}
+
+
+async def register_agent_device_mcp(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """注册 agent-device 为 MCP server（写入项目 MCP 配置 + 同步到本机 mcp 文件）。"""
+    await _check_role(project_id, user_id, ["owner", "admin", "developer"], db)
+    name = (data.get("name") or "agent-device").strip()
+    command = (data.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD).strip()
+    args = data.get("args") if isinstance(data.get("args"), list) else []
+    env = data.get("env") if isinstance(data.get("env"), dict) else {}
+    scope = (data.get("scope") or "project").strip().lower()
+    workspace_path = (data.get("workspace_path") or "").strip() or None
+
+    # 生成/复用人机共享的 agent-device session_key，并持久化到 env
+    session_key = await _get_or_create_agent_device_session_key(
+        project_id, user_id, db, name=name, command=command, args=args
+    )
+    env[AGENT_DEVICE_SESSION_KEY_VAR] = session_key
+    data["env"] = env
+
+    await _upsert_agent_device_mcp(project_id, user_id, db, {"name": name, "command": command, "args": args, "env": env}, scope=scope)
+    written = _sync_agent_device_mcp(name, command, args, env, scope, workspace_path)
+    return success_response(
+        data={"name": name, "scope": scope, "session_key": session_key, "written": written},
+        message="agent-device MCP 已注册",
+    )
+
+
+async def scaffold_pw_test_agents(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """脚手架：运行 init-agents --loop=... 生成 specs/seed.spec.ts 等（由 Claude Code 驱动）。"""
+    await _check_member(project_id, user_id, db)
+    loop = (data.get("loop") or "claude").strip().lower()
+    cwd = await _resolve_cwd(project_id, user_id, db, skill_id=data.get("skill_id"), workdir=(data.get("workdir") or "").strip())
+    cmd = EA.build_pw_test_agents_scaffold_command(loop=loop, command=data.get("command"))
+    skill_id_final = await _ensure_external_agent_skill(project_id, user_id, db, "claude", str(cwd))
+    sess = f"pw-init-{secrets.token_hex(4)}"
+    job = SkillExecutionJobModel(
+        project_id=project_id,
+        user_id=user_id,
+        skill_id=skill_id_final,
+        action_name="pw-test-agents:scaffold",
+        command=cmd,
+        input_args=data,
+        session_id=sess,
+        status="pending",
+        runtime_key=sess,
+        runner_type="local",
+        runner_meta={"agent": "claude", "kind": "pw-test-agents", "loop": loop, "scaffold": True},
+        created_by=user_id,
+        updated_by=user_id,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    db.add(SkillExecutionEventModel(job_id=job.id, seq=1, level="info", message=f"queued pw-test-agents scaffold loop={loop}"))
+    await db.commit()
+    schedule_skill_job(int(job.id))
+    return success_response(
+        data={"job_id": int(job.id), "status": "pending", "command": cmd, "runtime_key": sess},
+        message="Playwright Test Agents 脚手架任务已入队",
+    )
+
+
+async def run_external_agent_job(project_id: int, user_id: int, db: AsyncSession, data: dict) -> dict:
+    """创建外部 Agent 执行任务（驱动 Playwright Test Agents / agent-device）。
+
+    后端只负责拉起外部编程 Agent 子进程并实时收集日志/产物；真正的测试规划与执行
+    由 Claude Code / Codex / OpenCode 完成。agent-device 通过 --mcp-config 加载 MCP server。
+    """
+    await _check_member(project_id, user_id, db)
+    agent = (data.get("agent") or "claude").strip().lower()
+    kind = (data.get("kind") or "pw-test-agents").strip().lower()
+    prompt = (data.get("prompt") or "").strip()
+    loop = (data.get("loop") or "claude").strip().lower()
+    session_id = data.get("session_id")
+    device_ref = (data.get("device_ref") or "").strip()
+    os_type = (data.get("os_type") or "android").strip().lower()
+    model = (data.get("model") or None)
+    extra_args = data.get("extra_args") if isinstance(data.get("extra_args"), list) else None
+
+    if agent != "npx" and EA.resolve_agent_binary(agent) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"本机未探测到外部 Agent 二进制：{agent}（请先安装 Claude Code / Codex / OpenCode，或改用 agent=npx）",
+        )
+
+    cwd = await _resolve_cwd(project_id, user_id, db, skill_id=data.get("skill_id"), workdir=(data.get("workdir") or "").strip())
+    cwd.mkdir(parents=True, exist_ok=True)
+
+    mcp_config_path = None
+    agent_device_session_key: Optional[str] = None
+    if kind == "agent-device":
+        mcp = data.get("mcp") if isinstance(data.get("mcp"), dict) else None
+        if mcp:
+            mcp_name = (mcp.get("name") or "agent-device").strip()
+            mcp_env = mcp.get("env") if isinstance(mcp.get("env"), dict) else {}
+            agent_device_session_key = await _get_or_create_agent_device_session_key(
+                project_id,
+                user_id,
+                db,
+                name=mcp_name,
+                command=mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD,
+                args=mcp.get("args") if isinstance(mcp.get("args"), list) else [],
+            )
+            mcp_env[AGENT_DEVICE_SESSION_KEY_VAR] = agent_device_session_key
+            mcp["env"] = mcp_env
+            entry = EA.agent_device_server_entry(
+                mcp.get("command") or EA.AGENT_DEVICE_DEFAULT_CMD, mcp.get("args"), mcp_env
+            )
+            mcp_config_path = str(EA.write_mcp_config_file([{"name": mcp_name, "entry": entry}]))
+            await _upsert_agent_device_mcp(project_id, user_id, db, mcp)
+        else:
+            agent_device_session_key = await _get_or_create_agent_device_session_key(project_id, user_id, db)
+            mcp_config_path = await _find_registered_agent_device(project_id, user_id, db)
+        if not prompt:
+            prompt = EA.build_agent_device_prompt(
+                device_ref=device_ref,
+                task=(data.get("task") or "执行已规划的测试用例"),
+                session_name=session_id or agent_device_session_key or "agent-device-session",
+                os_type=os_type,
+            )
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="缺少 prompt（外部 Agent 执行指令）")
+
+    skill_id_final = await _ensure_external_agent_skill(project_id, user_id, db, agent, str(cwd))
+    sess = session_id or agent_device_session_key or f"ext-{secrets.token_hex(4)}"
+    cmd = EA.build_external_agent_command(
+        agent=agent, prompt=prompt, mcp_config_path=mcp_config_path, model=model, extra_args=extra_args
+    )
+
+    job = SkillExecutionJobModel(
+        project_id=project_id,
+        user_id=user_id,
+        skill_id=skill_id_final,
+        action_name=f"external-agent:{kind}",
+        command=cmd,
+        input_args=data,
+        session_id=sess,
+        status="pending",
+        runtime_key=sess,
+        runner_type="local",
+        runner_meta={
+            "agent": agent,
+            "kind": kind,
+            "loop": loop,
+            "device_ref": device_ref,
+            "os_type": os_type,
+            "mcp_config_path": mcp_config_path,
+            "session_key": agent_device_session_key,
+            "prompt": prompt[:2000],
+        },
+        created_by=user_id,
+        updated_by=user_id,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    db.add(SkillExecutionEventModel(job_id=job.id, seq=1, level="info", message=f"queued agent={agent} kind={kind}"))
+    await db.commit()
+    schedule_skill_job(int(job.id))
+    return success_response(
+        data={"job_id": int(job.id), "status": "pending", "command": cmd, "runtime_key": sess},
+        message="外部 Agent 任务已入队",
+    )
 

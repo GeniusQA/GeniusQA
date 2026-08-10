@@ -94,9 +94,10 @@
         </el-form-item>
         <el-form-item label="浏览器类型" prop="browser_type">
           <el-select v-model="formData.browser_type" placeholder="请选择浏览器" style="width: 100%">
-            <el-option label="Chromium" value="chromium" />
-            <el-option label="Firefox" value="firefox" />
-            <el-option label="WebKit" value="webkit" />
+            <el-option label="Microsoft Edge" value="edge" />
+            <el-option label="Google Chrome" value="chrome" />
+            <el-option label="Mozilla Firefox" value="firefox" />
+            <el-option label="Apple Safari" value="safari" />
           </el-select>
         </el-form-item>
         <el-form-item label="视口宽度" prop="viewport_width">
@@ -221,7 +222,7 @@ const formData = reactive({
   name: '',
   description: '',
   base_url: '',
-  browser_type: 'chromium',
+  browser_type: 'msedge',
   viewport_width: 1920,
   viewport_height: 1080,
   timeout: 30000
@@ -255,8 +256,13 @@ const generatedFiles = ref([])
 // 获取浏览器标签类型
 const getBrowserTagType = (browser: string) => {
   const types: any = {
-    chromium: 'success',
+    edge: 'success',
+    chrome: 'primary',
     firefox: 'warning',
+    safari: 'info',
+    // 兼容旧数据
+    chromium: 'success',
+    msedge: 'success',
     webkit: 'info'
   }
   return types[browser] || ''
@@ -265,8 +271,13 @@ const getBrowserTagType = (browser: string) => {
 // 获取浏览器名称
 const getBrowserName = (browser: string) => {
   const names: any = {
+    edge: 'Microsoft Edge',
+    chrome: 'Google Chrome',
+    firefox: 'Mozilla Firefox',
+    safari: 'Apple Safari',
+    // 兼容旧数据
     chromium: 'Chromium',
-    firefox: 'Firefox',
+    msedge: 'Microsoft Edge',
     webkit: 'WebKit'
   }
   return names[browser] || browser
@@ -345,7 +356,7 @@ const handleCreate = () => {
     name: '',
     description: '',
     base_url: '',
-    browser_type: 'chromium',
+    browser_type: 'msedge',
     viewport_width: 1920,
     viewport_height: 1080,
     timeout: 30000
@@ -433,9 +444,12 @@ const handleGenerateCodeSubmit = async () => {
   try {
     const res = await uiProjectApi.generateCode(currentProjectId.value, codeForm)
     generatedFiles.value = res.data.files || []
-    if (generatedFiles.value.length > 0) {
-      activeCodeTab.value = generatedFiles.value[0].filename
+    if (generatedFiles.value.length === 0) {
+      ElMessage.warning(res.message || '当前项目下没有页面对象，无法生成代码。请先在页面对象管理中创建页面对象。')
+      codeDialogVisible.value = false
+      return
     }
+    activeCodeTab.value = generatedFiles.value[0].filename
     codeDialogVisible.value = false
     codePreviewVisible.value = true
     ElMessage.success('代码生成成功')

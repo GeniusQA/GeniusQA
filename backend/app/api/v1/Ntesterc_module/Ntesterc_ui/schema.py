@@ -14,7 +14,7 @@ class UIProjectCreateSchema(BaseModel):
     name: str = Field(..., max_length=200, description='UI项目名称')
     description: Optional[str] = Field(None, description='项目描述')
     base_url: Optional[str] = Field(None, max_length=500, description='基础URL')
-    browser_type: str = Field('chromium', description='浏览器类型: chromium/firefox/webkit')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     viewport_width: int = Field(1920, description='视口宽度')
     viewport_height: int = Field(1080, description='视口高度')
     timeout: int = Field(30000, description='默认超时时间(毫秒)')
@@ -25,7 +25,7 @@ class UIProjectUpdateSchema(BaseModel):
     name: Optional[str] = Field(None, max_length=200, description='UI项目名称')
     description: Optional[str] = Field(None, description='项目描述')
     base_url: Optional[str] = Field(None, max_length=500, description='基础URL')
-    browser_type: Optional[str] = Field(None, description='浏览器类型')
+    browser_type: Optional[str] = Field(None, description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     viewport_width: Optional[int] = Field(None, description='视口宽度')
     viewport_height: Optional[int] = Field(None, description='视口高度')
     timeout: Optional[int] = Field(None, description='默认超时时间(毫秒)')
@@ -279,7 +279,7 @@ class UITestSuiteCreateSchema(BaseModel):
     name: str = Field(..., max_length=200, description='套件名称')
     description: Optional[str] = Field(None, description='套件描述')
     engine_type: str = Field('playwright', description='执行引擎')
-    browser_type: str = Field('chromium', description='浏览器类型')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     headless: bool = Field(True, description='无头模式')
     parallel: bool = Field(False, description='并行执行')
     max_workers: int = Field(1, description='最大并行数')
@@ -291,7 +291,7 @@ class UITestSuiteUpdateSchema(BaseModel):
     name: Optional[str] = Field(None, max_length=200, description='套件名称')
     description: Optional[str] = Field(None, description='套件描述')
     engine_type: Optional[str] = Field(None, description='执行引擎')
-    browser_type: Optional[str] = Field(None, description='浏览器类型')
+    browser_type: Optional[str] = Field(None, description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     headless: Optional[bool] = Field(None, description='无头模式')
     parallel: Optional[bool] = Field(None, description='并行执行')
     max_workers: Optional[int] = Field(None, description='最大并行数')
@@ -350,7 +350,7 @@ class UIExecutionOutSchema(BaseModel):
 class ExecutionRequestSchema(BaseModel):
     """执行请求"""
     engine_type: str = Field('playwright', description='执行引擎: playwright/selenium')
-    browser_type: str = Field('chromium', description='浏览器类型: chromium/firefox/webkit')
+    browser_type: str = Field('msedge', description='浏览器类型: edge/chrome/firefox/safari（兼容 chromium/msedge/webkit）')
     headless: bool = Field(True, description='无头模式')
     timeout: Optional[int] = Field(30000, description='超时时间(毫秒)')
 
@@ -376,6 +376,26 @@ class ExecutionListQuerySchema(BaseModel):
     status: Optional[str] = Field(None, description='执行状态')
     start_date: Optional[datetime] = Field(None, description='开始日期')
     end_date: Optional[datetime] = Field(None, description='结束日期')
+
+
+# ==================== 浏览器自定义路径 ====================
+class BrowserCustomPathSchema(BaseModel):
+    """浏览器自定义路径"""
+    browser_type: str = Field(..., description='浏览器类型: edge/chrome/firefox/safari')
+    executable_path: str = Field(..., description='浏览器可执行文件绝对路径')
+
+
+class BrowserCustomPathOutSchema(BaseModel):
+    """浏览器自定义路径输出"""
+    browser_type: str
+    executable_path: str
+    exists: bool = Field(False, description='路径是否真实存在')
+
+
+class BrowserVerifyPathSchema(BaseModel):
+    """验证浏览器自定义路径请求"""
+    browser_type: str = Field(..., description='浏览器类型: edge/chrome/firefox/safari')
+    executable_path: str = Field(..., description='浏览器可执行文件绝对路径')
 
 
 class ExecutionStatisticsSchema(BaseModel):

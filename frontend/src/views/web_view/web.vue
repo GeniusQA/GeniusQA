@@ -5,16 +5,16 @@
         <div v-if="pageMode === 'list'" class="wa-header-row">
           <el-space wrap :size="12">
             <el-text tag="b" size="large">{{ listPageTitle }}</el-text>
-            <el-text size="small" type="info">点击表格行：脚本进入编辑，文件夹进入分组管理</el-text>
+            <el-text size="small" type="info">点击表格行：脚本进入编辑，脚本库进入分组管理</el-text>
           </el-space>
           <el-space wrap :size="8">
             <el-button type="primary" :plain="false" @click="openCreateResourceDialog('script')">
               <el-icon class="el-icon--left"><CirclePlus /></el-icon>
-              新建脚本
+              新建脚本/脚本库
             </el-button>
-            <el-button type="success" :plain="false" @click="openCreateResourceDialog('folder')">
-              <el-icon class="el-icon--left"><Folder /></el-icon>
-              新建文件夹
+            <el-button type="warning" :plain="false" @click="goPlaywrightRecorder">
+              <el-icon class="el-icon--left"><VideoCamera /></el-icon>
+              录制脚本
             </el-button>
             <el-button type="info" :plain="false" @click="get_web_menu">
               <el-icon class="el-icon--left"><Refresh /></el-icon>
@@ -44,44 +44,46 @@
       <div v-if="pageMode === 'list'" class="wa-home-list">
         <el-card shadow="never" class="wa-list-card">
           <el-table
-            class="wa-script-table"
+            class="wa-script-table wa-script-table--tree"
             v-loading="loading"
-            :data="homeResourceRows"
+            :data="homeResourceTree"
+            :row-key="(row: any) => row.id"
+            :tree-props="{ children: 'children' }"
+            default-expand-all
             stripe
             border
             style="width: 100%"
             empty-text="暂无目录与脚本，请先新建或刷新"
             @row-click="onHomeResourceRowClick"
           >
-            <el-table-column label="类型" width="108" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.menuType === 2 ? 'primary' : 'warning'" effect="dark" size="small">
-                  {{ row.menuType === 2 ? '脚本' : '文件夹' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="名称" min-width="180" show-overflow-tooltip>
+            <el-table-column label="名称" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
                 <el-space :size="8" alignment="center">
-                  <el-icon class="wa-res-icon" :class="row.menuType === 2 ? 'wa-res-icon--script' : 'wa-res-icon--folder'">
-                    <ChromeFilled v-if="row.menuType === 2" />
+                  <el-icon class="wa-res-icon" :class="row.type === 2 ? 'wa-res-icon--script' : 'wa-res-icon--folder'">
+                    <ChromeFilled v-if="row.type === 2" />
                     <Folder v-else />
                   </el-icon>
                   <span>{{ row.name }}</span>
                 </el-space>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="112" align="center">
+            <el-table-column label="类型" width="108" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.statusTagType" size="small">{{ row.statusLabel }}</el-tag>
+                <el-tag :type="row.type === 2 ? 'primary' : 'warning'" effect="dark" size="small">
+                  {{ row.type === 2 ? '脚本' : '脚本库' }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="groupPath" label="所属分组" min-width="200" show-overflow-tooltip />
+            <el-table-column label="状态" width="112" align="center">
+              <template #default="{ row }">
+                <el-tag :type="statusTagTypeFor(row)" size="small">{{ statusLabelFor(row) }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="268" fixed="right" align="center">
               <template #default="{ row }">
                 <el-space :size="8" wrap alignment="center" class="wa-table-actions">
                   <el-button type="primary" size="small" :plain="false" @click.stop="openResourceFromList(row)">
-                    {{ row.menuType === 2 ? '进入编辑' : '进入管理' }}
+                    {{ row.type === 2 ? '进入编辑' : '进入管理' }}
                   </el-button>
                   <el-button type="danger" size="small" :plain="false" @click.stop="deleteResourceFromList(row)">
                     删除
@@ -145,7 +147,7 @@
                       />
                       <el-table-column label="类型" align="center">
                         <template #default="{ row }">
-                          <el-tag v-if="row.type === 1">文件夹</el-tag>
+                          <el-tag v-if="row.type === 1">脚本库</el-tag>
                           <el-tag v-else-if="row.type === 2">脚本</el-tag>
                         </template>
                       </el-table-column>
@@ -182,6 +184,9 @@
                       <!-- 暂不启用 AI 脚本录入，仅保留自定义步骤入口
                       <el-button type="primary" plain @click="ai_script_input()">AI 脚本录入</el-button>
                       -->
+                      <el-button type="success" plain @click="showAiGenerateDialog()">
+                        <el-icon class="el-icon--left"><MagicStick /></el-icon>AI 生成步骤
+                      </el-button>
                       <el-button type="primary" @click="run_script(item)">立即调试</el-button>
                       <el-button type="success" @click="save_web_script_handler(item.id)">保存</el-button>
                     </div>
@@ -1047,7 +1052,7 @@
               </el-form-item>
               <el-form-item label="类型：">
                 <el-radio-group v-model="add_menu_form.type">
-                  <el-radio :value="1">文件夹</el-radio>
+                  <el-radio :value="1">脚本库</el-radio>
                   <el-radio :value="2">脚本</el-radio>
                 </el-radio-group>
               </el-form-item>
@@ -1361,7 +1366,7 @@
 
     <el-dialog
       v-model="createResourceVisible"
-      :title="createResourceForm.resourceType === 2 ? '新建脚本' : '新建文件夹'"
+      :title="createResourceForm.resourceType === 2 ? '新建脚本' : '新建脚本库'"
       width="460px"
       destroy-on-close
       append-to-body
@@ -1371,13 +1376,13 @@
         <el-form-item label="类型">
           <el-radio-group v-model="createResourceForm.resourceType" @change="onCreateResourceTypeChange">
             <el-radio :value="2">脚本</el-radio>
-            <el-radio :value="1">文件夹</el-radio>
+            <el-radio :value="1">脚本库</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="createResourceForm.resourceType === 2 ? '脚本名称' : '文件夹名称'" required>
+        <el-form-item :label="createResourceForm.resourceType === 2 ? '脚本名称' : '脚本库名称'" required>
           <el-input
             v-model="createResourceForm.name"
-            :placeholder="createResourceForm.resourceType === 2 ? '请输入脚本名称' : '请输入文件夹名称'"
+            :placeholder="createResourceForm.resourceType === 2 ? '请输入脚本名称' : '请输入脚本库名称'"
             clearable
             maxlength="64"
             show-word-limit
@@ -1397,6 +1402,69 @@
       <template #footer>
         <el-button @click="createResourceVisible = false">取消</el-button>
         <el-button type="primary" :loading="createResourceSubmitting" @click="submitCreateResource">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 生成脚本步骤弹窗 -->
+    <el-dialog
+      v-model="aiGenerateVisible"
+      title="AI 生成测试步骤"
+      width="560px"
+      destroy-on-close
+      append-to-body
+      @closed="resetAiGenerateForm"
+    >
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px"
+        description="输入目标网页地址和测试需求，AI 会自动打开网页截图、分析页面元素，并生成可执行的测试步骤。生成后可手动微调。"
+      />
+      <el-form :model="aiGenerateForm" label-width="100px">
+        <el-form-item label="生成模式" required>
+          <el-radio-group v-model="aiGenerateForm.mode">
+            <el-radio value="single">单页生成</el-radio>
+            <el-radio value="explore">自动探索</el-radio>
+          </el-radio-group>
+          <div class="ai-mode-tip">
+            <span v-if="aiGenerateForm.mode === 'single'">根据当前页面截图生成该页面的操作步骤，需你写明每一步做什么。</span>
+            <span v-else>只需告诉 AI 最终目标，它会自动点击、跳转、填表，多页面逐步完成（更慢、更耗 token）。</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="目标网址" required>
+          <el-input v-model="aiGenerateForm.url" placeholder="https://example.com/login" clearable />
+        </el-form-item>
+        <el-form-item label="视口尺寸">
+          <el-space>
+            <el-input-number v-model="aiGenerateForm.viewport_width" :min="320" :max="3840" controls-position="right" style="width: 120px" />
+            <el-text size="small" type="info">×</el-text>
+            <el-input-number v-model="aiGenerateForm.viewport_height" :min="240" :max="2160" controls-position="right" style="width: 120px" />
+          </el-space>
+        </el-form-item>
+        <el-form-item :label="aiGenerateForm.mode === 'explore' ? '测试目标' : '测试需求'" required>
+          <el-input
+            v-model="aiGenerateForm.description"
+            type="textarea"
+            :rows="4"
+            :placeholder="aiGenerateForm.mode === 'explore'
+              ? '例如：通过首页 USDT 出金菜单进入用户登录页，并使用账号 888888@gmail.com / 密码*** 完成登录'
+              : '例如：打开登录页，输入用户名 admin，密码 123456，点击登录按钮，然后断言页面跳转到 Dashboard'"
+          />
+        </el-form-item>
+        <template v-if="aiGenerateForm.mode === 'explore'">
+          <el-form-item label="测试账号">
+            <el-input v-model="aiGenerateForm.account" placeholder="如 888888@gmail.com" clearable />
+          </el-form-item>
+          <el-form-item label="测试密码">
+            <el-input v-model="aiGenerateForm.password" type="password" placeholder="测试账号密码" show-password clearable />
+          </el-form-item>
+          <el-form-item label="最大步数">
+            <el-input-number v-model="aiGenerateForm.max_steps" :min="3" :max="30" controls-position="right" />
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="aiGenerateVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiGenerating" @click="executeAiGenerate">
+          {{ aiGenerateForm.mode === 'explore' ? '开始探索' : '开始生成' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -1420,6 +1488,8 @@ import {
   Refresh,
   ArrowLeft,
   Monitor,
+  VideoCamera,
+  MagicStick,
 } from '@element-plus/icons-vue'
 import NtestercDialog from '/@/components/ntesterc/NtestercDialog.vue'
 import NtestercUploadFiles from '/@/components/ntesterc/NtestercUploadFiles.vue'
@@ -1498,28 +1568,7 @@ function getMenuNode(m: Map<any, any>, pid: any): any {
   return m.get(pid) ?? m.get(Number(pid)) ?? m.get(String(pid))
 }
 
-/**
- * 用 pid 向上解析「所属分组」（不依赖子节点是否挂在 children 下，避免树结构异常时路径丢失）
- */
-function groupPathForScript(script: any, m: Map<any, any>): string {
-  const names: string[] = []
-  let pid = script.pid
-  let guard = 0
-  while (!isRootPid(pid) && guard++ < 64) {
-    const p = getMenuNode(m, pid)
-    if (!p) break
-    if (p.type === 0 || p.type === 1) {
-      names.unshift(p.name)
-    }
-    pid = p.pid
-  }
-  if (names.length) return names.join(' / ')
-  const direct = getMenuNode(m, script.pid)
-  if (direct?.name && direct.type !== 2) return String(direct.name)
-  return '—'
-}
-
-/** 文件夹节点完整路径（用于新建脚本选父级） */
+/** 脚本库节点完整路径（用于新建脚本选父级） */
 function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   const chain: string[] = []
   let cur: any = node
@@ -1532,48 +1581,46 @@ function fullPathForFolderNode(node: any, m: Map<any, any>): string {
   return chain.filter(Boolean).join(' / ')
 }
 
-/** 首页列表：文件夹 + 脚本，含类型与状态展示 */
-const homeResourceRows = computed(() => {
-  const flat = flattenWebMenuTree(tree_data.value)
-  const m = nodeByIdMap(flat)
-  const rows: Array<{
-    id: number
-    name: string
-    groupPath: string
-    menuType: 1 | 2
-    statusLabel: string
-    statusTagType: 'success' | 'info' | 'warning' | 'danger'
-    raw: any
-  }> = []
-  for (const n of flat) {
-    if (n.type !== 1 && n.type !== 2) continue
-    const groupPath = groupPathForScript({ pid: n.pid, id: n.id }, m)
-    let statusLabel = '正常'
-    let statusTagType: 'success' | 'info' | 'warning' | 'danger' = 'success'
-    if (n.status === false || n.enabled === false || n.disabled === true) {
-      statusLabel = '停用'
-      statusTagType = 'danger'
-    } else if (n.type === 1) {
-      statusLabel = '目录'
-      statusTagType = 'info'
-    } else {
-      statusLabel = '就绪'
-      statusTagType = 'success'
-    }
-    rows.push({
-      id: n.id,
-      name: n.name,
-      groupPath,
-      menuType: n.type,
-      statusLabel,
-      statusTagType,
-      raw: n,
-    })
-  }
-  return rows
-})
+/** 根据节点计算状态标签文案 */
+function statusLabelFor(n: any): string {
+  if (n.status === false || n.enabled === false || n.disabled === true) return '停用'
+  if (n.type === 1) return '目录'
+  return '就绪'
+}
 
-/** 新建脚本：所有可作为父级的文件夹/脚本组 */
+/** 根据节点计算状态标签类型 */
+function statusTagTypeFor(n: any): 'success' | 'info' | 'warning' | 'danger' {
+  if (n.status === false || n.enabled === false || n.disabled === true) return 'danger'
+  if (n.type === 1) return 'info'
+  return 'success'
+}
+
+/** 把后端菜单树转换为首页树形表格数据。
+ *  - type=0（历史文件夹/默认分组）作为透明容器：不显示为独立行，
+ *    直接把它下面的脚本库/脚本提升到父级。
+ *  - type=1（脚本库）和 type=2（脚本）保留并展示真实的从属关系。
+ */
+function buildResourceTree(nodes: any[]): any[] {
+  const result: any[] = []
+  for (const n of nodes || []) {
+    if (!n) continue
+    if (n.type === 0) {
+      // 历史文件夹仅作为层级桥梁，子节点提升到当前层级
+      if (n.children?.length) {
+        result.push(...buildResourceTree(n.children))
+      }
+      continue
+    }
+    const children = n.children?.length ? buildResourceTree(n.children) : []
+    result.push({ ...n, children })
+  }
+  return result
+}
+
+/** 首页列表：脚本库 + 脚本，以树形结构展示从属关系 */
+const homeResourceTree = computed(() => buildResourceTree(tree_data.value))
+
+/** 新建脚本：所有可作为父级的脚本库/脚本组 */
 const folderParentOptions = computed(() => {
   const flat = flattenWebMenuTree(tree_data.value)
   const m = nodeByIdMap(flat)
@@ -1587,7 +1634,7 @@ const folderParentOptions = computed(() => {
 
 const createResourceVisible = ref(false)
 const createResourceSubmitting = ref(false)
-/** resourceType：与树侧「新建子菜单」一致，1=文件夹，2=脚本 */
+/** resourceType：与树侧「新建子菜单」一致，1=脚本库，2=脚本 */
 const createResourceForm = ref<{
   resourceType: 1 | 2
   name: string
@@ -1598,15 +1645,103 @@ const resetCreateResourceForm = () => {
   createResourceForm.value = { resourceType: 2, name: '', pid: undefined }
 }
 
+// ---- AI 生成步骤（方案 B） ----
+const aiGenerateVisible = ref(false)
+const aiGenerating = ref(false)
+const aiGenerateForm = ref({
+  mode: 'single',
+  url: '',
+  description: '',
+  account: '',
+  password: '',
+  max_steps: 15,
+  browser_type: 'msedge',
+  viewport_width: 1280,
+  viewport_height: 720,
+})
+
+const showAiGenerateDialog = () => {
+  resetAiGenerateForm()
+  aiGenerateVisible.value = true
+}
+
+const resetAiGenerateForm = () => {
+  aiGenerateForm.value = {
+    mode: 'single',
+    url: '',
+    description: '',
+    account: '',
+    password: '',
+    max_steps: 15,
+    browser_type: 'msedge',
+    viewport_width: 1280,
+    viewport_height: 720,
+  }
+}
+
+const executeAiGenerate = async () => {
+  if (!aiGenerateForm.value.url.trim()) {
+    ElMessage.warning('请输入目标网址')
+    return
+  }
+  if (!aiGenerateForm.value.description.trim()) {
+    ElMessage.warning(aiGenerateForm.value.mode === 'explore' ? '请输入测试目标' : '请输入测试需求描述')
+    return
+  }
+  aiGenerating.value = true
+  try {
+    const { ai_generate_script, ai_explore_generate_script } = useWebManagementApi()
+    const isExplore = aiGenerateForm.value.mode === 'explore'
+    const res: any = isExplore
+      ? await ai_explore_generate_script({
+          url: aiGenerateForm.value.url.trim(),
+          goal: aiGenerateForm.value.description.trim(),
+          account: aiGenerateForm.value.account.trim(),
+          password: aiGenerateForm.value.password.trim(),
+          max_steps: aiGenerateForm.value.max_steps,
+          viewport_width: aiGenerateForm.value.viewport_width,
+          viewport_height: aiGenerateForm.value.viewport_height,
+        })
+      : await ai_generate_script({
+          url: aiGenerateForm.value.url.trim(),
+          description: aiGenerateForm.value.description.trim(),
+          browser_type: 'chromium',
+          viewport_width: aiGenerateForm.value.viewport_width,
+          viewport_height: aiGenerateForm.value.viewport_height,
+        })
+    const steps = res?.data?.steps
+    if (!steps || !Array.isArray(steps) || steps.length === 0) {
+      ElMessage.warning('AI 未生成有效步骤，请调整目标描述后重试')
+      return
+    }
+    // 插入到当前脚本步骤列表末尾
+    const list = script_list.value
+    if (list && Array.isArray(list)) {
+      for (const s of steps) {
+        list.push({ ...s })
+      }
+    }
+    const tail = isExplore
+      ? (res?.data?.done ? '目标已完成' : `探索到 ${steps.length} 步（未判定完成，可继续微调）`)
+      : `AI 已生成 ${steps.length} 个步骤`
+    ElMessage.success(`${tail}，请在下方检查并保存`)
+    if (res?.data?.last_error) {
+      ElMessage.warning(`探索中断：${res.data.last_error}`)
+    }
+    aiGenerateVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || 'AI 生成失败，请检查网络或模型配置')
+  } finally {
+    aiGenerating.value = false
+  }
+}
+
 const openCreateResourceDialog = (kind: 'script' | 'folder') => {
   resetCreateResourceForm()
   createResourceForm.value.resourceType = kind === 'folder' ? 1 : 2
   const opts = folderParentOptions.value
-  if (!opts.length) {
-    ElMessage.warning('目录数据未就绪或无可用父级，请先刷新页面')
-    return
-  }
-  createResourceForm.value.pid = opts[0].value
+  // 脚本库可建在根（无父级）；脚本必须挂在脚本库下，默认选中第一个可用父级
+  createResourceForm.value.pid = opts.length ? opts[0].value : undefined
   createResourceVisible.value = true
 }
 
@@ -1656,24 +1791,29 @@ const goBackToList = () => {
   router.replace({ query: {} })
 }
 
+// 跳转到 Playwright 脚本录制页（仅展示 Playwright Codegen 导入）
+const goPlaywrightRecorder = () => {
+  router.push({ path: '/web/automation/recorder', query: { engine: 'playwright' } })
+}
+
 const openScriptFromList = async (row: { id: number }) => {
   await openScriptByIdFromApi(row.id)
 }
 
-const openResourceFromList = async (row: { menuType: 1 | 2; id: number; raw: any }) => {
-  if (row.menuType === 2) await openScriptFromList(row)
-  else await web_menu_click(row.raw)
+const openResourceFromList = async (row: { type: 1 | 2; id: number }) => {
+  if (row.type === 2) await openScriptFromList(row)
+  else await web_menu_click(row)
 }
 
-const onHomeResourceRowClick = (row: { menuType: 1 | 2; id: number; raw: any }) => {
+const onHomeResourceRowClick = (row: { type: 1 | 2; id: number }) => {
   openResourceFromList(row)
 }
 
-const deleteResourceFromList = (row: { id: number; name: string; menuType: 1 | 2 }) => {
-  const kind = row.menuType === 2 ? '脚本' : '文件夹'
+const deleteResourceFromList = (row: { id: number; name: string; type: 1 | 2 }) => {
+  const kind = row.type === 2 ? '脚本' : '脚本库'
   ElMessageBox.confirm(`确定删除${kind}「${row.name}」吗？`, '提示', { type: 'warning' })
     .then(async () => {
-      const res: any = await del_web_menu({ id: row.id, type: row.menuType })
+      const res: any = await del_web_menu({ id: row.id, type: row.type })
       ElMessage.success(res.message || '已删除')
       if (pageMode.value === 'script' && tab_list.value[0]?.id === row.id) {
         goBackToList()
@@ -1686,11 +1826,12 @@ const deleteResourceFromList = (row: { id: number; name: string; menuType: 1 | 2
 const submitCreateResource = async () => {
   const name = createResourceForm.value.name?.trim()
   if (!name) {
-    ElMessage.warning(createResourceForm.value.resourceType === 2 ? '请输入脚本名称' : '请输入文件夹名称')
+    ElMessage.warning(createResourceForm.value.resourceType === 2 ? '请输入脚本名称' : '请输入脚本库名称')
     return
   }
-  if (createResourceForm.value.pid == null) {
-    ElMessage.warning('请选择父级位置')
+  // 脚本必须挂在脚本库下；脚本库允许建在根（pid 传 0）
+  if (createResourceForm.value.resourceType === 2 && createResourceForm.value.pid == null) {
+    ElMessage.warning('请选择父级位置（脚本须挂在脚本库下）')
     return
   }
   try {
@@ -1698,7 +1839,7 @@ const submitCreateResource = async () => {
     const res: any = await add_web_menu({
       name,
       type: createResourceForm.value.resourceType,
-      pid: createResourceForm.value.pid,
+      pid: createResourceForm.value.pid ?? 0,
     })
     ElMessage.success(res.message || '创建成功')
     createResourceVisible.value = false
@@ -1707,8 +1848,8 @@ const submitCreateResource = async () => {
       const newId = res.data?.id
       if (newId) await openScriptByIdFromApi(Number(newId))
     }
-  } catch {
-    ElMessage.error('创建失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '创建失败')
   } finally {
     createResourceSubmitting.value = false
   }
@@ -1822,7 +1963,10 @@ const web_menu_click = async (node: any) => {
   try {
     if (node.type === 1) {
       const res: any = await menu_script_list({ id: node.id })
-      table_list.value = res.data
+      table_list.value = (res.data || []).map((item: any) => ({
+        ...item,
+        step: item.step == null || item.step === 0 ? 1 : item.step,
+      }))
       if (pageMode.value === 'script') {
         tab_list.value = []
         tab_active.value = ''

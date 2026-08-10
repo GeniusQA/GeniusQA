@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # @author: Rebort
+import asyncio
+import os
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, Query, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.db.sqlalchemy import get_db
 from app.common.response import success_response
 from app.core.dependencies import get_current_user_id
+from app.core.logger import logger
+from .recorder import RECORDER_MANAGER, import_codegen, import_side
 from .schema import (
     UIProjectCreateSchema,
     UIProjectUpdateSchema,
@@ -24,7 +29,10 @@ from .schema import (
     UITestStepUpdateSchema,
     TestStepReorderSchema,
     ExecutionRequestSchema,
-    CodeGenerationSchema
+    CodeGenerationSchema,
+    BrowserCustomPathSchema,
+    BrowserCustomPathOutSchema,
+    BrowserVerifyPathSchema
 )
 from .service import (
     UIProjectService,
@@ -39,7 +47,13 @@ from .service import (
     UIReportService,
     UIElementValidationService
 )
-
+from .browser_path_config import (
+    get_browser_path,
+    get_all_browser_paths,
+    set_browser_path,
+    remove_browser_path,
+    path_exists
+)
 router = APIRouter()
 
 
@@ -457,15 +471,18 @@ async def delete_test_step(
 async def check_browser_availability(
     browser_type: str = Query('chrome', description="浏览器类型: chrome, firefox, edge, safari")
 ):
-    """检查指定浏览器是否可用"""
+    """检查指定浏览器是否可用（优先使用已配置的自定义路径）"""
     from .selenium_engine import SeleniumTestEngine
-    
-    is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type)
-    
+
+    custom_path = get_browser_path(browser_type)
+    is_available, error_msg = SeleniumTestEngine.check_browser_available(browser_type, custom_path)
+
     return success_response(data={
         'browser_type': browser_type,
         'is_available': is_available,
         'message': error_msg if not is_available else '浏览器可用',
+        'custom_path': custom_path,
+        'custom_path_exists': path_exists(browser_type),
         'install_tips': {
             'chrome': {
                 'macos': 'brew install --cask google-chrome',
@@ -493,24 +510,450 @@ async def check_browser_availability(
 
 @router.get("/browsers/check-all", summary="检查所有浏览器可用性")
 async def check_all_browsers():
-    """检查所有支持的浏览器可用性"""
+    """检查所有支持的浏览器可用性（优先使用已配置的自定义路径）"""
     from .selenium_engine import SeleniumTestEngine
-    
+
     browsers = ['chrome', 'firefox', 'edge', 'safari']
     results = []
-    
+
     for browser in browsers:
-        is_available, error_msg = SeleniumTestEngine.check_browser_available(browser)
+        custom_path = get_browser_path(browser)
+        is_available, error_msg = SeleniumTestEngine.check_browser_available(browser, custom_path)
         results.append({
             'browser_type': browser,
             'is_available': is_available,
-            'message': error_msg if not is_available else '浏览器可用'
+            'message': error_msg if not is_available else '浏览器可用',
+            'custom_path': custom_path,
+            'custom_path_exists': bool(custom_path and os.path.exists(custom_path))
         })
-    
+
     return success_response(data={
         'browsers': results,
-        'available_count': sum(1 for r in results if r['is_available']),
-        'total_count': len(results)
+        'total': len(results),
+        'available_count': sum(1 for r in results if r['is_available'])
+    })
+
+
+@router.get("/browsers/check-playwright", summary="检查 Playwright 录制浏览器可用性")
+async def check_playwright_browser(
+    browser_type: str = Query('msedge', description="录制所选浏览器: edge, chrome, firefox, safari（兼容 chromium/msedge/webkit）"),
+    headless: bool = Query(True, description="检测时是否使用无头模式，避免弹窗"),
+):
+    """检测后端运行身份能否实际启动所选浏览器（用于录制前环境校验）。"""
+    from playwright.async_api import async_playwright
+    from .browser_path_config import (
+        ensure_browser_temp_env,
+        find_bundled_chromium,
+        get_browser_launch_env,
+        is_headless_required,
+        reap_stale_browser_processes,
+        register_active_browser,
+        unregister_active_browser,
+    )
+
+    # 与浏览器检查页/执行引擎一致的映射：edge/chrome 走系统浏览器，safari 用 webkit
+    browser_map = {
+        'edge': ('chromium', 'msedge'),
+        'chrome': ('chromium', 'chrome'),
+        'firefox': ('firefox', None),
+        'safari': ('webkit', None),
+        'msedge': ('chromium', 'msedge'),
+        'chromium': ('chromium', None),
+        'webkit': ('webkit', None),
+    }
+    launcher_name, channel = browser_map.get(browser_type, ('chromium', None))
+    custom_path = get_browser_path(browser_type)
+    force_headless = is_headless_required()
+    # 在 session 0 / SYSTEM 等无桌面环境，系统 Edge/Chrome 启动几乎必定失败，
+    # 直接优先走 Playwright 自带 Chromium，避免白白等超时。
+    prefer_bundled_first = force_headless and channel in ('msedge', 'chrome')
+
+    # 检测前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+    try:
+        reap_stale_browser_processes()
+    except Exception:
+        pass
+
+    async def _try_launch(launcher, launch_kwargs, attempt_label: str):
+        logger.info(f"check_playwright_browser 尝试 {attempt_label}: {launch_kwargs}")
+        # 环境检测接口不应让用户长时间等待，单次启动最多 8 秒
+        launch_kwargs.setdefault('timeout', 8000)
+        browser = await launcher.launch(**launch_kwargs)
+        register_active_browser(browser)
+        await browser.close()
+
+    async def _do_check():
+        nonlocal last_error
+        # 在无桌面环境（session 0 / SYSTEM / 无 WinSta0），真实启动系统浏览器只会反复失败。
+        # 录制时本就会用自带 Chromium，因此这里直接验证 bundled Chromium 存在即可，
+        # 避免每次都做耗时且注定失败的 launch 尝试。
+        if force_headless:
+            bundled = find_bundled_chromium()
+            logger.info(f"session-0/SYSTEM 环境，直接检查 bundled Chromium: {bundled}")
+            if bundled and os.path.exists(bundled):
+                return {
+                    'browser_type': browser_type,
+                    'is_available': True,
+                    'channel': channel,
+                    'custom_path': bundled,
+                    'message': '浏览器可用（无桌面环境，将使用 Playwright 自带 Chromium）'
+                }
+            last_error = '未找到 Playwright 自带 Chromium，请执行 playwright install chromium'
+            raise RuntimeError(last_error)
+
+        # 必须在 start() 之前重定向临时目录，否则 Playwright 的 Node 驱动进程
+        # 会缓存 C:\WINDOWS\TEMP，导致 user-data-dir 创建失败（Target page closed）
+        ensure_browser_temp_env()
+        pw = await async_playwright().start()
+        try:
+            launcher = getattr(pw, launcher_name)
+            base_args = [
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+            ]
+            if headless or force_headless:
+                # 系统 Edge 在 session 0/SYSTEM 下需要 new headless 才能稳定无头启动
+                base_args.append('--headless=new')
+            # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+            env = get_browser_launch_env()
+            effective_headless = headless or force_headless
+
+            # 优先 bundled Chromium（无桌面环境下系统浏览器成功率极低）
+            if prefer_bundled_first:
+                try:
+                    bundled = find_bundled_chromium()
+                    if bundled and os.path.exists(bundled):
+                        launch_kwargs = {
+                            'headless': effective_headless,
+                            'args': list(base_args),
+                            'env': env,
+                            'executable_path': bundled,
+                        }
+                        await _try_launch(launcher, launch_kwargs, f"bundled_chromium={bundled}")
+                        return {
+                            'browser_type': browser_type,
+                            'is_available': True,
+                            'channel': channel,
+                            'custom_path': bundled,
+                            'message': '浏览器可用（已回退到 Playwright 自带 Chromium）'
+                        }
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"优先 bundled Chromium 启动失败，继续尝试 channel/自定义路径: {last_error}")
+
+            # 第一重：按原有逻辑启动（channel 或自定义路径）
+            launch_kwargs = {
+                'headless': effective_headless,
+                'args': list(base_args),
+                'env': env,
+            }
+            if custom_path and os.path.exists(custom_path):
+                launch_kwargs['executable_path'] = custom_path
+            elif channel:
+                launch_kwargs['channel'] = channel
+
+            try:
+                await _try_launch(launcher, launch_kwargs, "channel/自定义路径")
+                return {
+                    'browser_type': browser_type,
+                    'is_available': True,
+                    'channel': channel,
+                    'custom_path': custom_path,
+                    'message': '浏览器可用'
+                }
+            except Exception as e1:
+                last_error = str(e1)
+                logger.warning(f"channel/自定义路径启动失败，准备 fallback: {last_error}")
+
+            # 第二重：回退到 Playwright 自带的、版本严格匹配的 Chromium
+            try:
+                bundled = find_bundled_chromium()
+                if bundled and os.path.exists(bundled):
+                    launch_kwargs2 = {
+                        'headless': effective_headless,
+                        'args': list(base_args),
+                        'env': env,
+                        'executable_path': bundled,
+                    }
+                    await _try_launch(launcher, launch_kwargs2, f"bundled_chromium={bundled}")
+                    return {
+                        'browser_type': browser_type,
+                        'is_available': True,
+                        'channel': channel,
+                        'custom_path': bundled,
+                        'message': '浏览器可用（已回退到 Playwright 自带 Chromium）'
+                    }
+            except Exception as e2:
+                last_error = str(e2)
+                logger.warning(f"Playwright 自带 Chromium 启动也失败: {last_error}")
+
+            # 第三重：再尝试直接使用系统浏览器可执行文件路径
+            if channel in ('msedge', 'chrome') and not (custom_path and os.path.exists(custom_path)):
+                try:
+                    from .browser_path_config import _get_interactive_browser_executable
+                    fallback_exe = _get_interactive_browser_executable(browser_type)
+                    launch_kwargs3 = {
+                        'headless': effective_headless,
+                        'args': list(base_args),
+                        'env': env,
+                        'executable_path': fallback_exe,
+                    }
+                    await _try_launch(launcher, launch_kwargs3, f"executable_path={fallback_exe}")
+                    return {
+                        'browser_type': browser_type,
+                        'is_available': True,
+                        'channel': channel,
+                        'custom_path': fallback_exe,
+                        'message': '浏览器可用（通过系统可执行文件路径启动）'
+                    }
+                except Exception as e3:
+                    last_error = str(e3)
+                    logger.warning(f"系统可执行文件路径启动也失败: {last_error}")
+
+            raise RuntimeError(last_error)
+        finally:
+            try:
+                await pw.stop()
+            except Exception:
+                pass
+
+    browser = None
+    last_error = ""
+    result_data = None
+    try:
+        # 整体检测最多等待 18 秒，避免任何子步骤 hang 住导致接口长期无响应
+        result_data = await asyncio.wait_for(_do_check(), timeout=18)
+    except asyncio.TimeoutError:
+        last_error = "浏览器环境检测超时（18秒），请检查后端进程是否有桌面权限或 Playwright 浏览器是否完整"
+        logger.error(f"check_playwright_browser 整体超时: browser={browser_type}")
+    except Exception as e:
+        last_error = str(e) or last_error
+        logger.error(
+            f"check_playwright_browser 启动失败 (browser={browser_type}, "
+            f"headless={headless}, channel={channel}, custom_path={custom_path}): "
+            f"{last_error}",
+            exc_info=True,
+        )
+    finally:
+        try:
+            if browser is not None:
+                unregister_active_browser(browser)
+        except Exception:
+            pass
+
+    if result_data is not None:
+        return success_response(data=result_data)
+
+    if channel and 'Chromium distribution' in last_error:
+        last_error = f'未找到系统安装的 {channel} 浏览器，请先安装或切换到 Playwright 自带 Chromium'
+    elif "Executable doesn't exist" in last_error:
+        last_error = f'Playwright 未找到 {browser_type} 浏览器可执行文件，请执行: playwright install {browser_type}'
+    elif not last_error:
+        last_error = '浏览器检测失败，请查看后端日志'
+    return success_response(data={
+        'browser_type': browser_type,
+        'is_available': False,
+        'channel': channel,
+        'custom_path': custom_path,
+        'message': last_error
+    })
+
+
+@router.get("/browsers/custom-paths", summary="获取浏览器自定义路径列表", response_model=success_response)
+async def list_browser_custom_paths():
+    """获取所有已保存的浏览器自定义安装路径。"""
+    paths = get_all_browser_paths()
+    data = [
+        {
+            'browser_type': bt,
+            'executable_path': path,
+            'exists': os.path.exists(path)
+        }
+        for bt, path in paths.items()
+    ]
+    return success_response(data=data)
+
+
+@router.post("/browsers/custom-paths", summary="保存浏览器自定义路径")
+async def save_browser_custom_path(data: BrowserCustomPathSchema):
+    """保存浏览器自定义安装路径。"""
+    normalized = set_browser_path(data.browser_type, data.executable_path)
+    saved_path = get_browser_path(normalized)
+    return success_response(data={
+        'browser_type': normalized,
+        'executable_path': saved_path,
+        'exists': os.path.exists(saved_path) if saved_path else False
+    }, message="自定义路径已保存")
+
+
+@router.delete("/browsers/custom-paths/{browser_type}", summary="删除浏览器自定义路径")
+async def delete_browser_custom_path(browser_type: str):
+    """删除指定浏览器的自定义安装路径，恢复使用默认路径查找。"""
+    remove_browser_path(browser_type)
+    return success_response(data={'browser_type': browser_type}, message="自定义路径已删除")
+
+
+@router.post("/browsers/verify-custom-path", summary="验证浏览器自定义路径")
+async def verify_browser_custom_path(data: BrowserVerifyPathSchema):
+    """
+    验证自定义路径是否真的能启动浏览器。
+    对 edge/chrome/chromium 使用 headless 模式打开 about:blank 验证；
+    对 firefox 使用 --version 验证；
+    对 safari 仅做路径存在性校验（Windows/Linux 不支持 Safari）。
+    """
+    import asyncio
+    import platform
+
+    executable_path = data.executable_path.strip() if data.executable_path else ''
+    if not executable_path:
+        return success_response(data={'is_available': False, 'message': '可执行文件路径不能为空'})
+    if not os.path.exists(executable_path):
+        return success_response(data={'is_available': False, 'message': f'路径不存在: {executable_path}'})
+
+    browser_type = data.browser_type.lower().strip()
+
+    # edge/chrome/chromium: 先用 --version 做轻量验证；
+    # 若不支持 --version（如 Edge 返回 1002），再尝试 headless + dump-dom + 独立 user-data-dir。
+    # 两种验证都失败时，只要文件存在且是有效可执行文件，仍允许保存，
+    # 因为 Playwright/Selenium 实际启动方式与独立子进程可能不同。
+    if browser_type in ('edge', 'chrome', 'msedge', 'chromium'):
+        import tempfile
+        import shutil
+
+        # 第一重：--version
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
+            output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+            if process.returncode == 0 and output:
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': f'路径验证通过，{output}'
+                })
+        except Exception:
+            pass
+
+        # 第二重：headless + dump-dom + 独立 user-data-dir
+        tmp_dir = None
+        try:
+            tmp_dir = tempfile.mkdtemp(prefix=f'{browser_type}-verify-')
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--headless',
+                '--disable-gpu',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                f'--user-data-dir={tmp_dir}',
+                '--dump-dom',
+                'about:blank',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+                output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+                if process.returncode == 0:
+                    return success_response(data={
+                        'browser_type': browser_type,
+                        'executable_path': executable_path,
+                        'is_available': True,
+                        'message': '路径验证通过，浏览器可以正常启动'
+                    })
+            except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+        finally:
+            if tmp_dir:
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+        # 两重回验证均失败：若文件存在且扩展名符合可执行文件，允许保存并给出提示
+        if os.path.isfile(executable_path):
+            ext = os.path.splitext(executable_path)[1].lower()
+            if ext in ('.exe', ''):
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': '路径格式正确，已保存。独立验证未通过，但 Playwright/Selenium 执行时仍会尝试从该路径启动浏览器。'
+                })
+        return success_response(data={
+            'browser_type': browser_type,
+            'executable_path': executable_path,
+            'is_available': False,
+            'message': '路径验证失败: 无法识别为可用的浏览器可执行文件，请检查是否选择了正确的 .exe 文件'
+        })
+
+    # firefox 使用 --version
+    if browser_type == 'firefox':
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable_path,
+                '--version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                creationflags=0x08000000 if os.name == 'nt' else 0
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+            output = (stdout + stderr).decode('utf-8', errors='ignore').strip()
+            if process.returncode == 0 and output:
+                return success_response(data={
+                    'browser_type': browser_type,
+                    'executable_path': executable_path,
+                    'is_available': True,
+                    'message': f'路径验证通过，{output}'
+                })
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': f'路径验证失败: 进程退出码 {process.returncode}，输出: {output or "(无输出)"}'
+            })
+        except Exception as e:
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': f'路径验证失败: {e}'
+            })
+
+    # Safari 仅在 macOS 有效
+    if browser_type in ('safari', 'webkit'):
+        if platform.system() != 'Darwin':
+            return success_response(data={
+                'browser_type': browser_type,
+                'executable_path': executable_path,
+                'is_available': False,
+                'message': 'Safari 仅在 macOS 系统上可用，Windows/Linux 请使用 Edge/Chrome/Firefox'
+            })
+        return success_response(data={
+            'browser_type': browser_type,
+            'executable_path': executable_path,
+            'is_available': True,
+            'message': '路径已确认'
+        })
+
+    return success_response(data={
+        'browser_type': browser_type,
+        'executable_path': executable_path,
+        'is_available': False,
+        'message': f'不支持的浏览器类型: {browser_type}'
     })
 
 
@@ -553,8 +996,8 @@ async def batch_execute_test_cases(
     ui_project_id = request.get('ui_project_id')
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'chromium'),
-        'channel': request.get('channel'),
+        'browser_type': request.get('browser_type', 'msedge'),
+        'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
         'max_workers': request.get('max_workers', 1),
@@ -577,8 +1020,8 @@ async def batch_execute_test_suites(
     suite_ids = request.get('suite_ids', [])
     config = {
         'engine_type': request.get('engine_type', 'playwright'),
-        'browser_type': request.get('browser_type', 'chromium'),
-        'channel': request.get('channel'),
+        'browser_type': request.get('browser_type', 'msedge'),
+        'channel': request.get('channel') or None,
         'headless': request.get('headless', True),
         'parallel': request.get('parallel', False),
         'max_workers': request.get('max_workers', 1),
@@ -767,6 +1210,11 @@ async def generate_project_code(
         config.framework,
         config.include_comments
     )
+    if not code_files:
+        return success_response(
+            data={'files': []},
+            message="当前项目下没有页面对象，无法生成代码。请先在页面对象管理中创建页面对象。"
+        )
     return success_response(data={'files': code_files}, message=f"成功生成{len(code_files)}个文件")
 
 
@@ -830,3 +1278,165 @@ async def generate_test_case_code(
         config.framework
     )
     return success_response(data={'code': code}, message="测试用例代码生成成功")
+
+
+# ==================== UI 录制（Pattern A 自建录制器） ====================
+class RecordStartSchema(BaseModel):
+    """开始录制请求"""
+    url: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    browser_type: str = 'chromium'
+    viewport_width: int = 1280
+    viewport_height: int = 720
+    color_scheme: Optional[str] = None
+    locale: Optional[str] = None
+    timezone: Optional[str] = None
+    user_agent: Optional[str] = None
+    script_menu_id: Optional[int] = None
+    script_id: Optional[int] = None
+
+
+class RecordAssertModeSchema(BaseModel):
+    """设置断言模式"""
+    mode: str  # none | visible | text | value
+
+
+class RecordImportSchema(BaseModel):
+    """导入 codegen / .side 文件"""
+    ui_project_id: int
+    name: Optional[str] = None
+    code: Optional[str] = None      # codegen 生成的测试代码
+    side_json: Optional[str] = None  # Selenium IDE .side 内容
+
+
+@router.post("/projects/{ui_project_id}/record/start", summary="开始录制")
+async def start_record(
+    ui_project_id: int,
+    data: RecordStartSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """启动有头浏览器录制：用户在弹出的浏览器中操作，实时生成步骤。"""
+    options = data.model_dump()
+    options['ui_project_id'] = ui_project_id
+    result = await RECORDER_MANAGER.start(ui_project_id, user_id, options)
+    return success_response(data=result, message="录制已启动，请在弹出的浏览器中操作")
+
+
+@router.post("/record/{session_id}/stop", summary="停止录制")
+async def stop_record(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """停止录制并关闭浏览器，返回生成的用例与步骤数。"""
+    try:
+        result = await RECORDER_MANAGER.stop(session_id)
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return success_response(data=result, message="录制已停止")
+
+
+@router.get("/record/{session_id}/steps", summary="获取录制中的实时步骤")
+async def get_record_steps(
+    session_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """轮询获取当前已录制步骤及暂停状态（前端可每秒刷新实现近实时展示）。"""
+    data = await RECORDER_MANAGER.get_steps(session_id)
+    return success_response(data=data)
+
+
+@router.post("/record/{session_id}/pause", summary="暂停录制")
+async def pause_record(session_id: int):
+    """暂停当前录制会话：后续页面操作不再生成步骤。"""
+    try:
+        result = await RECORDER_MANAGER.pause(session_id)
+        return success_response(data=result, message='已暂停录制')
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/record/{session_id}/resume", summary="继续录制")
+async def resume_record(session_id: int):
+    """继续当前录制会话：恢复生成步骤。"""
+    try:
+        result = await RECORDER_MANAGER.resume(session_id)
+        return success_response(data=result, message='已继续录制')
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/record/{session_id}/assert-mode", summary="设置断言模式")
+async def set_assert_mode(
+    session_id: int,
+    data: RecordAssertModeSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """设置下一次点击为断言捕获（可见性/文本/值），对标 codegen 断言。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    await session.set_assert_mode(data.mode)
+    return success_response(message=f"断言模式已设为 {data.mode}，下一次点击将捕获断言")
+
+
+@router.post("/record/{session_id}/pick", summary="开始定位器拾取")
+async def start_pick(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """下一次点击拾取元素定位器（对标 codegen Pick locator）。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    await session.set_pick_mode()
+    return success_response(message="拾取模式已开启，请点击目标元素")
+
+
+@router.get("/record/{session_id}/pick", summary="获取拾取结果")
+async def get_pick(
+    session_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取最近一次拾取到的定位器。"""
+    session = RECORDER_MANAGER.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="录制会话不存在")
+    return success_response(data=session.pick_result or {})
+
+
+@router.post("/record/import-codegen", summary="导入 codegen 生成的测试")
+async def import_codegen_endpoint(
+    data: RecordImportSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """解析 Playwright codegen 生成的测试文件，转为平台用例与步骤。"""
+    if not data.code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少 code 内容")
+    result = await import_codegen(data.ui_project_id, user_id, data.name or "codegen导入用例", data.code)
+    return success_response(data=result, message="codegen 导入成功")
+
+
+@router.post("/record/import-side", summary="导入 Selenium IDE .side 文件")
+async def import_side_endpoint(
+    data: RecordImportSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """解析 Selenium IDE 导出的 .side 文件（Selenium 原生录制路径），转为平台用例与步骤。"""
+    if not data.side_json:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少 side_json 内容")
+    result = await import_side(data.ui_project_id, user_id, data.name or "side导入用例", data.side_json)
+    return success_response(data=result, message=".side 导入成功")
+
+
+@router.get("/record/{session_id}/codegen-script", summary="获取 codegen 实时生成脚本")
+async def get_record_codegen_script(session_id: int):
+    """返回 codegen 录制过程中实时累积的脚本文本，供前端实时展示。"""
+    script = RECORDER_MANAGER.get_codegen_script(session_id)
+    return success_response(data={'script': script})

@@ -10,6 +10,7 @@
           </el-breadcrumb>
         </div>
         <div class="actions">
+          <el-button type="warning" :icon="VideoCamera" @click="goRecorder">录制脚本</el-button>
           <el-button type="primary" :icon="VideoPlay" @click="handleExecute">执行测试</el-button>
           <el-button type="success" :icon="Document" @click="handleViewReport">查看报告</el-button>
           <el-button :icon="Back" @click="handleBack">返回</el-button>
@@ -67,7 +68,7 @@
 
             <!-- 测试用例 -->
             <el-tab-pane label="测试用例" name="testCases">
-              <TestCaseManage :ui-project-id="projectId" />
+              <TestCaseManage :ui-project-id="projectId" :highlight-case-id="Number(route.query.caseId) || undefined" />
             </el-tab-pane>
 
             <!-- 测试套件 -->
@@ -133,7 +134,7 @@
 import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, VideoPlay, Document, Back, Folder } from '@element-plus/icons-vue'
+import { Plus, VideoPlay, Document, Back, Folder, VideoCamera } from '@element-plus/icons-vue'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
 import ElementManage from './components/ElementManage.vue'
 import PageObjectManage from './components/PageObjectManage.vue'
@@ -156,7 +157,8 @@ if (!projectId.value || isNaN(projectId.value)) {
 }
 
 const projectInfo = ref<any>({})
-const activeTab = ref('elements')
+const validTabs = ['elements', 'pageObjects', 'testCases', 'testSuites', 'executions']
+const activeTab = ref(validTabs.includes(route.query.tab as string) ? (route.query.tab as string) : 'elements')
 const selectedGroupId = ref<number | null>(null)
 const testSuiteManageRef = ref()
 
@@ -234,9 +236,27 @@ const handleGroupClick = (data: any) => {
   selectedGroupId.value = data.id
 }
 
+// 自动选中第一个元素分组，避免进入页面后元素列表因未选分组而空白
+const selectFirstGroup = () => {
+  const pick = (nodes: any[]): number | null => {
+    for (const n of nodes) {
+      if (n.id != null) return n.id
+      if (n.children && n.children.length) {
+        const r = pick(n.children)
+        if (r != null) return r
+      }
+    }
+    return null
+  }
+  const first = pick(elementGroupTree.value)
+  if (first != null) {
+    selectedGroupId.value = first
+  }
+}
+
 // Tab切换
 const handleTabChange = (name: string) => {
-  console.log('切换到:', name)
+  router.replace({ query: { ...route.query, tab: name } })
 }
 
 // 新建分组
@@ -321,6 +341,11 @@ const handleExecute = () => {
   })
 }
 
+// 录制脚本（Selenium 入口：只展示 Selenium IDE 导入）
+const goRecorder = () => {
+  router.push({ path: '/web/automation/recorder', query: { projectId: projectId.value, engine: 'selenium' } })
+}
+
 // 查看报告
 const handleViewReport = () => {
   router.push('/testing/ui-automation/report')
@@ -332,9 +357,10 @@ const handleBack = () => {
 }
 
 // 初始化
-onMounted(() => {
-  loadProjectInfo()
-  loadElementGroupTree()
+onMounted(async () => {
+  await loadProjectInfo()
+  await loadElementGroupTree()
+  selectFirstGroup()
 })
 </script>
 

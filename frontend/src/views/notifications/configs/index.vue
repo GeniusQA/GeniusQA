@@ -100,7 +100,7 @@
           <template #default="scope">
             <div class="config-info">
               <template v-if="scope.row.config_type === 'telegram'">
-                <div>Chat ID: {{ scope.row.notification_config?.chat_id || '-' }}</div>
+                <div>User ID/Chat ID: {{ scope.row.notification_config?.chat_id || '-' }}</div>
               </template>
               <template v-else-if="scope.row.config_type === 'email'">
                 <div>SMTP: {{ scope.row.notification_config?.smtp_server || '-' }}</div>
@@ -313,10 +313,10 @@
             />
             <div class="form-tip">从 @BotFather 获取的机器人令牌</div>
           </el-form-item>
-          <el-form-item label="Chat ID" prop="notification_config.chat_id">
+          <el-form-item label="User ID/Chat ID" prop="notification_config.chat_id">
             <el-input
               v-model="form.notification_config.chat_id"
-              placeholder="请输入Chat ID"
+              placeholder="请输入User ID/Chat ID"
             />
             <div class="form-tip">可以是用户ID、群组ID或频道ID</div>
           </el-form-item>
@@ -525,7 +525,7 @@ const rules = computed(() => {
       { required: true, message: 'Bot Token不能为空', trigger: 'blur' }
     ]
     baseRules['notification_config.chat_id'] = [
-      { required: true, message: 'Chat ID不能为空', trigger: 'blur' }
+      { required: true, message: 'User ID/Chat ID不能为空', trigger: 'blur' }
     ]
   } else if (form.value.config_type === 'email') {
     baseRules['notification_config.smtp_server'] = [
@@ -758,8 +758,13 @@ const handleSetDefault = async (row: NotificationConfig) => {
 // 测试配置
 const handleTest = async (row: NotificationConfig) => {
   try {
-    await notificationConfigApi.testConfig(row.id!)
-    ElMessage.success('测试消息发送成功')
+    const res: any = await notificationConfigApi.testConfig(row.id!)
+    // 后端返回 200 但 data.success 表示真实业务结果，不能只看 HTTP 成功
+    if (res?.data?.success) {
+      ElMessage.success(res?.data?.message || '测试消息发送成功')
+    } else {
+      ElMessage.error(res?.data?.message || '测试消息发送失败')
+    }
   } catch (error) {
     console.error('测试配置失败:', error)
     ElMessage.error('测试消息发送失败')

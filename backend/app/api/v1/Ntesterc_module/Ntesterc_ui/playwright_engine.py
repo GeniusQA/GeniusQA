@@ -16,30 +16,71 @@ logger = logging.getLogger(__name__)
 class PlaywrightTestEngine:
     """Playwright测试执行引擎"""
 
-    def __init__(self, browser_type='chromium', headless=True, channel=None, stop_check_func=None):
+    # 与浏览器检查页一致的浏览器名称 -> Playwright 启动参数映射
+    _BROWSER_MAP = {
+        'edge': ('chromium', 'msedge'),
+        'chrome': ('chromium', 'chrome'),
+        'firefox': ('firefox', None),
+        'safari': ('webkit', None),
+        # 兼容旧数据
+        'msedge': ('chromium', 'msedge'),
+        'chromium': ('chromium', None),
+        'webkit': ('webkit', None),
+    }
+
+    def __init__(self, browser_type='msedge', headless=True, channel=None, stop_check_func=None, executable_path: Optional[str] = None):
         """
         初始化测试引擎
 
         Args:
-            browser_type: 浏览器类型 (chromium, firefox, webkit)
+            browser_type: 浏览器类型 (edge, chrome, firefox, safari; 兼容 chromium/webkit/msedge)
             headless: 是否无头模式
-            channel: 浏览器渠道 (chrome, msedge, chrome-beta 等)
+            channel: 浏览器渠道 (chrome, msedge, chrome-beta 等)，默认按 browser_type 自动推断
                     - 'chrome': 使用系统安装的 Chrome
                     - 'msedge': 使用系统安装的 Edge
                     - None: 使用 Playwright 下载的浏览器
             stop_check_func: 停止检查函数，返回True表示需要停止执行
+            executable_path: 自定义浏览器可执行文件路径，未提供时会尝试读取配置文件
         """
-        self.browser_type = browser_type
+        mapped = self._BROWSER_MAP.get(browser_type, ('chromium', None))
+        self.browser_type = mapped[0]
         self.headless = headless
-        self.channel = channel
+        # 后端运行于无桌面环境（session 0 / SYSTEM）时，有头浏览器无法创建窗口会立即退出，
+        # 必须强制无头，否则报 Target page, context or browser has been closed
+        try:
+            from .browser_path_config import is_headless_required
+            if is_headless_required() and not self.headless:
+                logger.warning(
+                    "后端运行于无桌面环境(session 0/SYSTEM)，已强制将测试浏览器切换为无头模式"
+                )
+                self.headless = True
+        except Exception:
+            pass
+        self.channel = channel or mapped[1]
         self.stop_check_func = stop_check_func
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
 
+        # 优先使用显式传入的自定义路径，否则读取配置文件
+        if executable_path:
+            self.executable_path = executable_path
+        else:
+            try:
+                from .browser_path_config import get_browser_path
+                self.executable_path = get_browser_path(browser_type)
+            except Exception:
+                self.executable_path = None
+
     async def start(self):
         """启动浏览器"""
+        # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
+        try:
+            from .browser_path_config import reap_stale_browser_processes
+            reap_stale_browser_processes()
+        except Exception:
+            pass
         try:
             self.playwright = await async_playwright().start()
 
@@ -56,15 +97,37 @@ class PlaywrightTestEngine:
             # 启动浏览器
             launch_options = {
                 'headless': self.headless,
-                'args': ['--disable-blink-features=AutomationControlled']  # 避免被检测
+                'args': [
+                    '--disable-blink-features=AutomationControlled',  # 避免被检测
+                    '--no-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                ]
             }
-            
-            # 如果指定了 channel，使用系统安装的浏览器
-            if self.channel:
+            # 重定向浏览器临时目录，规避 SYSTEM 身份下 C:\WINDOWS\TEMP 锁冲突
+            from .browser_path_config import get_browser_launch_env
+            launch_options['env'] = get_browser_launch_env()
+
+            # 若配置了自定义可执行路径，优先使用 executable_path（channel 与之冲突，需要移除）
+            if self.executable_path:
+                import os
+                if os.path.exists(self.executable_path):
+                    launch_options['executable_path'] = self.executable_path
+                    launch_options.pop('channel', None)
+                    logger.info(f"使用自定义浏览器路径: {self.executable_path}")
+                else:
+                    logger.warning(f"自定义浏览器路径不存在: {self.executable_path}")
+            elif self.channel:
+                # 如果指定了 channel，使用系统安装的浏览器
                 launch_options['channel'] = self.channel
                 logger.info(f"使用系统浏览器: channel={self.channel}")
-            
+
             self.browser = await browser_launcher.launch(**launch_options)
+            try:
+                from .browser_path_config import register_active_browser
+                register_active_browser(self.browser)
+            except Exception:
+                pass
 
             # 创建浏览器上下文
             self.context = await self.browser.new_context(
@@ -89,6 +152,11 @@ class PlaywrightTestEngine:
             if self.context:
                 await self.context.close()
             if self.browser:
+                try:
+                    from .browser_path_config import unregister_active_browser
+                    unregister_active_browser(self.browser)
+                except Exception:
+                    pass
                 await self.browser.close()
             if self.playwright:
                 await self.playwright.stop()
@@ -215,6 +283,17 @@ class PlaywrightTestEngine:
 
             # 其他操作需要元素定位器
             # 获取元素定位器
+            # 导航步骤（录制生成）：直接跳转到指定 URL
+            if action_type == 'navigate':
+                if resolved_input_value:
+                    ok, log = await self.navigate(resolved_input_value)
+                    execution_time = round(time.time() - start_time, 2)
+                    log += f"\n  - 执行时间: {execution_time}秒"
+                    return ok, log, None
+                else:
+                    return True, "⚠ 导航步骤缺少 URL，已跳过", None
+
+            # 获取元素定位器
             locator_strategy = element_data.get('locator_strategy', 'css')
             locator_value = element_data.get('locator_value', '')
             element_name = element_data.get('name', '未知元素')
@@ -265,7 +344,13 @@ class PlaywrightTestEngine:
             elif locator_strategy.lower() == 'placeholder':
                 locator = self.page.get_by_placeholder(locator_value)
             elif locator_strategy.lower() == 'role':
-                locator = self.page.get_by_role(locator_value)
+                # codegen 产出的 role 形如 "button Submit"（role + name），
+                # 需拆开后传给 get_by_role 的 name 参数
+                _role_parts = locator_value.split(' ', 1)
+                if len(_role_parts) == 2:
+                    locator = self.page.get_by_role(_role_parts[0], name=_role_parts[1])
+                else:
+                    locator = self.page.get_by_role(locator_value)
             elif locator_strategy.lower() == 'label':
                 locator = self.page.get_by_label(locator_value)
             elif locator_strategy.lower() == 'title':

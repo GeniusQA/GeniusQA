@@ -421,7 +421,7 @@ async def get_notification_types():
             "description": "通过Telegram机器人发送通知",
             "fields": [
                 {"name": "bot_token", "label": "Bot Token", "type": "password", "required": True},
-                {"name": "chat_id", "label": "Chat ID", "type": "text", "required": True},
+                {"name": "chat_id", "label": "User ID/Chat ID", "type": "text", "required": True},
                 {"name": "parse_mode", "label": "解析模式", "type": "select", "required": False, "options": ["HTML", "Markdown", "MarkdownV2"]},
                 {"name": "disable_web_page_preview", "label": "禁用网页预览", "type": "boolean", "required": False}
             ]

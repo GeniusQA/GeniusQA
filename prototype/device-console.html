@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GeniusQA · APP 自动化外部 Agent 接入原型</title>
+<style>
+  :root{
+    --primary:#409eff; --success:#67c23a; --warning:#e6a23c; --danger:#f56c6c;
+    --info:#909399;
+    --text:#303133; --text-2:#606266; --text-3:#909399; --text-4:#c0c4cc;
+    --border:#dcdfe6; --border-light:#e4e7ed; --border-lighter:#ebeef5;
+    --bg:#f5f7fa; --bg-page:#f0f2f5; --white:#fff;
+    --radius:8px;
+    --shadow:0 2px 12px 0 rgba(0,0,0,.06);
+    --shadow-lg:0 8px 28px 0 rgba(0,0,0,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--bg-page); color:var(--text); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    height:56px;background:var(--white);border-bottom:1px solid var(--border-lighter);
+    display:flex;align-items:center;padding:0 20px;gap:14px;position:sticky;top:0;z-index:100;
+  }
+  .logo{
+    width:34px;height:34px;border-radius:8px;
+    background:linear-gradient(135deg,#409eff,#67c23a);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;
+  }
+  .brand b{font-size:15px;font-weight:600}
+  .brand span{display:block;font-size:12px;color:var(--text-3);margin-top:-2px}
+  .crumb{margin-left:8px;font-size:13px;color:var(--text-3)}
+  .crumb i{font-style:normal;color:var(--text-4);margin:0 6px}
+  .crumb b{color:var(--text-2);font-weight:500}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3)}
+  .dot-new{width:8px;height:8px;border-radius:50%;background:var(--success)}
+  .dot-mod{width:8px;height:8px;border-radius:50%;background:var(--warning)}
+
+  /* ---------- Tabs ---------- */
+  .tabs{background:var(--white);border-bottom:1px solid var(--border-lighter);padding:0 20px;display:flex;gap:2px}
+  .tab{
+    padding:12px 18px;font-size:14px;color:var(--text-2);cursor:pointer;
+    border-bottom:2px solid transparent;transition:.15s;display:flex;align-items:center;gap:6px;
+  }
+  .tab:hover{color:var(--primary)}
+  .tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:500}
+  .tag-new{
+    font-size:10px;padding:1px 5px;border-radius:3px;background:#f0f9eb;color:var(--success);
+    border:1px solid #e1f3d8;font-weight:600;letter-spacing:.3px;
+  }
+  .tag-mod{font-size:10px;padding:1px 5px;border-radius:3px;background:#fdf6ec;color:var(--warning);border:1px solid #faecd8;font-weight:600}
+
+  .view{display:none;padding:16px 20px 40px}
+  .view.active{display:block}
+
+  /* ---------- 会话控制栏 ---------- */
+  .session-bar{
+    background:var(--white);border-radius:var(--radius);padding:12px 16px;
+    display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);margin-bottom:14px;
+    flex-wrap:wrap;position:relative;border:1px solid transparent;
+  }
+  .ann{
+    position:absolute;top:-8px;left:14px;background:var(--success);color:#fff;
+    font-size:10px;padding:1px 7px;border-radius:3px;font-weight:600;letter-spacing:.3px;
+  }
+  .ann.mod{background:var(--warning)}
+  .fld{display:flex;align-items:center;gap:6px}
+  .fld label{font-size:13px;color:var(--text-2);white-space:nowrap}
+  select,input[type=text]{
+    height:32px;border:1px solid var(--border);border-radius:4px;padding:0 10px;
+    font-size:13px;color:var(--text);background:var(--white);outline:none;transition:.15s;font-family:inherit;
+  }
+  select:focus,input:focus{border-color:var(--primary)}
+  select:disabled{background:var(--bg);color:var(--text-4);cursor:not-allowed}
+  .btn{
+    height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--border);background:var(--white);
+    color:var(--text-2);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+    transition:.15s;font-family:inherit;white-space:nowrap;
+  }
+  .btn:hover:not(:disabled){color:var(--primary);border-color:#c6e2ff;background:#ecf5ff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover:not(:disabled){background:#66b1ff;border-color:#66b1ff;color:#fff}
+  .btn.success{background:var(--success);border-color:var(--success);color:#fff}
+  .btn.success:hover:not(:disabled){background:#85ce61;border-color:#85ce61;color:#fff}
+  .btn.danger{background:var(--white);border-color:#fbc4c4;color:var(--danger)}
+  .btn.danger:hover:not(:disabled){background:#fef0f0;color:var(--danger);border-color:#fbc4c4}
+  .btn.ai{background:linear-gradient(135deg,#8b5cf6,#6366f1);border:none;color:#fff}
+  .btn.ai:hover:not(:disabled){opacity:.88;color:#fff}
+  .btn.sm{height:26px;padding:0 9px;font-size:12px}
+
+  .sess-state{display:flex;align-items:center;gap:7px;padding:0 12px;border-left:1px solid var(--border-lighter);margin-left:auto}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--text-4)}
+  .pulse.on{background:var(--success);box-shadow:0 0 0 0 rgba(103,194,58,.6);animation:pulse 1.8s infinite}
+  .pulse.ai{background:#8b5cf6;box-shadow:0 0 0 0 rgba(139,92,246,.6);animation:pulse 1.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(103,194,58,.5)}70%{box-shadow:0 0 0 8px rgba(103,194,58,0)}100%{box-shadow:0 0 0 0 rgba(103,194,58,0)}}
+  .sess-key{font-family:"SFMono-Regular",Consolas,Monaco,monospace;font-size:11px;color:var(--text-3);background:var(--bg);padding:2px 7px;border-radius:3px}
+
+  /* ---------- 模式切换 ---------- */
+  .mode-switch{display:flex;background:var(--bg);border-radius:5px;padding:3px;gap:2px}
+  .mode-switch button{
+    border:none;background:transparent;padding:5px 13px;border-radius:4px;font-size:12.5px;
+    color:var(--text-2);cursor:pointer;transition:.15s;font-family:inherit;display:flex;align-items:center;gap:4px;
+  }
+  .mode-switch button.on{background:var(--white);color:var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.1);font-weight:500}
+  .mode-switch button.on[data-m=ai]{color:#8b5cf6}
+
+  /* ---------- 主栅格 ---------- */
+  .grid{display:grid;grid-template-columns:340px minmax(300px,1fr) 400px;gap:14px;align-items:start}
+  @media(max-width:1500px){.grid{grid-template-columns:320px 1fr 360px}}
+  .panel{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .panel-hd{
+    padding:10px 14px;border-bottom:1px solid var(--border-lighter);display:flex;align-items:center;gap:8px;
+    font-size:13.5px;font-weight:600;color:var(--text);
+  }
+  .panel-hd .sub{font-weight:400;font-size:12px;color:var(--text-3);margin-left:auto}
+  .panel-bd{padding:12px 14px}
+
+  /* ---------- 手机截图 ---------- */
+  .phone-wrap{padding:14px;display:flex;flex-direction:column;align-items:center;gap:10px;background:#fafbfc}
+  .phone{
+    width:280px;height:560px;background:#fff;border-radius:22px;position:relative;overflow:hidden;
+    border:8px solid #1f2937;box-shadow:0 8px 26px rgba(0,0,0,.18);flex:none;
+  }
+  .screen{position:absolute;inset:0;background:#fff;overflow:hidden;user-select:none}
+  .statusbar{
+    height:24px;background:#fff;display:flex;align-items:center;justify-content:space-between;
+    padding:0 12px;font-size:10px;color:#1f2937;font-weight:600;
+  }
+  .hl-layer{position:absolute;inset:0;pointer-events:none}
+  .hl{
+    position:absolute;border:1.5px solid rgba(64,158,255,.85);background:rgba(64,158,255,.1);
+    border-radius:3px;transition:.12s;opacity:0;
+  }
+  .hl.show{opacity:1}
+  .hl.active{border-color:var(--warning);background:rgba(230,162,60,.18);border-width:2px}
+  .hl.added{border-color:var(--success);background:rgba(103,194,58,.14)}
+  .hl-tag{
+    position:absolute;top:-15px;left:-1px;background:var(--primary);color:#fff;font-size:9px;
+    padding:1px 4px;border-radius:2px;font-family:Consolas,monospace;white-space:nowrap;
+  }
+  .hl.active .hl-tag{background:var(--warning)}
+  .hl.added .hl-tag{background:var(--success)}
+  .tap-ripple{
+    position:absolute;width:34px;height:34px;border-radius:50%;border:2px solid var(--warning);
+    transform:translate(-50%,-50%) scale(.3);opacity:0;pointer-events:none;
+  }
+  .tap-ripple.go{animation:ripple .55s ease-out}
+  @keyframes ripple{0%{transform:translate(-50%,-50%) scale(.3);opacity:1}100%{transform:translate(-50%,-50%) scale(1.6);opacity:0}}
+  .screen-mask{
+    position:absolute;inset:0;background:rgba(255,255,255,.72);display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:8px;font-size:12px;color:var(--text-2);z-index:5;
+  }
+  .screen-mask.on{display:flex}
+  .spin{width:22px;height:22px;border:2.5px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .phone-meta{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--text-3);flex-wrap:wrap;justify-content:center}
+  .chip{background:var(--bg);padding:2px 8px;border-radius:10px;border:1px solid var(--border-lighter)}
+
+  /* mock app 元素 */
+  .m-title{font-size:19px;font-weight:700;color:#1f2937;text-align:center}
+  .m-sub{font-size:11px;color:#9ca3af;text-align:center;margin-top:4px}
+  .m-input{
+    height:38px;border:1px solid #e5e7eb;border-radius:7px;display:flex;align-items:center;
+    padding:0 10px;font-size:12px;color:#9ca3af;background:#fafafa;
+  }
+  .m-input.filled{color:#1f2937;background:#fff;border-color:#d1d5db}
+  .m-btn{
+    height:38px;border-radius:7px;background:linear-gradient(135deg,#409eff,#3b82f6);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;
+  }
+  .m-btn.ghost{background:#fff;border:1px solid #409eff;color:#409eff;font-weight:500;font-size:11px;height:32px}
+  .m-btn.dim{background:#e5e7eb;color:#9ca3af}
+  .m-toast{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:80px;background:rgba(0,0,0,.78);
+    color:#fff;font-size:11px;padding:7px 14px;border-radius:16px;
+  }
+  .m-tabbar{
+    position:absolute;bottom:0;left:0;right:0;height:48px;border-top:1px solid #f0f0f0;
+    display:flex;background:#fff;
+  }
+  .m-tabbar div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9.5px;color:#9ca3af}
+  .m-tabbar div.on{color:#409eff}
+  .m-tabbar em{font-size:15px;font-style:normal}
+
+  /* ---------- 元素树 ---------- */
+  .tree-toolbar{
+    padding:8px 12px;border-bottom:1px solid var(--border-lighter);display:flex;gap:8px;align-items:center;background:#fcfcfd;
+  }
+  .tree-toolbar input{height:28px;flex:1;font-size:12.5px}
+  .diff-legend{display:flex;gap:9px;font-size:11px;color:var(--text-3);padding:6px 12px;border-bottom:1px solid var(--border-lighter);background:#fcfcfd}
+  .diff-legend span{display:flex;align-items:center;gap:3px}
+  .sq{width:8px;height:8px;border-radius:2px;display:inline-block}
+  .tree{max-height:520px;overflow:auto;padding:6px 0}
+  .el-node{
+    display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;transition:.1s;
+    border-left:2px solid transparent;position:relative;
+  }
+  .el-node:hover{background:#ecf5ff;border-left-color:var(--primary)}
+  .el-node.added{background:#f4fbef}
+  .el-node.added:hover{background:#eaf7e2}
+  .el-node.removed{opacity:.42;text-decoration:line-through;background:#fef6f6}
+  .ref{
+    font-family:Consolas,Monaco,monospace;font-size:11.5px;color:var(--primary);background:#ecf5ff;
+    padding:1px 5px;border-radius:3px;font-weight:600;flex:none;min-width:34px;text-align:center;
+  }
+  .el-node.added .ref{color:var(--success);background:#f0f9eb}
+  .role{
+    font-size:10.5px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--text-3);flex:none;
+    border:1px solid var(--border-lighter);
+  }
+  .el-name{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .el-acts{display:none;gap:4px;flex:none}
+  .el-node:hover .el-acts{display:flex}
+  .mini{
+    border:1px solid var(--border);background:var(--white);border-radius:3px;font-size:10.5px;
+    padding:2px 6px;cursor:pointer;color:var(--text-2);font-family:inherit;
+  }
+  .mini:hover{border-color:var(--primary);color:var(--primary);background:#ecf5ff}
+  .empty{padding:40px 16px;text-align:center;color:var(--text-4);font-size:12.5px;line-height:1.9}
+  .empty em{font-size:26px;font-style:normal;display:block;margin-bottom:6px;opacity:.5}
+
+  /* ---------- 右栏 ---------- */
+  .side-tabs{display:flex;border-bottom:1px solid var(--border-lighter);background:#fcfcfd}
+  .side-tabs button{
+    flex:1;border:none;background:transparent;padding:10px;font-size:13px;color:var(--text-2);
+    cursor:pointer;border-bottom:2px solid transparent;font-family:inherit;display:flex;
+    align-items:center;justify-content:center;gap:5px;transition:.15s;
+  }
+  .side-tabs button.on{color:var(--primary);border-bottom-color:var(--primary);background:var(--white);font-weight:500}
+  .badge{background:var(--primary);color:#fff;font-size:10px;padding:0 5px;border-radius:8px;min-width:16px;text-align:center}
+
+  .steps{max-height:430px;overflow:auto;padding:8px 10px}
+  .step{
+    display:flex;gap:9px;padding:9px 10px;border:1px solid var(--border-lighter);border-radius:6px;
+    margin-bottom:7px;background:var(--white);transition:.15s;position:relative;
+  }
+  .step:hover{border-color:#c6e2ff;box-shadow:0 2px 8px rgba(64,158,255,.1)}
+  .step.new{animation:slide .35s ease}
+  @keyframes slide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .step-no{
+    width:20px;height:20px;border-radius:50%;background:var(--bg);color:var(--text-3);font-size:11px;
+    display:flex;align-items:center;justify-content:center;flex:none;font-weight:600;
+  }
+  .step.byai .step-no{background:#f3f0ff;color:#8b5cf6}
+  .step-main{flex:1;min-width:0}
+  .step-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .act{font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px;font-family:Consolas,monospace}
+  .act.open{background:#f0f9eb;color:#529b2e}
+  .act.press{background:#ecf5ff;color:#337ecc}
+  .act.fill{background:#fdf6ec;color:#b88230}
+  .act.assert{background:#f3f0ff;color:#7c3aed}
+  .act.close{background:#fef0f0;color:#c45656}
+  .step-desc{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step-sel{
+    font-family:Consolas,monospace;font-size:10.5px;color:var(--text-3);margin-top:3px;
+    background:var(--bg);padding:2px 6px;border-radius:3px;display:inline-block;max-width:100%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .ai-mark{font-size:10px;color:#8b5cf6;background:#f3f0ff;padding:1px 5px;border-radius:3px;font-weight:600}
+  .step-del{
+    border:none;background:transparent;color:var(--text-4);cursor:pointer;font-size:14px;
+    padding:0 2px;align-self:flex-start;line-height:1;
+  }
+  .step-del:hover{color:var(--danger)}
+  .steps-foot{padding:10px 12px;border-top:1px solid var(--border-lighter);display:flex;gap:8px;background:#fcfcfd}
+
+  /* AI 面板 */
+  .ai-flow{max-height:430px;overflow:auto;padding:12px}
+  .ai-msg{display:flex;gap:9px;margin-bottom:12px}
+  .ai-av{
+    width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#8b5cf6,#6366f1);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;
+  }
+  .ai-av.u{background:var(--bg);color:var(--text-2);border:1px solid var(--border-light)}
+  .ai-body{flex:1;min-width:0}
+  .ai-who{font-size:11px;color:var(--text-3);margin-bottom:3px}
+  .ai-txt{font-size:12.5px;color:var(--text-2);line-height:1.65;background:var(--bg);padding:8px 10px;border-radius:6px}
+  .ai-txt.think{color:var(--text-3);font-style:italic;background:#fafafa;border-left:2px solid #ddd6fe}
+  .ai-tool{
+    font-family:Consolas,monospace;font-size:11px;background:#1e293b;color:#94e2d5;
+    padding:7px 10px;border-radius:5px;margin-top:5px;overflow-x:auto;white-space:pre;
+  }
+  .ai-typing{display:inline-flex;gap:3px;padding:3px 0}
+  .ai-typing i{width:5px;height:5px;border-radius:50%;background:#c4b5fd;animation:blink 1.2s infinite}
+  .ai-typing i:nth-child(2){animation-delay:.2s}
+  .ai-typing i:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+  .ai-input{padding:10px 12px;border-top:1px solid var(--border-lighter);display:flex;gap:8px;background:#fcfcfd}
+  .ai-input input{flex:1}
+  .takeover{
+    margin:0 12px 10px;padding:9px 11px;background:#fdf6ec;border:1px solid #faecd8;border-radius:6px;
+    display:flex;align-items:center;gap:8px;font-size:12px;color:#b88230;
+  }
+  .takeover button{margin-left:auto}
+
+  /* ---------- 日志 ---------- */
+  .logs{
+    margin-top:14px;background:#1e293b;border-radius:var(--radius);overflow:hidden;position:relative;
+  }
+  .logs-hd{
+    padding:8px 14px;background:#0f172a;color:#cbd5e1;font-size:12.5px;display:flex;align-items:center;gap:8px;
+  }
+  .logs-hd .sub{margin-left:auto;font-size:11px;color:#64748b}
+  .logs-bd{
+    max-height:170px;overflow:auto;padding:9px 14px;font-family:Consolas,Monaco,monospace;
+    font-size:11.5px;line-height:1.85;
+  }
+  .log-line{display:flex;gap:9px;color:#94a3b8}
+  .log-t{color:#475569;flex:none}
+  .log-line.ok .log-m{color:#86efac}
+  .log-line.err .log-m{color:#fca5a5}
+  .log-line.ai .log-m{color:#c4b5fd}
+  .log-line.warn .log-m{color:#fcd34d}
+
+  /* ---------- Modal ---------- */
+  .mask{
+    position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;align-items:center;
+    justify-content:center;z-index:1000;padding:24px;
+  }
+  .mask.on{display:flex}
+  .modal{
+    background:var(--white);border-radius:10px;width:100%;max-width:720px;max-height:84vh;
+    display:flex;flex-direction:column;box-shadow:var(--shadow-lg);
+  }
+  .modal-hd{padding:16px 20px;border-bottom:1px solid var(--border-lighter);display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600}
+  .modal-hd button{margin-left:auto;border:none;background:transparent;font-size:19px;color:var(--text-4);cursor:pointer;line-height:1}
+  .modal-bd{padding:18px 20px;overflow:auto}
+  .modal-ft{padding:12px 20px;border-top:1px solid var(--border-lighter);display:flex;justify-content:flex-end;gap:9px}
+  pre.code{
+    background:#1e293b;color:#e2e8f0;padding:14px;border-radius:6px;font-size:12px;
+    font-family:Consolas,Monaco,monospace;overflow:auto;line-height:1.65;max-height:400px;
+  }
+  pre.code .k{color:#7dd3fc}pre.code .s{color:#86efac}pre.code .n{color:#fcd34d}pre.code .c{color:#64748b}
+  .tip{
+    background:#fdf6ec;border:1px solid #faecd8;color:#b88230;padding:9px 12px;border-radius:6px;
+    font-size:12.5px;margin-bottom:14px;display:flex;gap:8px;line-height:1.6;
+  }
+  .tip.blue{background:#ecf5ff;border-color:#d9ecff;color:#337ecc}
+
+  /* ---------- 改动清单表 ---------- */
+  table.spec{width:100%;border-collapse:collapse;background:var(--white);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  table.spec th{background:#fafbfc;padding:11px 14px;text-align:left;font-size:12.5px;color:var(--text-2);font-weight:600;border-bottom:1px solid var(--border-lighter)}
+  table.spec td{padding:11px 14px;font-size:13px;border-bottom:1px solid var(--border-lighter);vertical-align:top;color:var(--text-2)}
+  table.spec tr:last-child td{border-bottom:none}
+  table.spec code{font-family:Consolas,monospace;font-size:11.5px;background:var(--bg);padding:1px 5px;border-radius:3px;color:#c7254e}
+  .sect-title{font-size:15px;font-weight:600;margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+  .sect-title:first-child{margin-top:0}
+  .sect-title em{width:3px;height:15px;background:var(--primary);border-radius:2px;font-style:normal}
+
+  /* 用例编辑器 mock */
+  .mock-editor{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .mock-bar{padding:11px 14px;border-bottom:1px solid var(--border-lighter);display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fcfcfd;position:relative}
+  .engine-pick{display:flex;gap:6px}
+  .eng{
+    padding:5px 12px;border:1px solid var(--border);border-radius:15px;font-size:12.5px;cursor:pointer;
+    background:var(--white);color:var(--text-2);transition:.15s;display:flex;align-items:center;gap:5px;
+  }
+  .eng.on{border-color:var(--primary);color:var(--primary);background:#ecf5ff;font-weight:500}
+  .eng.on[data-e=agent]{border-color:#8b5cf6;color:#8b5cf6;background:#f5f3ff}
+  .st-table{width:100%;border-collapse:collapse}
+  .st-table th{background:#fafbfc;padding:9px 12px;text-align:left;font-size:12px;color:var(--text-3);font-weight:500;border-bottom:1px solid var(--border-lighter)}
+  .st-table td{padding:9px 12px;font-size:12.5px;border-bottom:1px solid var(--border-lighter);color:var(--text-2)}
+  .st-table tr:hover td{background:#fafcff}
+  .heal-badge{font-size:10px;background:#f3f0ff;color:#7c3aed;padding:1px 6px;border-radius:3px;font-weight:600}
+  .ok-badge{font-size:10px;background:#f0f9eb;color:#529b2e;padding:1px 6px;border-radius:3px;font-weight:600}
+  .fail-badge{font-size:10px;background:#fef0f0;color:#c45656;padding:1px 6px;border-radius:3px;font-weight:600}
+  .thumb{width:44px;height:78px;border-radius:4px;border:1px solid var(--border-light);background:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-4)}
+
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+  ::-webkit-scrollbar-track{background:transparent}
+  .logs-bd::-webkit-scrollbar-thumb{background:#334155}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">G</div>
+  <div class="brand"><b>N-Tester</b><span>GeniusQA 智能全栈测试平台</span></div>
+  <div class="crumb">测试管理 <i>/</i> APP 自动化 <i>/</i> <b>设备操作台</b></div>
+  <div class="topbar-right">
+    <span class="legend"><i class="dot-new"></i>新增功能</span>
+    <span class="legend"><i class="dot-mod"></i>改造现有</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-v="console">设备操作台 <span class="tag-new">NEW</span></div>
+  <div class="tab" data-v="case">用例编辑器 <span class="tag-mod">改造</span></div>
+  <div class="tab" data-v="report">执行报告 <span class="tag-mod">改造</span></div>
+  <div class="tab" data-v="spec">前端改动清单</div>
+</div>
+
+<!-- ============ 设备操作台 ============ -->
+<div class="view active" id="v-console">
+
+  <div class="session-bar">
+    <span class="ann">新增 · 会话控制栏</span>
+    <div class="fld">
+      <label>设备</label>
+      <select id="sel-device">
+        <option>Pixel 6 · Android 13 · 8A2X1B99</option>
+        <option>Redmi K60 · Android 14 · 4C7D0E12</option>
+        <option disabled>iPhone 15 · iOS 17（需 macOS 节点）</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>应用</label>
+      <select id="sel-app">
+        <option>com.geniusqa.demo</option>
+        <option>com.example.shop</option>
+      </select>
+    </div>
+
+    <div class="mode-switch" id="mode-switch">
+      <button data-m="manual" class="on">✋ 手动接管</button>
+      <button data-m="ai">🤖 AI 探索</button>
+    </div>
+
+    <button class="btn success" id="btn-open">▶ 开启会话</button>
+    <button class="btn danger" id="btn-close" disabled>■ 结束会话</button>
+
+    <div class="sess-state">
+      <span class="pulse" id="pulse"></span>
+      <span id="sess-text" style="font-size:12.5px;color:var(--text-3)">未连接</span>
+      <span class="sess-key" id="sess-key">—</span>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- 左：实时投屏 -->
+    <div class="panel">
+      <div class="panel-hd">
+        📱 实时画面
+        <span class="sub" id="snap-time">—</span>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="screen" id="screen">
+            <div class="statusbar"><span>9:41</span><span>📶 🔋 100%</span></div>
+            <div id="screen-body" style="padding:0"></div>
+          </div>
+          <div class="hl-layer" id="hl-layer"></div>
+          <div class="tap-ripple" id="ripple"></div>
+          <div class="screen-mask" id="screen-mask">
+            <div class="spin"></div>
+            <span id="mask-text">等待界面稳定…</span>
+          </div>
+        </div>
+        <div class="phone-meta">
+          <span class="chip">1080×2400</span>
+          <span class="chip" id="meta-activity">—</span>
+          <span class="chip" id="meta-latency">—</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn sm" id="btn-refresh" disabled>⟳ 重新快照</button>
+          <button class="btn sm" id="btn-back" disabled>← 返回键</button>
+          <button class="btn sm" id="btn-shot" disabled>📷 存证</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中：元素树 -->
+    <div class="panel">
+      <div class="panel-hd">
+        🌲 无障碍元素树
+        <span class="sub" id="el-count">0 个元素</span>
+      </div>
+      <div class="tree-toolbar">
+        <input type="text" id="tree-filter" placeholder="按名称 / role 过滤…" />
+        <button class="btn sm" id="btn-assert" disabled>+ 断言</button>
+      </div>
+      <div class="diff-legend">
+        <span><i class="sq" style="background:#67c23a"></i>本次新增</span>
+        <span><i class="sq" style="background:#f56c6c"></i>已消失</span>
+        <span><i class="sq" style="background:#409eff"></i>可交互</span>
+        <span style="margin-left:auto;color:var(--text-4)">hover 联动高亮</span>
+      </div>
+      <div class="tree" id="tree">
+        <div class="empty"><em>🔌</em>尚未开启会话<br /><span style="font-size:11.5px">点击「开启会话」拉起设备并抓取首屏</span></div>
+      </div>
+    </div>
+
+    <!-- 右：步骤 / AI -->
+    <div class="panel">
+      <div class="side-tabs">
+        <button class="on" data-s="steps">📝 步骤录制 <span class="badge" id="step-badge">0</span></button>
+        <button data-s="ai">🤖 AI 协作</button>
+      </div>
+
+      <div id="pane-steps">
+        <div class="steps" id="steps">
+          <div class="empty"><em>📝</em>操作会自动录制为步骤<br /><span style="font-size:11.5px">点元素 → 选动作 → 自动追加</span></div>
+        </div>
+        <div class="steps-foot">
+          <button class="btn primary" id="btn-save" disabled>💾 保存为用例</button>
+          <button class="btn" id="btn-export" disabled>导出 .ad</button>
+          <button class="btn" id="btn-clear" disabled style="margin-left:auto">清空</button>
+        </div>
+      </div>
+
+      <div id="pane-ai" style="display:none">
+        <div class="takeover" id="takeover-bar" style="display:none">
+          <span>🤖 AI 正在操作设备，你可随时接管</span>
+          <button class="btn sm" id="btn-takeover">✋ 立即接管</button>
+        </div>
+        <div class="ai-flow" id="ai-flow">
+          <div class="empty"><em>🤖</em>把目标交给外部编程 Agent<br /><span style="font-size:11.5px">Claude Code 通过 agent-device 自主探索</span></div>
+        </div>
+        <div class="ai-input">
+          <input type="text" id="ai-goal" placeholder="例如：完成手机号验证码登录流程" value="完成手机号验证码登录流程" />
+          <button class="btn ai" id="btn-ai-run">发送</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="logs">
+    <div class="logs-hd">
+      🖥 会话日志
+      <span class="sub" id="log-src">WebSocket · /app/console/{session_key}/ws</span>
+    </div>
+    <div class="logs-bd" id="logs">
+      <div class="log-line"><span class="log-t">--:--:--</span><span class="log-m">等待会话建立…</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 用例编辑器 ============ -->
+<div class="view" id="v-case">
+  <div class="tip blue">
+    <span>ℹ️</span>
+    <div>现有用例编辑器（<code>case/index.vue</code>）保持不变，仅在顶部信息栏<b>新增执行引擎选择</b>；选择 <code>agent-device</code> 时步骤表切换为选择器视图，并出现「在操作台中打开」入口。</div>
+  </div>
+
+  <div class="mock-editor">
+    <div class="mock-bar">
+      <span class="ann mod">改造 · 引擎选择</span>
+      <strong style="font-size:14px">登录流程_验证码登录</strong>
+      <div class="engine-pick" id="engine-pick">
+        <div class="eng" data-e="airtest">🖼 Airtest</div>
+        <div class="eng" data-e="appium">🔧 Appium</div>
+        <div class="eng on" data-e="agent">🤖 agent-device</div>
+      </div>
+      <button class="btn sm" style="margin-left:auto">▶ 执行</button>
+      <button class="btn sm primary" id="btn-open-console">🎮 在操作台中打开</button>
+    </div>
+    <table class="st-table">
+      <thead><tr><th style="width:40px">#</th><th style="width:80px">动作</th><th>选择器 / 目标</th><th style="width:160px">值</th><th style="width:70px">等待</th><th style="width:60px">操作</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><span class="act open">open</span></td><td><code>com.geniusqa.demo</code></td><td>—</td><td>—</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>2</td><td><span class="act fill">fill</span></td><td><code>role=input &amp; text~="手机号"</code></td><td>13800138000</td><td>settle</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>3</td><td><span class="act press">press</span></td><td><code>role=button &amp; text="获取验证码"</code></td><td>—</td><td>settle</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>4</td><td><span class="act fill">fill</span></td><td><code>role=input &amp; text~="验证码"</code></td><td>8888</td><td>settle</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>5</td><td><span class="act press">press</span></td><td><code>role=checkbox</code></td><td>—</td><td>—</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>6</td><td><span class="act press">press</span></td><td><code>role=button &amp; text="登录"</code></td><td>—</td><td>settle</td><td><button class="mini">编辑</button></td></tr>
+        <tr><td>7</td><td><span class="act assert">assert</span></td><td><code>text="欢迎回来"</code> 可见</td><td>—</td><td>3s</td><td><button class="mini">编辑</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tip" style="margin-top:14px">
+    <span>⚠️</span>
+    <div><b>关键约束：</b>表里存的是<b>稳定选择器</b>而非 <code>@e2</code> 这类 ref。ref 只在单次 snapshot 内有效，一旦落库回放必然失效——操作台在保存时会自动把 ref 翻译为选择器。</div>
+  </div>
+</div>
+
+<!-- ============ 执行报告 ============ -->
+<div class="view" id="v-report">
+  <div class="tip blue">
+    <span>ℹ️</span>
+    <div>报告页（<code>results/report.vue</code>）复用现有结构，新增两处：<b>①</b> 失败步骤的「🤖 AI 自愈」按钮 <b>②</b> 自愈成功后的补丁对比与来源标记。</div>
+  </div>
+
+  <div class="mock-editor">
+    <div class="mock-bar">
+      <span class="ann mod">改造 · 自愈入口</span>
+      <strong style="font-size:14px">执行记录 #20260805-1042 · Pixel 6</strong>
+      <span class="chip" style="margin-left:8px">引擎 agent-device</span>
+      <span class="ok-badge" style="margin-left:4px">6 通过</span>
+      <span class="fail-badge">1 失败</span>
+      <button class="btn sm ai" style="margin-left:auto">🤖 一键自愈全部失败步骤</button>
+    </div>
+    <table class="st-table">
+      <thead><tr><th style="width:40px">#</th><th style="width:200px">步骤</th><th style="width:90px">结果</th><th style="width:70px">耗时</th><th style="width:110px">截图</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>启动应用</td><td><span class="ok-badge">通过</span></td><td>1.2s</td><td><span class="thumb">前</span> <span class="thumb">后</span></td><td>—</td></tr>
+        <tr><td>2</td><td>输入手机号</td><td><span class="ok-badge">通过</span></td><td>0.4s</td><td><span class="thumb">前</span> <span class="thumb">后</span></td><td>—</td></tr>
+        <tr><td>3</td><td>点击获取验证码</td><td><span class="ok-badge">通过</span></td><td>0.6s</td><td><span class="thumb">前</span> <span class="thumb">后</span></td><td>—</td></tr>
+        <tr style="background:#fef6f6">
+          <td>4</td><td>勾选用户协议</td><td><span class="fail-badge">失败</span></td><td>3.0s</td>
+          <td><span class="thumb">前</span> <span class="thumb">后</span></td>
+          <td>
+            <div style="color:#c45656;font-size:12px">选择器未命中：<code>role=checkbox</code></div>
+            <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+              <button class="btn sm ai" id="btn-heal">🤖 AI 自愈此步</button>
+              <span style="font-size:11.5px;color:var(--text-3)">调用 Claude Code + agent-device 重新 inspect</span>
+            </div>
+          </td>
+        </tr>
+        <tr id="heal-row" style="display:none;background:#f6f9f2">
+          <td>4′</td><td>勾选用户协议 <span class="heal-badge">已自愈</span></td><td><span class="ok-badge">通过</span></td><td>2.1s</td>
+          <td><span class="thumb">前</span> <span class="thumb">后</span></td>
+          <td>
+            <div style="font-size:12px">选择器已更新：</div>
+            <div style="font-family:Consolas,monospace;font-size:11px;margin-top:4px">
+              <div style="color:#c45656">- role=checkbox</div>
+              <div style="color:#529b2e">+ role=checkbox &amp; nearText="用户协议"</div>
+            </div>
+            <div style="margin-top:6px"><button class="btn sm success">✓ 采纳补丁并更新用例</button></div>
+          </td>
+        </tr>
+        <tr><td>5</td><td>点击登录</td><td><span class="ok-badge">通过</span></td><td>1.8s</td><td><span class="thumb">前</span> <span class="thumb">后</span></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============ 改动清单 ============ -->
+<div class="view" id="v-spec">
+  <div class="sect-title"><em></em>一、新增页面 / 组件</div>
+  <table class="spec">
+    <thead><tr><th style="width:230px">文件（建议路径）</th><th style="width:80px">性质</th><th>职责</th><th style="width:70px">预估</th></tr></thead>
+    <tbody>
+      <tr><td><code>app-management/console/index.vue</code></td><td><span class="tag-new">NEW</span></td><td>设备操作台主页面，三栏布局与会话生命周期管理</td><td>1.5d</td></tr>
+      <tr><td><code>console/SessionBar.vue</code></td><td><span class="tag-new">NEW</span></td><td>设备/应用选择、模式切换、开启/结束会话、session_key 展示</td><td>0.5d</td></tr>
+      <tr><td><code>console/ScreenViewer.vue</code></td><td><span class="tag-new">NEW</span></td><td>截图渲染 + 元素高亮框叠加 + 点击坐标回传 + 加载遮罩</td><td>1d</td></tr>
+      <tr><td><code>console/ElementTree.vue</code></td><td><span class="tag-new">NEW</span></td><td>无障碍树渲染、refs diff 着色、过滤、hover 联动、行内动作</td><td>1d</td></tr>
+      <tr><td><code>console/StepRecorder.vue</code></td><td><span class="tag-new">NEW</span></td><td>步骤列表、拖拽排序（复用 vuedraggable）、ref→选择器翻译、保存/导出</td><td>1d</td></tr>
+      <tr><td><code>console/AiCoPilot.vue</code></td><td><span class="tag-new">NEW</span></td><td>AI 思考流、工具调用展示、目标输入、接管按钮</td><td>1d</td></tr>
+      <tr><td><code>console/ConsoleLogs.vue</code></td><td><span class="tag-new">NEW</span></td><td>WebSocket 日志流终端（可复用 xterm，已在依赖中）</td><td>0.5d</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sect-title"><em></em>二、改造现有文件</div>
+  <table class="spec">
+    <thead><tr><th style="width:230px">文件</th><th style="width:80px">性质</th><th>改动点</th><th style="width:70px">预估</th></tr></thead>
+    <tbody>
+      <tr><td><code>app-management/index.vue</code></td><td><span class="tag-mod">改造</span></td><td>新增第 7 个 Tab「操作台」，副标题映射表加一项</td><td>0.2d</td></tr>
+      <tr><td><code>app-management/case/index.vue</code></td><td><span class="tag-mod">改造</span></td><td>信息栏加引擎选择；<code>engine=agent-device</code> 时步骤表切选择器列；加「在操作台打开」</td><td>0.8d</td></tr>
+      <tr><td><code>results/report.vue</code></td><td><span class="tag-mod">改造</span></td><td>失败行加「AI 自愈」按钮；自愈结果行与补丁 diff 展示</td><td>0.5d</td></tr>
+      <tr><td><code>api/app-management.ts</code></td><td><span class="tag-mod">改造</span></td><td>新增 console 系列请求函数（见下表）</td><td>0.3d</td></tr>
+      <tr><td><code>router/</code> 路由表</td><td><span class="tag-mod">改造</span></td><td>注册 <code>?tab=console</code> 深链</td><td>0.1d</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sect-title"><em></em>三、需要后端提供的接口</div>
+  <table class="spec">
+    <thead><tr><th style="width:230px">接口</th><th style="width:90px">通道</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>POST /app/console/open</code></td><td>HTTP</td><td>建 MCP 常驻会话，返回 <code>session_key</code> + 首屏 snapshot</td></tr>
+      <tr><td><code>POST /app/console/snapshot</code></td><td>HTTP</td><td>拉取无障碍树 + 截图（base64 或静态 URL）</td></tr>
+      <tr><td><code>POST /app/console/act</code></td><td>HTTP</td><td>press / fill / swipe / key，返回新 snapshot 与 refs diff</td></tr>
+      <tr><td><code>POST /app/console/save</code></td><td>HTTP</td><td>步骤数组落 <code>AppScriptModel.script</code>（JSON 列，零 DDL）</td></tr>
+      <tr><td><code>POST /app/console/close</code></td><td>HTTP</td><td>释放会话与设备占用</td></tr>
+      <tr><td><code>WS /app/console/{key}/ws</code></td><td>WebSocket</td><td>日志流 + AI 思考流 + 设备端主动变更推送</td></tr>
+      <tr><td><code>POST /app/console/ai/start</code></td><td>HTTP</td><td>投递 Skill Job 拉起 Claude Code，复用现有 job 表与 SSE</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sect-title"><em></em>四、前端关键技术决策</div>
+  <table class="spec">
+    <tbody>
+      <tr><td style="width:180px"><b>截图传输</b></td><td>首屏 base64 内联，后续走静态 URL + 时间戳防缓存；避免大 base64 撑爆 WS 帧</td></tr>
+      <tr><td><b>坐标映射</b></td><td>后端返回真实分辨率 <code>1080×2400</code>，前端按容器宽度等比缩放，点击时反算回设备坐标</td></tr>
+      <tr><td><b>refs 生命周期</b></td><td>组件内 <code>currentRefs</code> 每次 snapshot 整体替换；步骤录制时<b>立即</b>翻译为选择器，绝不持久化 ref</td></tr>
+      <tr><td><b>会话保活</b></td><td>WS 心跳 30s；页面 <code>onBeforeUnmount</code> 与 <code>beforeunload</code> 都要调 close，避免设备被占死</td></tr>
+      <tr><td><b>并发保护</b></td><td>一个设备同时只允许一个 session；列表页显示占用者，冲突时提示强制释放</td></tr>
+      <tr><td><b>人机切换</b></td><td>手动与 AI 共用同一 <code>session_key</code>，切换只改写权标志，设备状态连续不中断</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Modal -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <div class="modal-hd"><span id="modal-title">保存为用例</span><button id="modal-x">×</button></div>
+    <div class="modal-bd">
+      <div class="tip"><span>⚠️</span><div>步骤中的 <code>@e2</code> 等 ref 已自动翻译为<b>稳定选择器</b>，保证回放可复现。</div></div>
+      <pre class="code" id="modal-code"></pre>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" id="modal-cancel">取消</button>
+      <button class="btn primary" id="modal-ok">确认保存到用例树</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ========== Mock 数据：屏幕状态机 ========== */
+const PHONE_W = 280, PHONE_H = 560;
+
+function scr(html){ return html; }
+
+const SCREENS = {
+  login: {
+    activity: '.LoginActivity',
+    body: scr(`
+      <div style="padding:38px 24px 0">
+        <div style="width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,#409eff,#67c23a);margin:0 auto 14px"></div>
+        <div class="m-title">GeniusQA</div>
+        <div class="m-sub">智能测试，从这里开始</div>
+        <div style="margin-top:26px" class="m-input" id="s-phone">请输入手机号</div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <div class="m-input" style="flex:1" id="s-code">验证码</div>
+          <div class="m-btn ghost" style="width:88px;align-self:center" id="s-getcode">获取验证码</div>
+        </div>
+        <div class="m-btn dim" style="margin-top:20px" id="s-login">登 录</div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:10px;color:#9ca3af">
+          <span id="s-cb" style="width:12px;height:12px;border:1px solid #d1d5db;border-radius:3px;display:inline-block"></span>
+          我已阅读并同意《用户协议》
+        </div>
+      </div>`),
+    els: [
+      {ref:'@e1', role:'text',     name:'GeniusQA',            rect:[24,96,232,26], act:['assert']},
+      {ref:'@e2', role:'input',    name:'请输入手机号',          rect:[24,148,232,38], act:['fill']},
+      {ref:'@e3', role:'input',    name:'验证码',               rect:[24,198,136,38], act:['fill']},
+      {ref:'@e4', role:'button',   name:'获取验证码',            rect:[168,201,88,32], act:['press']},
+      {ref:'@e5', role:'button',   name:'登录（禁用）',          rect:[24,254,232,38], act:['press']},
+      {ref:'@e6', role:'checkbox', name:'我已阅读并同意《用户协议》', rect:[24,306,232,16], act:['press']},
+    ]
+  },
+  phoneFilled: {
+    activity: '.LoginActivity',
+    body: null, // 动态基于 login 改
+    patch: {phone:'138 0013 8000', phoneFilled:true, clearBtn:true},
+    els: [
+      {ref:'@e1', role:'text',     name:'GeniusQA',            rect:[24,96,232,26], act:['assert']},
+      {ref:'@e2', role:'input',    name:'138 0013 8000',        rect:[24,148,232,38], act:['fill']},
+      {ref:'@e7', role:'button',   name:'清除输入',              rect:[228,158,18,18], act:['press'], added:true},
+      {ref:'@e3', role:'input',    name:'验证码',               rect:[24,198,136,38], act:['fill']},
+      {ref:'@e4', role:'button',   name:'获取验证码',            rect:[168,201,88,32], act:['press']},
+      {ref:'@e5', role:'button',   name:'登录（禁用）',          rect:[24,254,232,38], act:['press']},
+      {ref:'@e6', role:'checkbox', name:'我已阅读并同意《用户协议》', rect:[24,306,232,16], act:['press']},
+    ]
+  },
+  codeSent: {
+    activity: '.LoginActivity',
+    patch: {phone:'138 0013 8000', phoneFilled:true, clearBtn:true, codeBtn:'59s 后重发', toast:'验证码已发送'},
+    els: [
+      {ref:'@e2', role:'input',    name:'138 0013 8000',        rect:[24,148,232,38], act:['fill']},
+      {ref:'@e7', role:'button',   name:'清除输入',              rect:[228,158,18,18], act:['press']},
+      {ref:'@e3', role:'input',    name:'验证码',               rect:[24,198,136,38], act:['fill']},
+      {ref:'@e8', role:'text',     name:'59s 后重发',            rect:[168,201,88,32], act:['assert'], added:true},
+      {ref:'@e9', role:'toast',    name:'验证码已发送',           rect:[70,468,140,26], act:['assert'], added:true},
+      {ref:'@e5', role:'button',   name:'登录（禁用）',          rect:[24,254,232,38], act:['press']},
+      {ref:'@e6', role:'checkbox', name:'我已阅读并同意《用户协议》', rect:[24,306,232,16], act:['press']},
+    ]
+  },
+  codeFilled: {
+    activity: '.LoginActivity',
+    patch: {phone:'138 0013 8000', phoneFilled:true, clearBtn:true, codeBtn:'52s 后重发', code:'8888', codeFilled:true},
+    els: [
+      {ref:'@e2', role:'input',    name:'138 0013 8000',        rect:[24,148,232,38], act:['fill']},
+      {ref:'@e3', role:'input',    name:'8888',                 rect:[24,198,136,38], act:['fill']},
+      {ref:'@e8', role:'text',     name:'52s 后重发',            rect:[168,201,88,32], act:['assert']},
+      {ref:'@e5', role:'button',   name:'登录（禁用）',          rect:[24,254,232,38], act:['press']},
+      {ref:'@e6', role:'checkbox', name:'我已阅读并同意《用户协议》', rect:[24,306,232,16], act:['press']},
+    ]
+  },
+  agreed: {
+    activity: '.LoginActivity',
+    patch: {phone:'138 0013 8000', phoneFilled:true, clearBtn:true, codeBtn:'48s 后重发', code:'8888', codeFilled:true, checked:true, loginOn:true},
+    els: [
+      {ref:'@e2', role:'input',    name:'138 0013 8000',        rect:[24,148,232,38], act:['fill']},
+      {ref:'@e3', role:'input',    name:'8888',                 rect:[24,198,136,38], act:['fill']},
+      {ref:'@e5', role:'button',   name:'登录（可点击）',        rect:[24,254,232,38], act:['press'], added:true},
+      {ref:'@e6', role:'checkbox', name:'已勾选 · 用户协议',      rect:[24,306,232,16], act:['press']},
+    ]
+  },
+  home: {
+    activity: '.MainActivity',
+    body: scr(`
+      <div style="padding:20px 18px 0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#409eff,#67c23a)"></div>
+          <div><div style="font-size:14px;font-weight:600;color:#1f2937">欢迎回来，Ada</div>
+          <div style="font-size:10px;color:#9ca3af">今日待执行 3 个任务</div></div>
+        </div>
+        <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="height:62px;border-radius:9px;background:#ecf5ff;padding:10px"><div style="font-size:18px;font-weight:700;color:#409eff">128</div><div style="font-size:9.5px;color:#6b7280">用例总数</div></div>
+          <div style="height:62px;border-radius:9px;background:#f0f9eb;padding:10px"><div style="font-size:18px;font-weight:700;color:#67c23a">96%</div><div style="font-size:9.5px;color:#6b7280">通过率</div></div>
+        </div>
+        <div style="margin-top:16px;font-size:12px;font-weight:600;color:#1f2937">最近执行</div>
+        <div style="margin-top:8px;height:36px;border-radius:7px;border:1px solid #f0f0f0;display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:#6b7280">登录流程 · 通过</div>
+        <div style="margin-top:7px;height:36px;border-radius:7px;border:1px solid #f0f0f0;display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:#6b7280">下单流程 · 通过</div>
+      </div>
+      <div class="m-tabbar"><div class="on"><em>🏠</em>首页</div><div><em>💬</em>消息</div><div><em>👤</em>我的</div></div>`),
+    els: [
+      {ref:'@e20', role:'text',   name:'欢迎回来，Ada',   rect:[72,116,150,18], act:['assert'], added:true},
+      {ref:'@e21', role:'card',   name:'用例总数 128',    rect:[18,160,120,62], act:['press'],  added:true},
+      {ref:'@e22', role:'card',   name:'通过率 96%',      rect:[146,160,120,62], act:['press'], added:true},
+      {ref:'@e23', role:'tab',    name:'首页',            rect:[0,512,93,48],  act:['press'],  added:true},
+      {ref:'@e24', role:'tab',    name:'消息',            rect:[93,512,93,48], act:['press'],  added:true},
+      {ref:'@e25', role:'tab',    name:'我的',            rect:[186,512,93,48],act:['press'],  added:true},
+    ]
+  }
+};
+
+/* 基于 login 模板 + patch 渲染 */
+function renderScreen(key){
+  const s = SCREENS[key];
+  if(s.body) return s.body;
+  const p = s.patch || {};
+  return `
+    <div style="padding:38px 24px 0;position:relative">
+      <div style="width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,#409eff,#67c23a);margin:0 auto 14px"></div>
+      <div class="m-title">GeniusQA</div>
+      <div class="m-sub">智能测试，从这里开始</div>
+      <div style="margin-top:26px;position:relative">
+        <div class="m-input ${p.phoneFilled?'filled':''}">${p.phone||'请输入手机号'}</div>
+        ${p.clearBtn?`<div style="position:absolute;right:9px;top:11px;width:16px;height:16px;border-radius:50%;background:#d1d5db;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center">×</div>`:''}
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <div class="m-input ${p.codeFilled?'filled':''}" style="flex:1">${p.code||'验证码'}</div>
+        <div class="m-btn ghost" style="width:88px;align-self:center;${p.codeBtn?'border-color:#d1d5db;color:#9ca3af':''}">${p.codeBtn||'获取验证码'}</div>
+      </div>
+      <div class="m-btn ${p.loginOn?'':'dim'}" style="margin-top:20px">登 录</div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:10px;color:#9ca3af">
+        <span style="width:12px;height:12px;border:1px solid ${p.checked?'#409eff':'#d1d5db'};background:${p.checked?'#409eff':'transparent'};color:#fff;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px">${p.checked?'✓':''}</span>
+        我已阅读并同意《用户协议》
+      </div>
+      ${p.toast?`<div class="m-toast">${p.toast}</div>`:''}
+    </div>`;
+}
+
+/* ========== 状态 ========== */
+const S = {
+  open:false, mode:'manual', screen:null, els:[], steps:[], aiRunning:false, seq:0, t0:0
+};
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const now = () => { const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+
+function log(msg, cls=''){
+  const el = document.createElement('div');
+  el.className = 'log-line ' + cls;
+  el.innerHTML = `<span class="log-t">${now()}</span><span class="log-m">${msg}</span>`;
+  $('logs').appendChild(el);
+  $('logs').scrollTop = $('logs').scrollHeight;
+}
+
+/* ========== Tabs ========== */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    $('v-'+t.dataset.v).classList.add('active');
+  };
+});
+$('btn-open-console').onclick = ()=> document.querySelector('.tab[data-v=console]').click();
+
+/* ========== 引擎选择 ========== */
+document.querySelectorAll('#engine-pick .eng').forEach(e=>{
+  e.onclick = ()=>{ document.querySelectorAll('#engine-pick .eng').forEach(x=>x.classList.remove('on')); e.classList.add('on'); };
+});
+
+/* ========== 模式切换 ========== */
+document.querySelectorAll('#mode-switch button').forEach(b=>{
+  b.onclick = ()=>{
+    if(S.aiRunning) return;
+    document.querySelectorAll('#mode-switch button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); S.mode = b.dataset.m;
+    switchSide(S.mode==='ai'?'ai':'steps');
+    log(`模式切换 → ${S.mode==='ai'?'AI 探索':'手动接管'}（session_key 不变，设备状态连续）`, 'warn');
+  };
+});
+
+function switchSide(s){
+  document.querySelectorAll('.side-tabs button').forEach(x=>x.classList.toggle('on', x.dataset.s===s));
+  $('pane-steps').style.display = s==='steps'?'':'none';
+  $('pane-ai').style.display    = s==='ai'?'':'none';
+}
+document.querySelectorAll('.side-tabs button').forEach(b=> b.onclick = ()=>switchSide(b.dataset.s));
+
+/* ========== 会话 ========== */
+$('btn-open').onclick = async ()=>{
+  if(S.open) return;
+  S.open = true; S.t0 = Date.now();
+  const key = `app-1-8A2X1B99-${Date.now().toString(36)}`;
+  $('sess-key').textContent = key;
+  $('pulse').className = 'pulse on';
+  $('sess-text').textContent = '会话已建立';
+  $('btn-open').disabled = true; $('btn-close').disabled = false;
+  ['btn-refresh','btn-back','btn-shot','btn-assert','btn-save','btn-export','btn-clear'].forEach(i=>$(i).disabled=false);
+
+  log('POST /app/console/open  → 复用 MCP 常驻会话池', 'ok');
+  log(`agent-device open com.geniusqa.demo --device 8A2X1B99 --session ${key}`);
+  await mask('正在拉起应用…', 700);
+  log('MCP tools/call: device_open  ← 132ms', 'ok');
+  setScreen('login', false);
+  addStep({act:'open', desc:'启动应用', sel:'com.geniusqa.demo'});
+  log('snapshot 已返回，6 个可交互元素', 'ok');
+};
+
+$('btn-close').onclick = ()=>{
+  S.open=false; S.aiRunning=false;
+  $('pulse').className='pulse'; $('sess-text').textContent='已断开'; $('sess-key').textContent='—';
+  $('btn-open').disabled=false; $('btn-close').disabled=true;
+  ['btn-refresh','btn-back','btn-shot','btn-assert'].forEach(i=>$(i).disabled=true);
+  $('takeover-bar').style.display='none';
+  log('POST /app/console/close  → 会话销毁，设备占用已释放', 'warn');
+};
+
+$('btn-refresh').onclick = async ()=>{
+  await mask('重新抓取…', 450);
+  renderTree(S.els.map(e=>({...e, added:false})));
+  log('POST /app/console/snapshot  ← 89ms', 'ok');
+};
+$('btn-shot').onclick = ()=> log('📷 存证截图已写入 artifacts/ 并索引到执行记录', 'ok');
+$('btn-back').onclick = ()=> log('agent-device key back --settle', 'ok');
+
+function mask(text, ms){
+  $('mask-text').textContent = text;
+  $('screen-mask').classList.add('on');
+  return new Promise(r=>setTimeout(()=>{ $('screen-mask').classList.remove('on'); r(); }, ms));
+}
+
+/* ========== 渲染屏幕 ========== */
+function setScreen(key, diff=true){
+  const prev = S.els.map(e=>e.ref);
+  S.screen = key;
+  const s = SCREENS[key];
+  $('screen-body').innerHTML = renderScreen(key);
+  $('meta-activity').textContent = s.activity;
+  $('meta-latency').textContent = (80+Math.floor(Math.random()*90)) + 'ms';
+  $('snap-time').textContent = now();
+  const els = s.els.map(e=>({...e, added: diff ? !prev.includes(e.ref) : false}));
+  S.els = els;
+  renderTree(els);
+  renderHl(els);
+}
+
+function renderHl(els){
+  const layer = $('hl-layer'); layer.innerHTML='';
+  els.forEach(e=>{
+    const d = document.createElement('div');
+    d.className = 'hl' + (e.added?' added':'');
+    d.dataset.ref = e.ref;
+    d.style.left = e.rect[0]+'px'; d.style.top = (e.rect[1]+24)+'px';
+    d.style.width = e.rect[2]+'px'; d.style.height = e.rect[3]+'px';
+    d.innerHTML = `<span class="hl-tag">${e.ref}</span>`;
+    if(e.added) d.classList.add('show');
+    layer.appendChild(d);
+  });
+  setTimeout(()=> layer.querySelectorAll('.hl.added').forEach(x=>x.classList.remove('show')), 2200);
+}
+
+function renderTree(els){
+  const kw = ($('tree-filter').value||'').trim().toLowerCase();
+  const list = els.filter(e=> !kw || e.name.toLowerCase().includes(kw) || e.role.includes(kw));
+  $('el-count').textContent = `${els.length} 个元素`;
+  if(!list.length){ $('tree').innerHTML = `<div class="empty"><em>🔍</em>无匹配元素</div>`; return; }
+  $('tree').innerHTML = list.map(e=>`
+    <div class="el-node ${e.added?'added':''}" data-ref="${e.ref}">
+      <span class="ref">${e.ref}</span>
+      <span class="role">${e.role}</span>
+      <span class="el-name" title="${e.name}">${e.name}</span>
+      <span class="el-acts">
+        ${e.act.includes('press')?`<button class="mini" data-a="press" data-r="${e.ref}">点击</button>`:''}
+        ${e.act.includes('fill')?`<button class="mini" data-a="fill" data-r="${e.ref}">输入</button>`:''}
+        <button class="mini" data-a="assert" data-r="${e.ref}">断言</button>
+      </span>
+    </div>`).join('');
+
+  $('tree').querySelectorAll('.el-node').forEach(n=>{
+    n.onmouseenter = ()=>{
+      const h = $('hl-layer').querySelector(`[data-ref="${n.dataset.ref}"]`);
+      if(h){ h.classList.add('show','active'); }
+    };
+    n.onmouseleave = ()=>{
+      const h = $('hl-layer').querySelector(`[data-ref="${n.dataset.ref}"]`);
+      if(h){ h.classList.remove('show','active'); }
+    };
+  });
+  $('tree').querySelectorAll('.mini').forEach(b=>{
+    b.onclick = ev=>{ ev.stopPropagation(); doAct(b.dataset.a, b.dataset.r); };
+  });
+}
+
+$('tree-filter').oninput = ()=> renderTree(S.els);
+
+/* ========== 动作执行 ========== */
+const FLOW = {
+  '@e2': {next:'phoneFilled', act:'fill',  value:'13800138000', desc:'输入手机号'},
+  '@e4': {next:'codeSent',    act:'press', desc:'点击获取验证码'},
+  '@e3': {next:'codeFilled',  act:'fill',  value:'8888', desc:'输入验证码'},
+  '@e6': {next:'agreed',      act:'press', desc:'勾选用户协议'},
+  '@e5': {next:'home',        act:'press', desc:'点击登录'},
+};
+
+function selectorOf(el){
+  if(el.role==='input')   return `role=input & text~="${el.name.includes('手机')?'手机号':(el.name==='验证码'?'验证码':el.name)}"`;
+  if(el.role==='checkbox')return `role=checkbox & nearText="用户协议"`;
+  if(el.role==='button')  return `role=button & text="${el.name.replace(/（.*?）/,'')}"`;
+  return `role=${el.role} & text="${el.name}"`;
+}
+
+async function doAct(action, ref, byAi=false){
+  if(!S.open){ log('会话未建立，操作被拒绝', 'err'); return; }
+  const el = S.els.find(e=>e.ref===ref);
+  if(!el) return;
+
+  // 涟漪
+  const r = $('ripple');
+  r.style.left = (el.rect[0]+el.rect[2]/2)+'px';
+  r.style.top  = (el.rect[1]+24+el.rect[3]/2)+'px';
+  r.classList.remove('go'); void r.offsetWidth; r.classList.add('go');
+
+  if(action==='assert'){
+    addStep({act:'assert', desc:`断言「${el.name}」可见`, sel:selectorOf(el), byAi});
+    log(`agent-device assert ${ref} --visible  → PASS`, 'ok');
+    return;
+  }
+
+  const f = FLOW[ref];
+  const cmd = action==='fill'
+    ? `agent-device fill ${ref} "${f?.value||'text'}" --settle`
+    : `agent-device press ${ref} --settle`;
+  log(cmd, byAi?'ai':'');
+
+  await mask('等待界面稳定 (--settle)…', 620);
+
+  addStep({act:action, desc:f?.desc || (action==='press'?`点击「${el.name}」`:`输入到「${el.name}」`), sel:selectorOf(el), value:f?.value, byAi});
+
+  if(f?.next){
+    setScreen(f.next);
+    const added = S.els.filter(e=>e.added).map(e=>e.ref);
+    if(added.length) log(`refs diff: + ${added.join(' + ')}`, 'ok');
+    else log('refs diff: 无新增', 'ok');
+  } else {
+    log('操作完成，界面无变化', 'warn');
+  }
+}
+
+/* ========== 步骤 ========== */
+function addStep(s){
+  S.seq++;
+  S.steps.push({no:S.seq, ...s});
+  renderSteps();
+}
+function renderSteps(){
+  $('step-badge').textContent = S.steps.length;
+  if(!S.steps.length){
+    $('steps').innerHTML = `<div class="empty"><em>📝</em>操作会自动录制为步骤<br /><span style="font-size:11.5px">点元素 → 选动作 → 自动追加</span></div>`;
+    return;
+  }
+  $('steps').innerHTML = S.steps.map((s,i)=>`
+    <div class="step ${i===S.steps.length-1?'new':''} ${s.byAi?'byai':''}">
+      <span class="step-no">${s.no}</span>
+      <div class="step-main">
+        <div class="step-top">
+          <span class="act ${s.act}">${s.act}</span>
+          <span class="step-desc">${s.desc}</span>
+          ${s.byAi?'<span class="ai-mark">AI</span>':''}
+        </div>
+        <div class="step-sel" title="${s.sel}">${s.sel}${s.value?` = "${s.value}"`:''}</div>
+      </div>
+      <button class="step-del" data-i="${i}">×</button>
+    </div>`).join('');
+  $('steps').scrollTop = $('steps').scrollHeight;
+  $('steps').querySelectorAll('.step-del').forEach(b=>{
+    b.onclick = ()=>{ S.steps.splice(+b.dataset.i,1); S.steps.forEach((s,i)=>s.no=i+1); S.seq=S.steps.length; renderSteps(); };
+  });
+}
+$('btn-clear').onclick = ()=>{ S.steps=[]; S.seq=0; renderSteps(); log('步骤已清空'); };
+$('btn-assert').onclick = ()=>{ log('提示：在元素树上点「断言」按钮为该元素添加断言', 'warn'); };
+
+/* ========== AI 模式 ========== */
+const AI_SCRIPT = [
+  {who:'think', txt:'读取当前 snapshot：识别到登录页，包含手机号输入框、验证码输入框与登录按钮。'},
+  {ref:'@e2', act:'fill',  say:'先填手机号。', tool:'mcp: device_fill { ref: "@e2", text: "13800138000", settle: true }'},
+  {who:'think', txt:'refs diff 出现 +@e7（清除按钮），确认输入生效。下一步获取验证码。'},
+  {ref:'@e4', act:'press', say:'点击获取验证码。', tool:'mcp: device_press { ref: "@e4", settle: true }'},
+  {who:'think', txt:'出现 +@e8 倒计时与 +@e9 Toast「验证码已发送」，说明请求成功。测试环境固定码 8888。'},
+  {ref:'@e3', act:'fill',  say:'填入验证码 8888。', tool:'mcp: device_fill { ref: "@e3", text: "8888", settle: true }'},
+  {who:'think', txt:'登录按钮仍为禁用态，检查到协议复选框未勾选。'},
+  {ref:'@e6', act:'press', say:'勾选用户协议。', tool:'mcp: device_press { ref: "@e6", settle: true }'},
+  {who:'think', txt:'@e5 已变为可点击状态，执行登录。'},
+  {ref:'@e5', act:'press', say:'提交登录。', tool:'mcp: device_press { ref: "@e5", settle: true }'},
+  {who:'done', txt:'✅ 登录成功，已跳转到 .MainActivity，断言「欢迎回来，Ada」可见。共录制 6 个步骤，refs 已全部翻译为稳定选择器，可直接保存为回归用例。'},
+];
+
+function aiMsg(who, html){
+  const wrap = document.createElement('div');
+  wrap.className='ai-msg';
+  const isU = who==='user';
+  wrap.innerHTML = `<div class="ai-av ${isU?'u':''}">${isU?'我':'AI'}</div>
+    <div class="ai-body"><div class="ai-who">${isU?'测试工程师':'Claude Code · agent-device MCP'}</div>${html}</div>`;
+  $('ai-flow').appendChild(wrap);
+  $('ai-flow').scrollTop = $('ai-flow').scrollHeight;
+  return wrap;
+}
+
+$('btn-ai-run').onclick = async ()=>{
+  if(!S.open){ log('请先开启会话', 'err'); alert('请先点击「开启会话」'); return; }
+  if(S.aiRunning) return;
+  S.aiRunning = true;
+  $('ai-flow').innerHTML='';
+  switchSide('ai');
+  document.querySelectorAll('#mode-switch button').forEach(x=>x.classList.toggle('on', x.dataset.m==='ai'));
+  S.mode='ai';
+  $('pulse').className='pulse ai'; $('sess-text').textContent='AI 操作中';
+  $('takeover-bar').style.display='flex';
+
+  aiMsg('user', `<div class="ai-txt">${$('ai-goal').value}</div>`);
+  log('POST /app/console/ai/start → 投递 Skill Job（复用现有 job 表 + SSE）', 'ai');
+  log('Claude Code 已连接 agent-device MCP，共享 session_key', 'ai');
+
+  for(const st of AI_SCRIPT){
+    if(!S.aiRunning) { aiMsg('ai', `<div class="ai-txt" style="color:#b88230">⏸ 已被用户接管，AI 停止操作。设备会话保持不变。</div>`); break; }
+    await sleep(950);
+    if(st.who==='think'){
+      aiMsg('ai', `<div class="ai-txt think">💭 ${st.txt}</div>`);
+    } else if(st.who==='done'){
+      aiMsg('ai', `<div class="ai-txt">${st.txt}</div>`);
+      log('AI 探索完成，产出 6 步 + .ad 脚本', 'ok');
+    } else {
+      aiMsg('ai', `<div class="ai-txt">${st.say}</div><div class="ai-tool">${st.tool}</div>`);
+      await sleep(180);
+      await doAct(st.act, st.ref, true);
+    }
+  }
+  if(S.aiRunning){
+    S.aiRunning=false;
+    $('pulse').className='pulse on'; $('sess-text').textContent='会话已建立';
+    $('takeover-bar').style.display='none';
+  }
+};
+
+$('btn-takeover').onclick = ()=>{
+  S.aiRunning=false;
+  $('pulse').className='pulse on'; $('sess-text').textContent='已接管';
+  $('takeover-bar').style.display='none';
+  document.querySelectorAll('#mode-switch button').forEach(x=>x.classList.toggle('on', x.dataset.m==='manual'));
+  S.mode='manual';
+  log('用户接管控制权，AI 停止；session_key 与设备状态完全保留', 'warn');
+  setTimeout(()=>switchSide('steps'), 400);
+};
+
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+/* ========== 保存 ========== */
+function buildPayload(){
+  return {
+    engine: 'agent-device',
+    platform: 'android',
+    target: { package: 'com.geniusqa.demo', activity: '.LoginActivity' },
+    steps: S.steps.map(s=>({
+      no: s.no, action: s.act,
+      selector: s.act==='open' ? undefined : s.sel,
+      target: s.act==='open' ? s.sel : undefined,
+      value: s.value, settle: s.act!=='assert', desc: s.desc,
+      source: s.byAi ? 'ai' : 'manual'
+    })),
+    ad_script: S.steps.map(s=>{
+      if(s.act==='open') return `open ${s.sel}`;
+      if(s.act==='fill') return `fill '${s.sel}' "${s.value||''}" --settle`;
+      if(s.act==='assert') return `assert '${s.sel}' --visible`;
+      return `press '${s.sel}' --settle`;
+    }).join('\n')
+  };
+}
+function hl(json){
+  return json
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/"([^"]+)":/g, '"<span class="k">$1</span>":')
+    .replace(/: "([^"]*)"/g, ': "<span class="s">$1</span>"')
+    .replace(/: (\d+|true|false)/g, ': <span class="n">$1</span>');
+}
+$('btn-save').onclick = ()=>{
+  if(!S.steps.length){ alert('还没有录制任何步骤'); return; }
+  $('modal-title').textContent = '保存为用例 · AppScriptModel.script';
+  $('modal-code').innerHTML = hl(JSON.stringify(buildPayload(), null, 2));
+  $('mask').classList.add('on');
+};
+$('btn-export').onclick = ()=>{
+  if(!S.steps.length){ alert('还没有录制任何步骤'); return; }
+  $('modal-title').textContent = '导出 .ad 回放脚本（无需 LLM）';
+  $('modal-code').textContent = buildPayload().ad_script;
+  $('mask').classList.add('on');
+};
+$('modal-x').onclick = $('modal-cancel').onclick = ()=> $('mask').classList.remove('on');
+$('modal-ok').onclick = ()=>{ $('mask').classList.remove('on'); log('POST /app/console/save → 已写入 app_scripts.script（JSON 列，零 DDL）', 'ok'); };
+$('mask').onclick = e=>{ if(e.target===$('mask')) $('mask').classList.remove('on'); };
+
+/* 报告页自愈 */
+$('btn-heal').onclick = function(){
+  this.textContent='🤖 自愈中…'; this.disabled=true;
+  setTimeout(()=>{ $('heal-row').style.display=''; this.textContent='🤖 AI 自愈此步'; this.disabled=false; }, 1400);
+};
+
+/* 初始 */
+renderSteps();
+</script>
+</body>
+</html>

@@ -72,3 +72,5 @@ target/
 # Runtime
 logs/
 uploads/
+# 浏览器临时目录（SYSTEM 身份下重定向到后端目录，避免 C:\WINDOWS\TEMP 锁冲突）
+.pw_tmp/
