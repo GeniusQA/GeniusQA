@@ -32,6 +32,7 @@ from app.api.v1.Ntesterc_module.Ntesterc_performance import router as perf_route
 from app.api.v1.Ntesterc_module.Ntesterc_cloud_device.controller import router as cloud_router
 from app.api.v1.Ntesterc_module.Ntesterc_mitmproxy.controller import router as mitm_router
 from app.api.v1.Ntesterc_module.Ntesterc_demo.controller import router as demo_router
+from app.api.v1.Ntesterc_module.Ntesterc_agent import router as agent_router
 
 router = APIRouter()
 
@@ -61,5 +62,6 @@ router.include_router(review_router, prefix="/Ntesterc_reviews", tags=["用例�
 router.include_router(notify_router, prefix="/Ntesterc_notifications", tags=["统一通知系统"])
 router.include_router(dash_router, prefix="/Ntesterc_dashboard", tags=["首页看板"])
 router.include_router(demo_router, prefix="/Ntesterc_demo", tags=["示例业务"])
+router.include_router(agent_router, prefix="/Ntesterc_agent", tags=["AI测试任务中心"])
 
 __all__ = ["router"]
