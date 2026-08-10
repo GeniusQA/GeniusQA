@@ -108,16 +108,14 @@
           </el-upload>
         </el-form-item>
         <el-form-item label="关联项目">
-          <el-select v-model="createForm.project_id" placeholder="请选择项目" style="width: 100%">
-            <el-option label="GeniusQA 测试平台" :value="1" />
-            <el-option label="订单中心" :value="2" />
-            <el-option label="用户中心" :value="3" />
+          <el-select v-model="createForm.project_id" placeholder="请选择项目" style="width: 100%"
+                     @change="handleProjectChange" filterable>
+            <el-option v-for="p in projectOptions" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="执行环境">
-          <el-select v-model="createForm.env_name" style="width: 100%">
-            <el-option label="测试环境" value="测试环境" />
-            <el-option label="预发环境" value="预发环境" />
+          <el-select v-model="createForm.env_name" placeholder="请先选择项目" style="width: 100%">
+            <el-option v-for="e in envOptions" :key="e.id" :label="e.name" :value="e.name" />
           </el-select>
         </el-form-item>
         <el-divider content-position="left">执行策略</el-divider>
@@ -279,6 +277,7 @@
 import { reactive, ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useAgentTaskApi } from '/@/api/v1/ai/agentTasks';
+import { useProjectApi } from '/@/api/v1/projects/project';
 import { formatDateTime } from '/@/utils/formatTime';
 
 const api = useAgentTaskApi();
@@ -323,14 +322,51 @@ const creating = ref(false);
 const uploadFiles = ref<any[]>([]);
 const createFormRef = ref();
 const createForm = reactive({
-  name: '', pipeline_type: 'api', project_id: 1, env_name: '测试环境',
+  name: '', pipeline_type: 'api', project_id: null as number | null, env_name: '',
   exec_mode: 'manual', model_tier: 'standard',
 });
 const createRules = {
   name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
 };
 
-const openCreate = () => { createVisible.value = true; };
+const projectApi = useProjectApi();
+const projectOptions = ref<any[]>([]);
+const envOptions = ref<any[]>([]);
+
+const loadEnvs = async (projectId: number) => {
+  envOptions.value = [];
+  createForm.env_name = '';
+  try {
+    const res: any = await projectApi.getEnvironmentList(projectId);
+    if (res.code === 200) {
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      envOptions.value = list;
+      const def = list.find((e: any) => e.is_default) || list[0];
+      if (def) createForm.env_name = def.name;
+    }
+  } catch (e) { /* 环境加载失败不影响创建 */ }
+};
+
+const loadProjects = async () => {
+  try {
+    const res: any = await projectApi.getList({ page: 1, page_size: 100 });
+    if (res.code === 200) {
+      projectOptions.value = res.data.items || [];
+      const active = projectOptions.value.find((p: any) => p.status === 'active') || projectOptions.value[0];
+      if (active) {
+        createForm.project_id = active.id;
+        loadEnvs(active.id);
+      }
+    }
+  } catch (e) { /* 项目加载失败不影响其他功能 */ }
+};
+
+const handleProjectChange = (pid: number) => { loadEnvs(pid); };
+
+const openCreate = () => {
+  createVisible.value = true;
+  if (!projectOptions.value.length) loadProjects();
+};
 const submitCreate = async () => {
   await createFormRef.value.validate();
   creating.value = true;
@@ -502,7 +538,7 @@ const handleDelete = async (row: any) => {
   } catch (e: any) { ElMessage.error(e?.message || '删除失败'); }
 };
 
-onMounted(() => { loadList(); });
+onMounted(() => { loadList(); loadProjects(); });
 onBeforeUnmount(() => { stopPolling(); });
 </script>
 
