@@ -137,16 +137,19 @@
         <el-divider content-position="left">用例生成配置</el-divider>
         <el-form-item label="用例类型">
           <div class="case-type-wrap">
-            <div v-for="g in caseTypeGroups" :key="g.key" class="type-group">
+            <div class="form-tip" style="margin-bottom: 8px;">选择要生成的用例类型（可多选）；组内子项可单独勾选，组头「全选」一键选中/清空该组</div>
+            <div v-for="(g, gi) in caseTypeGroups" :key="g.key" class="type-group">
               <div class="type-group-head">
+                <span class="type-group-title">{{ gi + 1 }}. {{ g.label }}</span>
                 <el-checkbox :model-value="isGroupAll(g.key)" :indeterminate="isGroupPartial(g.key)"
-                             @change="toggleGroup(g.key, $event)">{{ g.label }}</el-checkbox>
+                             @change="toggleGroup(g.key, $event)">全选</el-checkbox>
               </div>
-              <el-checkbox-group v-model="caseConfig.types[g.key]" class="type-items">
-                <el-checkbox v-for="opt in g.options" :key="opt.value" :value="opt.value" size="small">
+              <div class="type-items">
+                <el-checkbox v-for="opt in g.options" :key="opt.value"
+                             v-model="caseConfig.types[g.key]" :value="opt.value" size="small">
                   {{ opt.label }}
                 </el-checkbox>
-              </el-checkbox-group>
+              </div>
             </div>
           </div>
         </el-form-item>
@@ -794,8 +797,9 @@ onBeforeUnmount(() => { stopPolling(); stopListPolling(); });
     border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 10px 12px;
     background: var(--el-bg-color);
   }
-  .type-group-head { margin-bottom: 6px; }
-  .type-items { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+  .type-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--el-border-color-lighter); }
+  .type-group-title { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); }
+  .type-items { display: flex; flex-wrap: wrap; gap: 4px 18px; }
   .adv-settings { width: 100%; display: flex; flex-direction: column; gap: 10px; }
   .adv-row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--el-text-color-regular); }
   .adv-label { width: 70px; color: var(--el-text-color-secondary); flex-shrink: 0; }
