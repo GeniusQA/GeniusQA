@@ -167,18 +167,14 @@
               </el-select>
             </div>
             <div class="adv-row">
+              <span class="adv-label">分步生成</span>
               <el-switch v-model="caseConfig.step_generation" />
-              <div class="adv-text">
-                <span>分步生成</span>
-                <span class="adv-hint">先生成用例列表（含用例名称和描述），可人工修改，确认后再批量生成用例详情</span>
-              </div>
+              <span class="adv-hint">先生成用例列表（含用例名称和描述），可人工修改，确认后再批量生成用例详情</span>
             </div>
             <div class="adv-row">
+              <span class="adv-label">自动补全用例</span>
               <el-switch v-model="caseConfig.auto_complete" />
-              <div class="adv-text">
-                <span>自动补全用例</span>
-                <span class="adv-hint">生成用例列表时，AI 将检测已生成用例的覆盖率，自动补全缺失场景</span>
-              </div>
+              <span class="adv-hint">生成用例列表时，AI 将检测已生成用例的覆盖率，自动补全缺失场景</span>
             </div>
             <div class="adv-row">
               <span class="adv-label">补充生成轮次</span>
@@ -190,11 +186,9 @@
               <span class="adv-hint">轮次越多，覆盖越全，耗时与 Token 消耗越大</span>
             </div>
             <div class="adv-row">
+              <span class="adv-label">不重复生成用例</span>
               <el-switch v-model="caseConfig.deduplicate" />
-              <div class="adv-text">
-                <span>不重复生成用例</span>
-                <span class="adv-hint">不生成与已有单接口用例重复的用例；关闭后生成不受已有用例影响</span>
-              </div>
+              <span class="adv-hint">不生成与已有单接口用例重复的用例；关闭后生成不受已有用例影响</span>
             </div>
             <div class="adv-row">
               <span class="adv-label">用例数量</span>
@@ -802,9 +796,8 @@ onBeforeUnmount(() => { stopPolling(); stopListPolling(); });
   .type-items { display: flex; flex-wrap: wrap; gap: 4px 18px; }
   .adv-settings { width: 100%; display: flex; flex-direction: column; gap: 10px; }
   .adv-row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--el-text-color-regular); }
-  .adv-label { width: 70px; color: var(--el-text-color-secondary); flex-shrink: 0; }
-  .adv-text { display: flex; flex-direction: column; }
-  .adv-hint { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.5; }
+  .adv-label { width: 96px; color: var(--el-text-color-primary); font-size: 14px; flex-shrink: 0; font-weight: 500; }
+  .adv-hint { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.5; flex: 1; }
   .review-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 8px; margin-bottom: 14px;
