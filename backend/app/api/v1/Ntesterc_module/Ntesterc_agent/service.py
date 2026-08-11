@@ -137,11 +137,11 @@ class AgentTaskService:
                                                 "解析需求文档，提取接口清单", "doc_parse", "2026-08-10 17:42:11")
                 await asyncio.sleep(1.2)
                 await AgentTaskService._advance(db, task_id, "analyzing", 25, trace,
-                                                "生成测试点 12 条，结构校验通过", "llm", "2026-08-10 17:42:52")
+                                                f"生成测试点 {len(_demo_points())} 条，结构校验通过", "llm", "2026-08-10 17:42:52")
                 await asyncio.sleep(0.8)
                 points_art = await art_crud.create_crud({
                     "task_id": task_id, "kind": "test_points", "content": _demo_points(),
-                    "version": 1, "status": "confirmed", "summary": "测试点 12 条（正常 5/边界 4/异常 2/鉴权 1）",
+                    "version": 1, "status": "confirmed", "summary": f"测试点 {len(_demo_points())} 条（正常 2/边界 1/异常 1/鉴权 1）",
                 })
                 await AgentTaskService._advance(db, task_id, "case_generating", 45, trace,
                                                 f"产出测试点 v1（#{points_art.id}），流转至用例生成 Agent", "artifact", "2026-08-10 17:43:04")
@@ -150,7 +150,7 @@ class AgentTaskService:
                 await asyncio.sleep(1.4)
                 cases_art = await art_crud.create_crud({
                     "task_id": task_id, "kind": "cases", "content": _demo_cases(),
-                    "version": 1, "status": "draft", "summary": "用例 25 条（正常 12/边界 8/异常鉴权 5）",
+                    "version": 1, "status": "draft", "summary": f"用例 {len(_demo_cases())} 条",
                 })
                 await AgentTaskService._advance(db, task_id, "awaiting_review", 55, trace,
                                                 f"产出用例集 v1（#{cases_art.id}），等待人工确认", "artifact", "2026-08-10 17:45:29")
@@ -173,18 +173,18 @@ class AgentTaskService:
     async def _run_execution(db, task_id: int, trace: list):
         art_crud = AgentArtifactCRUD(db)
         await AgentTaskService._advance(db, task_id, "executing", 75, trace,
-                                        "调用接口执行引擎运行 25 条用例", "api_execute", "2026-08-10 17:46:10")
+                                        f"调用接口执行引擎运行 {len(_demo_cases())} 条用例", "api_execute", "2026-08-10 17:46:10")
         await asyncio.sleep(1.6)
         await art_crud.create_crud({
             "task_id": task_id, "kind": "results", "content": _demo_results(),
-            "version": 1, "status": "confirmed", "summary": "执行完成：通过 22/25，失败 3",
+            "version": 1, "status": "confirmed", "summary": f"执行完成：通过 {_demo_results()['passed']}/{_demo_results()['total']}，失败 {_demo_results()['failed']}",
         })
         await AgentTaskService._advance(db, task_id, "reviewing", 95, trace,
                                         "失败归类与根因分析，输出质量报告 v1", "llm", "2026-08-10 17:52:45")
         await asyncio.sleep(1.0)
         await art_crud.create_crud({
             "task_id": task_id, "kind": "report", "content": _demo_report(),
-            "version": 1, "status": "confirmed", "summary": "通过率 88%，失败 3 条归类完成",
+            "version": 1, "status": "confirmed", "summary": f"通过率 {_demo_report()['pass_rate']}%，失败归类完成",
         })
         await AgentTaskService._advance(db, task_id, "done", 100, trace,
                                         "流水线执行完成，评审报告已生成", "done", "2026-08-10 17:53:10")
@@ -269,7 +269,7 @@ class AgentTaskService:
                 await asyncio.sleep(1.5)
                 new_art = await art_crud.create_crud({
                     "task_id": task_id, "kind": "cases", "content": _demo_cases(),
-                    "version": 2, "status": "draft", "summary": "用例集 v2（重新生成）",
+                    "version": 2, "status": "draft", "summary": f"用例集 v2（{len(_demo_cases())} 条，重新生成）",
                 })
                 await AgentTaskService._advance(db, task_id, "awaiting_review", 55,
                                                 (await AgentTaskCRUD(db).get_by_id_crud(task_id)).trace or [],

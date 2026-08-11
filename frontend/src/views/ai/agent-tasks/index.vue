@@ -473,11 +473,13 @@ const nodeTagText = (key: string) => {
 };
 const nodeMeta = (key: string) => {
   if (!detail.value) return '';
+  const points = artifactsByKind('test_points').length;
+  const cases = artifactsByKind('cases').length;
   const metaMap: any = {
-    analyzing: `耗时 01:24 · token 8.2K`,
-    case_generating: `用例 25 条 · 耗时 03:17`,
+    analyzing: points ? `测试点 ${points} 条 · 耗时 01:24 · token 8.2K` : `耗时 01:24 · token 8.2K`,
+    case_generating: cases ? `用例 ${cases} 条 · 耗时 03:17` : `耗时 03:17`,
     awaiting_review: detail.value.status === 'awaiting_review' ? '等待测试人员确认用例集' : '审核通过，进入执行',
-    executing: '调用接口执行引擎运行用例',
+    executing: cases ? `调用接口执行引擎运行 ${cases} 条用例` : '调用接口执行引擎运行用例',
     reviewing: '失败归类、根因分析、质量报告',
   };
   return metaMap[key] || '';
