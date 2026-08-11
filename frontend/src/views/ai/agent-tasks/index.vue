@@ -101,11 +101,12 @@
           </el-radio-group>
         </el-form-item>
         <el-divider content-position="left">输入配置</el-divider>
-        <el-form-item label="需求文档">
-          <el-upload v-model:file-list="uploadFiles" :auto-upload="false" :limit="1" drag style="width: 100%">
-            <el-icon class="el-icon--upload"><ele-UploadFilled /></el-icon>
-            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em>（.docx / .pdf / .yaml）</div>
-          </el-upload>
+        <el-form-item label="接口服务">
+          <el-select v-model="createForm.api_service_id" placeholder="请选择接口服务（复用接口中心数据）"
+                     style="width: 100%" filterable @change="handleServiceChange">
+            <el-option v-for="s in serviceOptions" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+          <div class="form-tip">选择后将以该服务已有的接口文档（Swagger / Apifox）作为输入，无需重复上传</div>
         </el-form-item>
         <el-form-item label="关联项目">
           <el-select v-model="createForm.project_id" placeholder="请选择项目" style="width: 100%"
@@ -114,7 +115,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="执行环境">
-          <el-select v-model="createForm.env_name" placeholder="请先选择项目" style="width: 100%">
+          <el-select v-model="createForm.env_name" placeholder="请选择执行环境（接口自动化环境）" style="width: 100%">
             <el-option v-for="e in envOptions" :key="e.id" :label="e.name" :value="e.name" />
           </el-select>
         </el-form-item>
@@ -278,6 +279,7 @@ import { reactive, ref, computed, onMounted, onBeforeUnmount, nextTick } from 'v
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useAgentTaskApi } from '/@/api/v1/ai/agentTasks';
 import { useProjectApi } from '/@/api/v1/projects/project';
+import { apiAutomationApi } from '/@/api/v1/testing/apiAutomation';
 import { formatDateTime } from '/@/utils/formatTime';
 
 const api = useAgentTaskApi();
@@ -319,10 +321,10 @@ const statusLabel = (s: string) => {
 // ── 创建 ──
 const createVisible = ref(false);
 const creating = ref(false);
-const uploadFiles = ref<any[]>([]);
 const createFormRef = ref();
 const createForm = reactive({
-  name: '', pipeline_type: 'api', project_id: null as number | null, env_name: '',
+  name: '', pipeline_type: 'api', project_id: null as number | null,
+  api_service_id: null as number | null, env_name: '',
   exec_mode: 'manual', model_tier: 'standard',
 });
 const createRules = {
@@ -333,18 +335,38 @@ const projectApi = useProjectApi();
 const projectOptions = ref<any[]>([]);
 const envOptions = ref<any[]>([]);
 
-const loadEnvs = async (projectId: number) => {
+const loadApiEnvs = async () => {
   envOptions.value = [];
   createForm.env_name = '';
   try {
-    const res: any = await projectApi.getEnvironmentList(projectId);
+    const res: any = await apiAutomationApi.api_env({});
     if (res.code === 200) {
-      const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      const list = Array.isArray(res.data) ? res.data : [];
       envOptions.value = list;
-      const def = list.find((e: any) => e.is_default) || list[0];
+      const def = list[0];
       if (def) createForm.env_name = def.name;
     }
   } catch (e) { /* 环境加载失败不影响创建 */ }
+};
+
+const serviceOptions = ref<any[]>([]);
+const loadServices = async (projectId?: number | null) => {
+  try {
+    const res: any = await apiAutomationApi.api_service_list({ project_id: projectId ?? undefined });
+    if (res.code === 200) {
+      serviceOptions.value = Array.isArray(res.data) ? res.data : [];
+      if (serviceOptions.value.length && !createForm.api_service_id) {
+        createForm.api_service_id = serviceOptions.value[0].id;
+        const svc = serviceOptions.value[0];
+        if (svc.name) createForm.input_file = `接口服务: ${svc.name}`;
+      }
+    }
+  } catch (e) { /* 服务加载失败不影响创建 */ }
+};
+
+const handleServiceChange = (sid: number) => {
+  const svc = serviceOptions.value.find((s: any) => s.id === sid);
+  createForm.input_file = svc ? `接口服务: ${svc.name}` : '';
 };
 
 const loadProjects = async () => {
@@ -355,8 +377,9 @@ const loadProjects = async () => {
       const active = projectOptions.value.find((p: any) => p.status === 'active') || projectOptions.value[0];
       if (active) {
         createForm.project_id = active.id;
-        loadEnvs(active.id);
+        loadServices(active.id);
       }
+      loadApiEnvs();
     }
   } catch (e) { /* 项目加载失败不影响其他功能 */ }
 };
@@ -373,13 +396,13 @@ const submitCreate = async () => {
   try {
     const res: any = await api.createTask({
       ...createForm,
-      input_file: uploadFiles.value[0]?.name || '',
     });
     if (res.code === 200) {
       ElMessage.success('任务创建成功，流水线已启动');
       createVisible.value = false;
       createForm.name = '';
-      uploadFiles.value = [];
+      createForm.api_service_id = null;
+      createForm.input_file = '';
       loadList();
     }
   } catch (e: any) {
