@@ -127,12 +127,12 @@
           </el-radio-group>
           <div class="form-tip">推荐人工确认：避免 AI 生成的用例未经确认直接运行</div>
         </el-form-item>
-        <el-form-item label="模型档位">
-          <el-select v-model="createForm.model_tier" style="width: 100%">
-            <el-option label="标准（glm-4-plus + flash 评审）" value="standard" />
-            <el-option label="高精度（长文档场景）" value="premium" />
-            <el-option label="低成本（快速冒烟）" value="lite" />
+        <el-form-item label="模型配置">
+          <el-select v-model="createForm.model_tier" placeholder="请选择模型（复用 LLM 配置）" style="width: 100%" filterable>
+            <el-option v-for="m in llmOptions" :key="m.id" :label="m.config_name + '（' + (m.model_name || m.name) + '）'"
+                       :value="m.config_name" />
           </el-select>
+          <div class="form-tip">需求分析/用例生成/评审 Agent 将使用所选模型配置</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -280,6 +280,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useAgentTaskApi } from '/@/api/v1/ai/agentTasks';
 import { useProjectApi } from '/@/api/v1/projects/project';
 import { apiAutomationApi } from '/@/api/v1/testing/apiAutomation';
+import { useLLMConfigApi } from '/@/api/v1/ai/llmConfig';
 import { formatDateTime } from '/@/utils/formatTime';
 
 const api = useAgentTaskApi();
@@ -325,7 +326,7 @@ const createFormRef = ref();
 const createForm = reactive({
   name: '', pipeline_type: 'api', project_id: null as number | null,
   api_service_id: null as number | null, env_name: '',
-  exec_mode: 'manual', model_tier: 'standard',
+  exec_mode: 'manual', model_tier: '',
 });
 const createRules = {
   name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
@@ -347,6 +348,19 @@ const loadApiEnvs = async () => {
       if (def) createForm.env_name = def.name;
     }
   } catch (e) { /* 环境加载失败不影响创建 */ }
+};
+
+const llmOptions = ref<any[]>([]);
+const loadLLMConfigs = async () => {
+  try {
+    const res: any = await useLLMConfigApi().getList({});
+    if (res.code === 200) {
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      llmOptions.value = list.filter((m: any) => m.is_active !== false);
+      const def = list.find((m: any) => m.is_default) || list[0];
+      if (def && !createForm.model_tier) createForm.model_tier = def.config_name;
+    }
+  } catch (e) { /* 模型配置加载失败不影响创建 */ }
 };
 
 const serviceOptions = ref<any[]>([]);
@@ -389,6 +403,7 @@ const handleProjectChange = (pid: number) => { loadEnvs(pid); };
 const openCreate = () => {
   createVisible.value = true;
   if (!projectOptions.value.length) loadProjects();
+  if (!llmOptions.value.length) loadLLMConfigs();
 };
 const submitCreate = async () => {
   await createFormRef.value.validate();
@@ -561,7 +576,7 @@ const handleDelete = async (row: any) => {
   } catch (e: any) { ElMessage.error(e?.message || '删除失败'); }
 };
 
-onMounted(() => { loadList(); loadProjects(); });
+onMounted(() => { loadList(); loadProjects(); loadLLMConfigs(); });
 onBeforeUnmount(() => { stopPolling(); });
 </script>
 
