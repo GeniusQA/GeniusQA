@@ -157,16 +157,50 @@
         <el-form-item label="高级设置">
           <div class="adv-settings">
             <div class="adv-row">
+              <span class="adv-label">生成语言</span>
+              <el-select v-model="caseConfig.language" style="width: 160px">
+                <el-option label="简体中文" value="zh-CN" />
+                <el-option label="English" value="en-US" />
+              </el-select>
+            </div>
+            <div class="adv-row">
               <el-switch v-model="caseConfig.step_generation" />
-              <span>分步生成（先逐接口生成测试点，确认后再批量生成用例）</span>
+              <div class="adv-text">
+                <span>分步生成</span>
+                <span class="adv-hint">先生成用例列表（含用例名称和描述），可人工修改，确认后再批量生成用例详情</span>
+              </div>
+            </div>
+            <div class="adv-row">
+              <el-switch v-model="caseConfig.auto_complete" />
+              <div class="adv-text">
+                <span>自动补全用例</span>
+                <span class="adv-hint">生成用例列表时，AI 将检测已生成用例的覆盖率，自动补全缺失场景</span>
+              </div>
+            </div>
+            <div class="adv-row">
+              <span class="adv-label">补充生成轮次</span>
+              <el-radio-group v-model="caseConfig.supplement_rounds">
+                <el-radio :value="1">1 轮</el-radio>
+                <el-radio :value="2">2 轮</el-radio>
+                <el-radio :value="3">3 轮</el-radio>
+              </el-radio-group>
+              <span class="adv-hint">轮次越多，覆盖越全，耗时与 Token 消耗越大</span>
+            </div>
+            <div class="adv-row">
+              <el-switch v-model="caseConfig.deduplicate" />
+              <div class="adv-text">
+                <span>不重复生成用例</span>
+                <span class="adv-hint">不生成与已有单接口用例重复的用例；关闭后生成不受已有用例影响</span>
+              </div>
             </div>
             <div class="adv-row">
               <span class="adv-label">用例数量</span>
               <el-select v-model="caseConfig.case_count" style="width: 200px">
-                <el-option label="自动（按接口复杂度）" value="auto" />
-                <el-option label="10 条" :value="10" />
-                <el-option label="20 条" :value="20" />
-                <el-option label="50 条" :value="50" />
+                <el-option label="自动" value="auto" />
+                <el-option label="约 10 条" :value="10" />
+                <el-option label="约 20 条" :value="20" />
+                <el-option label="约 40 条" :value="40" />
+                <el-option label="约 80 条" :value="80" />
               </el-select>
             </div>
           </div>
@@ -418,7 +452,11 @@ const caseConfig = reactive({
   },
   extra_requirements: '',
   step_generation: true,
+  auto_complete: false,
+  supplement_rounds: 1,
+  deduplicate: true,
   case_count: 'auto' as string | number,
+  language: 'zh-CN',
 });
 
 const isGroupAll = (key: string) => {
@@ -522,12 +560,7 @@ const submitCreate = async () => {
   try {
     const res: any = await api.createTask({
       ...createForm,
-      case_config: {
-        types: caseConfig.types,
-        extra_requirements: caseConfig.extra_requirements,
-        step_generation: caseConfig.step_generation,
-        case_count: caseConfig.case_count,
-      },
+      case_config: { ...caseConfig },
     });
     if (res.code === 200) {
       ElMessage.success('任务创建成功，流水线已启动');
@@ -765,7 +798,9 @@ onBeforeUnmount(() => { stopPolling(); stopListPolling(); });
   .type-items { display: flex; flex-wrap: wrap; gap: 2px 14px; }
   .adv-settings { width: 100%; display: flex; flex-direction: column; gap: 10px; }
   .adv-row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--el-text-color-regular); }
-  .adv-label { width: 70px; color: var(--el-text-color-secondary); }
+  .adv-label { width: 70px; color: var(--el-text-color-secondary); flex-shrink: 0; }
+  .adv-text { display: flex; flex-direction: column; }
+  .adv-hint { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.5; }
   .review-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 8px; margin-bottom: 14px;
