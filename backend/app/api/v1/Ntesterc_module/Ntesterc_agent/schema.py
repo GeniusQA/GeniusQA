@@ -17,6 +17,7 @@ class AgentTaskCreateSchema(BaseModel):
     input_file: Optional[str] = Field(None, max_length=255, description='需求文档/OpenAPI 文件名')
     exec_mode: str = Field('manual', description='执行模式: manual/auto')
     model_tier: str = Field('standard', description='模型档位')
+    case_config: Optional[dict] = Field(None, description='用例生成配置 {types, extra_requirements, step_generation, case_count}')
 
 
 class AgentTaskUpdateSchema(BaseModel):
@@ -59,6 +60,7 @@ class AgentTaskOutSchema(BaseSchema):
     creation_date: Optional[Any] = None
     updation_date: Optional[Any] = None
     artifacts: Optional[List[AgentArtifactOutSchema]] = Field(None, description='产物列表')
+    case_config: Optional[Any] = Field(None, description='用例生成配置')
 
 
 class AgentTaskPageSchema(BaseSchema):

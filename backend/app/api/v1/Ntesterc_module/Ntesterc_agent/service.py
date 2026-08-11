@@ -95,6 +95,7 @@ class AgentTaskService:
             "trace": task.trace or [], "created_by": task.created_by,
             "creation_date": task.creation_date, "updation_date": task.updation_date,
             "artifacts": [],
+            "case_config": task.case_config,
         }
         if with_artifacts:
             arts = await AgentArtifactCRUD(db).get_by_task(task.id)

@@ -34,6 +34,7 @@ class AgentTaskModel(Base):
     cost = Column(Numeric(10, 2), nullable=False, default=0, comment='成本(元)')
     trace = Column(JSON, nullable=True, comment='执行轨迹 steps 数组')
     artifacts = Column(JSON, nullable=True, comment='产物索引 [{kind,id,version,status}]')
+    case_config = Column(JSON, nullable=True, comment='用例生成配置 {types, extra_requirements, step_generation, case_count}')
 
     def __repr__(self):
         return f"<AgentTask(id={self.__dict__.get('id')}, name='{self.__dict__.get('name')}', status='{self.__dict__.get('status')}')>"

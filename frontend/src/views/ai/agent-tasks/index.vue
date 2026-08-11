@@ -134,6 +134,43 @@
           </el-select>
           <div class="form-tip">需求分析/用例生成/评审 Agent 将使用所选模型配置</div>
         </el-form-item>
+        <el-divider content-position="left">用例生成配置</el-divider>
+        <el-form-item label="用例类型">
+          <div class="case-type-wrap">
+            <div v-for="g in caseTypeGroups" :key="g.key" class="type-group">
+              <div class="type-group-head">
+                <el-checkbox :model-value="isGroupAll(g.key)" :indeterminate="isGroupPartial(g.key)"
+                             @change="toggleGroup(g.key, $event)">{{ g.label }}</el-checkbox>
+              </div>
+              <el-checkbox-group v-model="caseConfig.types[g.key]" class="type-items">
+                <el-checkbox v-for="opt in g.options" :key="opt.value" :value="opt.value" size="small">
+                  {{ opt.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="更多要求">
+          <el-input v-model="caseConfig.extra_requirements" type="textarea" :rows="2"
+                    placeholder="补充用例生成要求，如：覆盖所有枚举值、响应时间小于 200ms、需要幂等性验证等" />
+        </el-form-item>
+        <el-form-item label="高级设置">
+          <div class="adv-settings">
+            <div class="adv-row">
+              <el-switch v-model="caseConfig.step_generation" />
+              <span>分步生成（先逐接口生成测试点，确认后再批量生成用例）</span>
+            </div>
+            <div class="adv-row">
+              <span class="adv-label">用例数量</span>
+              <el-select v-model="caseConfig.case_count" style="width: 200px">
+                <el-option label="自动（按接口复杂度）" value="auto" />
+                <el-option label="10 条" :value="10" />
+                <el-option label="20 条" :value="20" />
+                <el-option label="50 条" :value="50" />
+              </el-select>
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取 消</el-button>
@@ -339,6 +376,64 @@ const statusLabel = (s: string) => {
 const createVisible = ref(false);
 const creating = ref(false);
 const createFormRef = ref();
+/* 用例生成配置：类型分组（参照 AI 生成单接口用例） */
+const caseTypeGroups = [
+  { key: 'positive', label: '正向', options: [
+    { value: 'required_fields', label: '仅传必要字段' },
+    { value: 'semantic_valid', label: '语义合法' },
+    { value: 'enum_combo', label: '覆盖枚举组合' },
+    { value: 'other_positive', label: '其他正向' },
+  ]},
+  { key: 'negative', label: '负向', options: [
+    { value: 'invalid_value', label: '无效值' },
+    { value: 'missing_required', label: '缺失必填字段' },
+    { value: 'format_error', label: '格式错误' },
+    { value: 'type_error', label: '类型错误' },
+    { value: 'semantic_invalid', label: '语义非法' },
+    { value: 'other_negative', label: '其他负向' },
+  ]},
+  { key: 'boundary', label: '边界值', options: [
+    { value: 'extreme_max_min', label: '极大值/极小值' },
+    { value: 'beyond_boundary', label: '超出边界' },
+    { value: 'null_zero_empty', label: 'Null/零值/空值' },
+    { value: 'string_length', label: '字符串过长/过短' },
+  ]},
+  { key: 'security', label: '安全性', options: [
+    { value: 'auth_control', label: '鉴权控制' },
+    { value: 'sql_injection', label: 'SQL注入' },
+    { value: 'fuzz_input', label: '模糊输入' },
+    { value: 'xss_injection', label: 'XSS注入' },
+    { value: 'command_injection', label: '命令行注入' },
+    { value: 'json_injection', label: 'JSON注入' },
+    { value: 'nosql_injection', label: 'NoSQL注入' },
+  ]},
+];
+
+const caseConfig = reactive({
+  types: {
+    positive: ['required_fields', 'semantic_valid', 'enum_combo', 'other_positive'],
+    negative: ['invalid_value', 'missing_required', 'format_error', 'type_error', 'semantic_invalid', 'other_negative'],
+    boundary: ['extreme_max_min', 'beyond_boundary', 'null_zero_empty', 'string_length'],
+    security: ['auth_control', 'sql_injection', 'fuzz_input', 'xss_injection', 'command_injection', 'json_injection', 'nosql_injection'],
+  },
+  extra_requirements: '',
+  step_generation: true,
+  case_count: 'auto' as string | number,
+});
+
+const isGroupAll = (key: string) => {
+  const g = caseTypeGroups.find((x: any) => x.key === key)!;
+  return caseConfig.types[key].length === g.options.length;
+};
+const isGroupPartial = (key: string) => {
+  const g = caseTypeGroups.find((x: any) => x.key === key)!;
+  return caseConfig.types[key].length > 0 && caseConfig.types[key].length < g.options.length;
+};
+const toggleGroup = (key: string, checked: boolean | string | number) => {
+  const g = caseTypeGroups.find((x: any) => x.key === key)!;
+  caseConfig.types[key] = checked ? g.options.map((o: any) => o.value) : [];
+};
+
 const createForm = reactive({
   name: '', pipeline_type: 'api', project_id: null as number | null,
   api_service_id: null as number | null, env_name: '',
@@ -427,6 +522,12 @@ const submitCreate = async () => {
   try {
     const res: any = await api.createTask({
       ...createForm,
+      case_config: {
+        types: caseConfig.types,
+        extra_requirements: caseConfig.extra_requirements,
+        step_generation: caseConfig.step_generation,
+        case_count: caseConfig.case_count,
+      },
     });
     if (res.code === 200) {
       ElMessage.success('任务创建成功，流水线已启动');
@@ -655,6 +756,16 @@ onBeforeUnmount(() => { stopPolling(); stopListPolling(); });
     font-family: Consolas, monospace; font-size: 11px; background: var(--el-fill-color-lighter);
     color: var(--el-text-color-secondary); padding: 1px 7px; border-radius: 3px; margin-left: 6px;
   }
+  .case-type-wrap { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+  .type-group {
+    border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 10px 12px;
+    background: var(--el-bg-color);
+  }
+  .type-group-head { margin-bottom: 6px; }
+  .type-items { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+  .adv-settings { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+  .adv-row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--el-text-color-regular); }
+  .adv-label { width: 70px; color: var(--el-text-color-secondary); }
   .review-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 8px; margin-bottom: 14px;

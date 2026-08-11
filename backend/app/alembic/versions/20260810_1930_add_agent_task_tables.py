@@ -44,6 +44,7 @@ def upgrade() -> None:
         comment='AI 测试任务表'
     )
     op.create_index('idx_agent_task_status', 'agent_task', ['status'])
+    op.add_column('agent_task', sa.Column('case_config', mysql.JSON(), nullable=True, comment='用例生成配置'))
     op.create_index('idx_agent_task_created', 'agent_task', ['creation_date'])
 
     op.create_table(
