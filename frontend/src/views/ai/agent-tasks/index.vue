@@ -308,7 +308,23 @@ const loadList = async () => {
     ElMessage.error(e?.message || '加载任务列表失败');
   } finally {
     loading.value = false;
+    syncListPolling();
   }
+};
+
+/* 列表自动轮询：存在进行中/待确认任务时每 5 秒刷新一次状态 */
+let listPollTimer: any = null;
+const syncListPolling = () => {
+  const hasRunning = tableData.value.some((r: any) => RUNNING_STATES.includes(r.status));
+  if (hasRunning && !listPollTimer) {
+    listPollTimer = setInterval(loadList, 5000);
+  } else if (!hasRunning && listPollTimer) {
+    clearInterval(listPollTimer);
+    listPollTimer = null;
+  }
+};
+const stopListPolling = () => {
+  if (listPollTimer) { clearInterval(listPollTimer); listPollTimer = null; }
 };
 
 const handleQuery = () => { queryForm.page = 1; loadList(); };
@@ -553,14 +569,14 @@ const handleConfirm = async () => {
   acting.value = true;
   try {
     const res: any = await api.confirmTask(currentDetailId.value);
-    if (res.code === 200) { ElMessage.success('已确认，执行 Agent 开始运行'); loadDetail(currentDetailId.value); }
+    if (res.code === 200) { ElMessage.success('已确认，执行 Agent 开始运行'); loadDetail(currentDetailId.value); loadList(); }
   } catch (e: any) { ElMessage.error(e?.message || '操作失败'); } finally { acting.value = false; }
 };
 const handleReject = async () => {
   acting.value = true;
   try {
     const res: any = await api.rejectTask(currentDetailId.value);
-    if (res.code === 200) { ElMessage.success('已驳回，用例生成 Agent 重新生成'); loadDetail(currentDetailId.value); }
+    if (res.code === 200) { ElMessage.success('已驳回，用例生成 Agent 重新生成'); loadDetail(currentDetailId.value); loadList(); }
   } catch (e: any) { ElMessage.error(e?.message || '操作失败'); } finally { acting.value = false; }
 };
 const handleRerun = async (row: any) => {
@@ -579,7 +595,7 @@ const handleDelete = async (row: any) => {
 };
 
 onMounted(() => { loadList(); loadProjects(); loadLLMConfigs(); });
-onBeforeUnmount(() => { stopPolling(); });
+onBeforeUnmount(() => { stopPolling(); stopListPolling(); });
 </script>
 
 <style scoped lang="scss">
