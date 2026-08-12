@@ -178,13 +178,19 @@ class ForwardHandler:
             peer = client_sock.getpeername()
             if not port_listening(BACKEND_PORT):
                 with _stop_lock:
-                    log(f"request arrived from {peer}, ensuring services...")
-                    if not ensure_services():
-                        try:
-                            client_sock.sendall(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
-                        except OSError:
-                            pass
-                        return
+                    log(f"request arrived from {peer}, services cold-starting...")
+                    # 立即返回'启动中'页面（浏览器自动刷新），后台异步拉起服务
+                    try:
+                        page = ("<html><head><meta http-equiv=\"refresh\" content=\"5\"><meta charset=\"utf-8\"></head>"
+                                "<body style=\"font-family:sans-serif;text-align:center;padding-top:15vh;background:#f5f7fa;color:#333;\">"
+                                "<h2>GeniusQA 服务启动中...</h2>"
+                                "<p style=\"color:#888;\">按需服务正在拉起（MySQL / Redis / 后端），约 10-60 秒，页面将自动刷新。</p>"
+                                "</body></html>").encode('utf-8')
+                        client_sock.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + str(len(page)).encode() + b"\r\nConnection: close\r\n\r\n" + page)
+                    except OSError:
+                        pass
+                    threading.Thread(target=ensure_services, daemon=True).start()
+                    return
             _last_activity = time.time()
             upstream = socket.create_connection(("127.0.0.1", BACKEND_PORT), timeout=10)
             client_sock.settimeout(0.5)
