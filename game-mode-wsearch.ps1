@@ -40,7 +40,11 @@ function Write-Log($msg) {
 
 # 避免重复运行（若已有实例则退出）
 $existing = Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-    Where-Object { $_.CommandLine -match '-File\s+.*game-mode-wsearch' -and $_.ProcessId -ne $PID }
+    Where-Object {
+        $_.CommandLine -match 'powershell\.exe.*-File\s+\S*game-mode-wsearch\.ps1' -and
+        $_.CommandLine -notmatch '\-Command' -and
+        $_.ProcessId -ne $PID
+    }
 if ($existing) { Write-Log '已有实例运行，本实例退出'; exit 0 }
 
 Write-Log '=== 游戏模式守护启动 ==='
