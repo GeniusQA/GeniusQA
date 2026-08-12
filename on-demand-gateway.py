@@ -175,9 +175,10 @@ class ForwardHandler:
     def handle(self, client_sock):
         global _last_activity
         try:
+            peer = client_sock.getpeername()
             if not port_listening(BACKEND_PORT):
                 with _stop_lock:
-                    log("request arrived, ensuring services...")
+                    log(f"request arrived from {peer}, ensuring services...")
                     if not ensure_services():
                         try:
                             client_sock.sendall(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
