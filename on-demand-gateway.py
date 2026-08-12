@@ -35,6 +35,8 @@ VENV_PYTHON = BACKEND_DIR / ".venv" / "Scripts" / "pythonw.exe"
 GUARD_SCRIPT = BACKEND_DIR / "guard_loop.py"
 
 MYSQL_SERVICE = "MySQL84"
+# Windows 静默：子进程不弹控制台窗口
+_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 REDIS_SERVICE = "Redis"
 
 
@@ -59,7 +61,7 @@ def port_listening(port: int) -> bool:
 
 def run_cmd(args, timeout=30):
     try:
-        return subprocess.run(args, capture_output=True, timeout=timeout)
+        return subprocess.run(args, capture_output=True, timeout=timeout, creationflags=_NO_WINDOW)
     except Exception as e:
         log(f"cmd error {args} -> {e}")
         return None
@@ -94,7 +96,7 @@ def _pids_by_cmdline():
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and ($_.CommandLine -match 'guard_loop|run_portable') } | Select-Object -ExpandProperty ProcessId"],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW)
         pids = [int(x.strip()) for x in out.stdout.split() if x.strip().isdigit()]
         return pids
     except Exception:
@@ -139,7 +141,7 @@ def stop_backend() -> None:
     for pid in pids:
         try:
             subprocess.run(["taskkill", "/F", "/PID", str(pid)],
-                           capture_output=True, timeout=15)
+                           capture_output=True, timeout=15, creationflags=_NO_WINDOW)
             log(f"backend process {pid} stopped")
         except Exception as e:
             log(f"stop backend {pid} error: {e}")
