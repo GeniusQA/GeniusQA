@@ -2930,6 +2930,7 @@ class ApiAutomationService:
         response_ctx: Optional[Dict[str, Any]] = None,
         code_override: Optional[str] = None,
         language_override: Optional[str] = None,
+        mode_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         from .script_runtime import normalize_language, run_script_async
 
@@ -2942,6 +2943,7 @@ class ApiAutomationService:
         req_snap = dict(request_ctx) if isinstance(request_ctx, dict) else None
         run_res = await run_script_async(
             code,
+            mode=mode_override or op.get("exec_mode") or None,
             language=language,
             session_vars=session_vars,
             env_vars=env_vars,
@@ -3021,6 +3023,7 @@ class ApiAutomationService:
             response_ctx=response_ctx,
             code_override=extra_prefix + (row.code or ""),
             language_override=language,
+            mode_override=op.get("exec_mode") or getattr(row, "exec_mode", None) or None,
         )
         if result.get("status") == 1 and op.get("result_var"):
             await ApiAutomationService._pre_set_var(
@@ -4106,6 +4109,7 @@ class ApiAutomationService:
                         )
                         run_res = await run_script_async(
                             str(script),
+                            mode=op.get("exec_mode") or None,
                             language=language,
                             session_vars=session_vars,
                             env_vars=env_vars,
@@ -5651,6 +5655,18 @@ class ApiAutomationService:
             await db.rollback()
 
     @staticmethod
+    async def _ensure_ntest_script_exec_mode_column(db: AsyncSession) -> None:
+        """兼容旧库：缺少 exec_mode 列时自动补齐。"""
+        try:
+            await db.execute(text(
+                "ALTER TABLE api_automation_ntest_scripts "
+                "ADD COLUMN exec_mode VARCHAR(16) NOT NULL DEFAULT 'sandbox'"
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
     async def get_ntest_scripts(db: AsyncSession, api_service_id: int, user_id: int) -> List[Dict]:
         """查询指定服务下的公共脚本列表（仅返回未软删除的记录）"""
         from .model import NtestScriptModel
@@ -5668,6 +5684,7 @@ class ApiAutomationService:
                 "description": r.description,
                 "code": r.code,
                 "language": getattr(r, "language", None) or "python",
+                "exec_mode": getattr(r, "exec_mode", None) or "sandbox",
                 "api_service_id": r.api_service_id,
             }
             for r in rows
@@ -5679,6 +5696,7 @@ class ApiAutomationService:
         from .model import NtestScriptModel
         from .script_runtime import normalize_language
         await ApiAutomationService._ensure_ntest_script_language_column(db)
+        await ApiAutomationService._ensure_ntest_script_exec_mode_column(db)
         name = (body.get("name") or "").strip()
         if not name:
             raise ValueError("脚本名称不能为空")
@@ -5691,6 +5709,7 @@ class ApiAutomationService:
             description=body.get("description") or "",
             code=body.get("code") or "",
             language=language,
+            exec_mode=body.get("exec_mode") or "sandbox",
             api_service_id=int(api_service_id),
             created_by=user_id,
             enabled_flag=1,
@@ -5703,6 +5722,7 @@ class ApiAutomationService:
         """编辑公共脚本"""
         from .script_runtime import normalize_language
         await ApiAutomationService._ensure_ntest_script_language_column(db)
+        await ApiAutomationService._ensure_ntest_script_exec_mode_column(db)
         name = (body.get("name") or "").strip()
         if "name" in body and not name:
             raise ValueError("脚本名称不能为空")
@@ -5715,6 +5735,8 @@ class ApiAutomationService:
             values["code"] = body["code"] or ""
         if "language" in body:
             values["language"] = normalize_language(body.get("language") or "python")
+        if "exec_mode" in body:
+            values["exec_mode"] = body.get("exec_mode") or "sandbox"
         from .model import NtestScriptModel
         await db.execute(
             update(NtestScriptModel)

@@ -283,7 +283,7 @@ const runValidate = async () => {
   }
   validating.value = true
   try {
-    const res: any = await useApiAutomationApi().script_validate({ code, language: form.language || 'python', use_ai: true })
+    const res: any = await useApiAutomationApi().script_validate({ code, language: form.language, exec_mode: execMode.value, use_ai: true })
     if (res.code === 200) {
       validateResult.value = res.data
     } else {
@@ -304,7 +304,7 @@ const form = ref({
   name: '',
   description: '',
   code: '',
-  language: 'python' as 'python' | 'javascript',
+  language: 'python',
 })
 
 // Detail / fullscreen
@@ -390,7 +390,7 @@ async function loadScripts() {
 
 function openAdd() {
   isEdit.value = false
-  form.value = { id: undefined, name: '', description: '', code: '', language: 'python' }
+  form.value = { id: undefined, name: '', description: '', code: '', language: 'python', exec_mode: 'sandbox'}
   validateResult.value = null
   dialogVisible.value = true
 }
@@ -402,7 +402,7 @@ function openEdit(row: any) {
     name: row.name,
     description: row.description || '',
     code: row.code || '',
-    language: normalizeLang(row.language),
+    language: row.language || 'python',
   }
   dialogVisible.value = true
 }
@@ -422,7 +422,8 @@ async function saveDetail() {
       name: detailScript.value.name,
       description: detailScript.value.description,
       code: detailScript.value.code,
-      language: normalizeLang(detailScript.value.language),
+      language: detailScript.value.language,
+      exec_mode: execMode.value,
     })
     ElMessage.success('保存成功')
     await loadScripts()
@@ -448,6 +449,7 @@ async function submitForm() {
         description: form.value.description,
         code: form.value.code,
         language: form.value.language,
+        exec_mode: execMode.value,
       })
       ElMessage.success('编辑成功')
     } else {
@@ -456,6 +458,7 @@ async function submitForm() {
         description: form.value.description,
         code: form.value.code,
         language: form.value.language,
+        exec_mode: execMode.value,
         api_service_id: props.serviceId,
       })
       ElMessage.success('添加成功')
@@ -565,7 +568,7 @@ function parseArgName(raw: string): string {
 }
 
 
-function parseFunctions(code: string, language: any = 'python'): { name: string; args: string; doc: string }[] {
+function parseFunctions(code: string, language: string) {
   const funcs: { name: string; args: string; doc: string }[] = []
   if (!code) return funcs
   if (normalizeLang(language) === 'javascript') {

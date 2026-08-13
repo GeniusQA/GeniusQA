@@ -214,4 +214,5 @@ class NtestScriptModel(Base):
     description = Column(Text, nullable=True, comment='脚本描述')
     code = Column(Text, nullable=True, comment='脚本代码')
     language = Column(String(32), nullable=False, default='python', comment='脚本语言：python/javascript')
+    exec_mode = Column(String(16), nullable=False, default='sandbox', comment='执行模式：sandbox/native')
     api_service_id = Column(BigInteger, nullable=False, comment='所属服务ID')

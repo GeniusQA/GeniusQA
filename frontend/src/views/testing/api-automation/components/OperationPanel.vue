@@ -103,6 +103,12 @@
                     <el-option label="Python" value="python" />
                     <el-option label="JavaScript" value="javascript" />
                   </el-select>
+
+                  <el-radio-group v-if="(item.language || 'python') !== 'javascript'" :model-value="item.exec_mode || 'sandbox'" size="small" style="margin-left:8px" @update:model-value="(v: string) => item.exec_mode = v">
+                    <el-radio-button value="sandbox">沙盒</el-radio-button>
+                    <el-radio-button value="native">原生</el-radio-button>
+                  </el-radio-group>
+                  <el-tag v-else size="small" type="warning" effect="plain" style="margin-left:8px">JS 仅原生(Node)</el-tag>
                   <span class="op-code-hint">可用 ntest / pm / request{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
@@ -182,6 +188,14 @@
               <div class="op-row">
                 <label class="op-label">参数</label>
                 <el-input v-model="item.func_params" placeholder='{"key":"value"}' size="small" style="flex:1;font-family:monospace" />
+              </div>
+              <div class="op-row">
+                <label class="op-label">执行模式</label>
+                <el-radio-group :model-value="item.exec_mode || 'sandbox'" size="small" @update:model-value="(v: string) => item.exec_mode = v">
+                  <el-radio-button value="sandbox">沙盒</el-radio-button>
+                  <el-radio-button value="native">原生</el-radio-button>
+                </el-radio-group>
+                <span style="font-size:11px;color:var(--el-text-color-placeholder)">脚本库自身模式可被此处覆盖</span>
               </div>
             </template>
           </template>
@@ -264,6 +278,12 @@
                     <el-option label="Python" value="python" />
                     <el-option label="JavaScript" value="javascript" />
                   </el-select>
+
+                  <el-radio-group v-if="(item.language || 'python') !== 'javascript'" :model-value="item.exec_mode || 'sandbox'" size="small" style="margin-left:8px" @update:model-value="(v: string) => item.exec_mode = v">
+                    <el-radio-button value="sandbox">沙盒</el-radio-button>
+                    <el-radio-button value="native">原生</el-radio-button>
+                  </el-radio-group>
+                  <el-tag v-else size="small" type="warning" effect="plain" style="margin-left:8px">JS 仅原生(Node)</el-tag>
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
@@ -313,6 +333,14 @@
               <div class="op-row">
                 <label class="op-label">参数</label>
                 <el-input v-model="item.func_params" placeholder='{"key":"value"}' size="small" style="flex:1;font-family:monospace" />
+              </div>
+              <div class="op-row">
+                <label class="op-label">执行模式</label>
+                <el-radio-group :model-value="item.exec_mode || 'sandbox'" size="small" @update:model-value="(v: string) => item.exec_mode = v">
+                  <el-radio-button value="sandbox">沙盒</el-radio-button>
+                  <el-radio-button value="native">原生</el-radio-button>
+                </el-radio-group>
+                <span style="font-size:11px;color:var(--el-text-color-placeholder)">脚本库自身模式可被此处覆盖</span>
               </div>
             </template>
 
@@ -418,6 +446,12 @@
                     <el-option label="Python" value="python" />
                     <el-option label="JavaScript" value="javascript" />
                   </el-select>
+
+                  <el-radio-group v-if="(item.language || 'python') !== 'javascript'" :model-value="item.exec_mode || 'sandbox'" size="small" style="margin-left:8px" @update:model-value="(v: string) => item.exec_mode = v">
+                    <el-radio-button value="sandbox">沙盒</el-radio-button>
+                    <el-radio-button value="native">原生</el-radio-button>
+                  </el-radio-group>
+                  <el-tag v-else size="small" type="warning" effect="plain" style="margin-left:8px">JS 仅原生(Node)</el-tag>
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}；失败请 throw / assert</span>
                 </div>
                 <textarea
@@ -643,24 +677,24 @@ const defaultItem = (type: number): any => {
     if (type === 1) return { ...base, title: '', env_id: null, api_id: null }
     if (type === 2) return { ...base, name: '', env_type: null, value: '' }
     if (type === 3) return { ...base, wait_time: 1 }
-    if (type === 4) return { ...base, code: '', language: 'python', code_map: {} }
+    if (type === 4) return { ...base, code: '', language: 'python', code_map: {}, exec_mode: 'sandbox' }
     if (type === 5) return { ...base, db_id: null, db_name: '', result_var: '', sql: '' }
-    if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '' }
+    if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '', exec_mode: 'sandbox' }
   }
   if (props.mode === 'after') {
     if (type === 1) return { ...base, res_type: null, name: '', env_type: null, value: '' }
     if (type === 2) return { ...base, wait_time: 1 }
     if (type === 3) return { ...base, assert_name: '', rules: [] }
     if (type === 4) return { ...base, db_id: null, db_name: '', result_var: '', sql: '' }
-    if (type === 5) return { ...base, code: '', language: 'python', code_map: {} }
-    if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '' }
+    if (type === 5) return { ...base, code: '', language: 'python', code_map: {}, exec_mode: 'sandbox' }
+    if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '', exec_mode: 'sandbox' }
     if (type === 7) return { ...base, import_title: '', env_id: null, api_id: null }
   }
   if (props.mode === 'assert') {
     if (type === 1) return { ...base, assert_name: '', rules: [] }
     if (type === 2) return { ...base, ops_db_table: '', ops_db_where: '' }
     if (type === 4) return { ...base, local_db: null, local_db_table: '', local_db_where: '', local_db_assert: [] }
-    if (type === 5) return { ...base, custom_name: '', custom_script: '', language: 'python', code_map: {} }
+    if (type === 5) return { ...base, custom_name: '', custom_script: '', language: 'python', code_map: {}, exec_mode: 'sandbox' }
   }
   return base
 }
