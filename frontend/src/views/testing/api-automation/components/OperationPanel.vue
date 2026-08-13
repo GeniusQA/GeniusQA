@@ -112,20 +112,20 @@
                   spellcheck="false"
                 />
                 <div class="op-code-validate">
-                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                  <el-button type="primary" link size="small" :loading="vs(item)?.validating" @click="validateOpScript(item)">
                     <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
                   </el-button>
-                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
-                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
-                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                  <div v-if="vs(item)?.result" class="op-cv-panel" :class="vs(item)?.result.passed ? 'ok' : 'fail'">
+                    <el-tag :type="vs(item)?.result.passed ? 'success' : 'danger'" size="small">
+                      {{ vs(item)?.result.passed ? '校验通过' : '校验未通过' }}
                     </el-tag>
-                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
-                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
-                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
-                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
-                      AI: {{ item._validateResult.ai_review.summary }}
+                    <div v-if="vs(item)?.result.syntax_ok === false" class="op-cv-line">{{ vs(item)?.result.syntax_error }}</div>
+                    <div v-for="(s, i) in vs(item)?.result.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="vs(item)?.result.run_ok === false" class="op-cv-line">试运行失败: {{ vs(item)?.result.run_error }}</div>
+                    <div v-if="vs(item)?.result.ai_review && vs(item)?.result.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ vs(item)?.result.ai_review.summary }}
                     </div>
-                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                    <div v-for="(s, i) in (vs(item)?.result.ai_review && vs(item)?.result.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
                   </div>
                 </div>
               </div>
@@ -273,20 +273,20 @@
                   spellcheck="false"
                 />
                 <div class="op-code-validate">
-                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                  <el-button type="primary" link size="small" :loading="vs(item)?.validating" @click="validateOpScript(item)">
                     <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
                   </el-button>
-                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
-                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
-                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                  <div v-if="vs(item)?.result" class="op-cv-panel" :class="vs(item)?.result.passed ? 'ok' : 'fail'">
+                    <el-tag :type="vs(item)?.result.passed ? 'success' : 'danger'" size="small">
+                      {{ vs(item)?.result.passed ? '校验通过' : '校验未通过' }}
                     </el-tag>
-                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
-                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
-                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
-                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
-                      AI: {{ item._validateResult.ai_review.summary }}
+                    <div v-if="vs(item)?.result.syntax_ok === false" class="op-cv-line">{{ vs(item)?.result.syntax_error }}</div>
+                    <div v-for="(s, i) in vs(item)?.result.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="vs(item)?.result.run_ok === false" class="op-cv-line">试运行失败: {{ vs(item)?.result.run_error }}</div>
+                    <div v-if="vs(item)?.result.ai_review && vs(item)?.result.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ vs(item)?.result.ai_review.summary }}
                     </div>
-                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                    <div v-for="(s, i) in (vs(item)?.result.ai_review && vs(item)?.result.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
                   </div>
                 </div>
               </div>
@@ -429,20 +429,20 @@
                   spellcheck="false"
                 />
                 <div class="op-code-validate">
-                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                  <el-button type="primary" link size="small" :loading="vs(item)?.validating" @click="validateOpScript(item)">
                     <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
                   </el-button>
-                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
-                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
-                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                  <div v-if="vs(item)?.result" class="op-cv-panel" :class="vs(item)?.result.passed ? 'ok' : 'fail'">
+                    <el-tag :type="vs(item)?.result.passed ? 'success' : 'danger'" size="small">
+                      {{ vs(item)?.result.passed ? '校验通过' : '校验未通过' }}
                     </el-tag>
-                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
-                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
-                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
-                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
-                      AI: {{ item._validateResult.ai_review.summary }}
+                    <div v-if="vs(item)?.result.syntax_ok === false" class="op-cv-line">{{ vs(item)?.result.syntax_error }}</div>
+                    <div v-for="(s, i) in vs(item)?.result.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="vs(item)?.result.run_ok === false" class="op-cv-line">试运行失败: {{ vs(item)?.result.run_error }}</div>
+                    <div v-if="vs(item)?.result.ai_review && vs(item)?.result.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ vs(item)?.result.ai_review.summary }}
                     </div>
-                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                    <div v-for="(s, i) in (vs(item)?.result.ai_review && vs(item)?.result.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
                   </div>
                 </div>
               </div>
@@ -473,7 +473,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import {
   Delete,
   Connection,
@@ -490,20 +490,21 @@ import AssertEditor from './AssertEditor.vue'
 import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation'
 
 // ---- Props ----
+const validateStates = reactive(new Map<any, any>())
+const vs = (item: any) => validateStates.get(item)
+
 const validateOpScript = async (item: any) => {
   const code = item.code || ''
   if (!code.trim()) {
-    item._validateResult = { passed: false, syntax_ok: false, syntax_error: '脚本内容为空', spec_issues: [], run_ok: null, ai_review: null }
+    validateStates.set(item, { validating: false, result: { passed: false, syntax_ok: false, syntax_error: '脚本内容为空', spec_issues: [], run_ok: null, ai_review: null } })
     return
   }
-  item._validating = true
+  validateStates.set(item, { validating: true })
   try {
     const res: any = await useApiAutomationApi().script_validate({ code, language: item.language || 'python', use_ai: true })
-    item._validateResult = res.code === 200 ? res.data : { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [res.message || '校验失败'], run_ok: null, ai_review: null }
+    validateStates.set(item, { validating: false, result: res.code === 200 ? res.data : { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [res.message || '校验失败'], run_ok: null, ai_review: null } })
   } catch (e: any) {
-    item._validateResult = { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [e?.message || '校验接口调用失败'], run_ok: null, ai_review: null }
-  } finally {
-    item._validating = false
+    validateStates.set(item, { validating: false, result: { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [e?.message || '校验接口调用失败'], run_ok: null, ai_review: null } })
   }
 }
 
