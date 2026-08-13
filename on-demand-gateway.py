@@ -25,7 +25,7 @@ LISTEN_PORT = 8101
 BACKEND_PORT = 8100
 MYSQL_PORT = 3306
 REDIS_PORT = 6379
-IDLE_MINUTES = int(os.environ.get("GATEWAY_IDLE_MINUTES", "1"))   # 空闲多少分钟后自动停止（默认 1 分钟，可环境变量覆盖）
+IDLE_MINUTES = int(os.environ.get("GATEWAY_IDLE_MINUTES", "3"))   # 空闲停止（配合前端心跳：页面开着=保持，关闭后3分钟停）   # 空闲多少分钟后自动停止（默认 1 分钟，可环境变量覆盖）
 STARTUP_TIMEOUT = 50       # 服务拉起就绪总超时（秒）
 HEALTH_INTERVAL = 30       # 空闲检查间隔（秒）
 LOG_FILE = Path(r"D:\GeniusQA\logs\gateway.log")

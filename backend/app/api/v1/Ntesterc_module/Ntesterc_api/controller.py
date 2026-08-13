@@ -1282,3 +1282,8 @@ async def validate_script_endpoint(
         }, message="校验完成")
     data = await validate_script(db, code, language, use_ai)
     return success_response(data=data, message="校验完成")
+
+
+@router.get("/healthz", summary="心跳接口（无鉴权，供前端保持按需服务存活）")
+async def healthz():
+    return success_response(data={"status": "ok"}, message="ok")

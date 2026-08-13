@@ -55,6 +55,27 @@ const getVersion = computed(() => {
 const getGlobalComponentSize = computed(() => {
   return other.globalComponentSize();
 });
+// ── 按需服务心跳：页面可见时每 30s ping /healthz（经网关），隐藏/关闭时停止 ──
+let heartbeatTimer: any = null;
+const startHeartbeat = () => {
+  stopHeartbeat();
+  const ping = () => {
+    try {
+      // 相对路径：经域名访问时走网关，保持按需服务存活；静默失败不影响页面
+      fetch('/api/v1/Ntesterc_api/healthz', { cache: 'no-store' }).catch(() => {});
+    } catch { /* ignore */ }
+  };
+  ping();
+  heartbeatTimer = setInterval(ping, 30000);
+};
+const stopHeartbeat = () => {
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+};
+const onVisibility = () => {
+  if (document.visibilityState === 'visible') startHeartbeat();
+  else stopHeartbeat();
+};
+
 // 设置初始化，防止刷新时恢复默认
 onBeforeMount(() => {
   // 设置批量第三方 icon 图标
@@ -71,7 +92,20 @@ onMounted(() => {
     });
     // 获取缓存中的布局配置
     if (Local.get('themeConfig')) {
-      storesThemeConfig.setThemeConfig({ themeConfig: Local.get('themeConfig') });
+      const savedConfig = Local.get('themeConfig');
+      // 兼容旧拼写 wartermark -> watermark（v2.0.3 修正）
+      if (savedConfig && ('isWartermark' in savedConfig || 'wartermarkText' in savedConfig)) {
+        if ('isWartermark' in savedConfig) {
+          savedConfig.isWatermark = savedConfig.isWartermark;
+          delete savedConfig.isWartermark;
+        }
+        if ('wartermarkText' in savedConfig) {
+          savedConfig.watermarkText = savedConfig.wartermarkText;
+          delete savedConfig.wartermarkText;
+        }
+        Local.set('themeConfig', savedConfig);
+      }
+      storesThemeConfig.setThemeConfig({ themeConfig: savedConfig });
       document.documentElement.style.cssText = Local.get('themeConfigStyle');
     }
     // 获取缓存中的全屏配置
@@ -81,6 +115,14 @@ onMounted(() => {
   });
 });
 // 页面销毁时，关闭监听布局配置/i18n监听
+onMounted(() => {
+  startHeartbeat();
+  document.addEventListener('visibilitychange', onVisibility);
+});
+onUnmounted(() => {
+  stopHeartbeat();
+  document.removeEventListener('visibilitychange', onVisibility);
+});
 onUnmounted(() => {
   mittBus.off('openSettingsDrawer', () => {
   });
