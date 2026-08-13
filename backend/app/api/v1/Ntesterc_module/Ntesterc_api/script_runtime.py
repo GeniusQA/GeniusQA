@@ -542,6 +542,7 @@ global.ntest = {{
   }},
   env(key, defVal) {{
     if (Object.prototype.hasOwnProperty.call(_env, key)) return _env[key];
+    if (Object.prototype.hasOwnProperty.call(_vars, key)) return _vars[key];
     return defVal;
   }},
 }};
