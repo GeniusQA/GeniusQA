@@ -192,8 +192,7 @@
 					<el-input v-model="menuForm.name" placeholder="请输入名称" />
 				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
-					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根目录）">
-						<el-option label="模块（根目录，当前模块）" :value="0" />
+					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根级）">
 						<el-option-group v-if="folderOptions.mods.length" label="模块">
 							<el-option v-for="m in folderOptions.mods" :key="m.id" :label="m.path" :value="m.id" />
 						</el-option-group>
@@ -201,7 +200,7 @@
 							<el-option v-for="d in folderOptions.dirs" :key="d.id" :label="d.path" :value="d.id" />
 						</el-option-group>
 					</el-select>
-					<div style="font-size:11px;color:var(--el-text-color-placeholder);line-height:1.4;margin-top:2px">根目录 = 直接挂在模块下；子目录 = 挂在已有目录下</div>
+
 				</el-form-item>
 			</el-form>
 			<template #footer>
