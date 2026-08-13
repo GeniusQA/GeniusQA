@@ -106,7 +106,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
-                  v-model="item.code"
+                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.environment.set / ntest.set / request' : '# Python：ntest.set / pm.environment.set / request'"
                   spellcheck="false"
@@ -267,7 +267,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
-                  v-model="item.code"
+                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.response.json() / ntest.set' : '# Python：pm.response.json() / ntest.set'"
                   spellcheck="false"
@@ -421,7 +421,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}；失败请 throw / assert</span>
                 </div>
                 <textarea
-                  v-model="item.custom_script"
+                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.custom_script || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.custom_script = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript'
                     ? '// JavaScript：pm.response.json() / ntest.get'
@@ -494,7 +494,7 @@ const validateStates = reactive(new Map<any, any>())
 const vs = (item: any) => validateStates.get(item)
 
 const validateOpScript = async (item: any) => {
-  const code = item.code || ''
+  const code = (item.code ?? item.custom_script) || ''
   if (!code.trim()) {
     validateStates.set(item, { validating: false, result: { passed: false, syntax_ok: false, syntax_error: '脚本内容为空', spec_issues: [], run_ok: null, ai_review: null } })
     return
@@ -622,7 +622,7 @@ const defaultItem = (type: number): any => {
     if (type === 1) return { ...base, title: '', env_id: null, api_id: null }
     if (type === 2) return { ...base, name: '', env_type: null, value: '' }
     if (type === 3) return { ...base, wait_time: 1 }
-    if (type === 4) return { ...base, code: '', language: 'python' }
+    if (type === 4) return { ...base, code: '', language: 'python', code_map: {} }
     if (type === 5) return { ...base, db_id: null, db_name: '', result_var: '', sql: '' }
     if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '' }
   }
@@ -631,7 +631,7 @@ const defaultItem = (type: number): any => {
     if (type === 2) return { ...base, wait_time: 1 }
     if (type === 3) return { ...base, assert_name: '', rules: [] }
     if (type === 4) return { ...base, db_id: null, db_name: '', result_var: '', sql: '' }
-    if (type === 5) return { ...base, code: '', language: 'python' }
+    if (type === 5) return { ...base, code: '', language: 'python', code_map: {} }
     if (type === 6) return { ...base, func_id: null, func_name: '', result_var: '', func_params: '' }
     if (type === 7) return { ...base, import_title: '', env_id: null, api_id: null }
   }
@@ -639,7 +639,7 @@ const defaultItem = (type: number): any => {
     if (type === 1) return { ...base, assert_name: '', rules: [] }
     if (type === 2) return { ...base, ops_db_table: '', ops_db_where: '' }
     if (type === 4) return { ...base, local_db: null, local_db_table: '', local_db_where: '', local_db_assert: [] }
-    if (type === 5) return { ...base, custom_name: '', custom_script: '', language: 'python' }
+    if (type === 5) return { ...base, custom_name: '', custom_script: '', language: 'python', code_map: {} }
   }
   return base
 }
