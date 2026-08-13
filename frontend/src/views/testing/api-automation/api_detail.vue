@@ -1566,11 +1566,10 @@ const confirmSaveAsCase = async () => {
 	margin-bottom: 4px; padding-left: 2px;
 }
 .raw-header-wrap {
-	max-height: 220px;
-	overflow: auto;
 	background: #1e1e1e;
 	border: 1px solid #2d2d2d;
 	border-radius: 6px;
+	overflow: visible;
 }
 .raw-header-table { width: 100%; border-collapse: collapse; }
 .raw-header-table thead { position: sticky; top: 0; z-index: 1; }
@@ -1586,12 +1585,12 @@ const confirmSaveAsCase = async () => {
 	font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
 	font-size: 12px; line-height: 1.55; color: #c9d1d9;
 }
-.res-raw-panel { height: 100%; display: flex; flex-direction: column; background: #1e1e1e; overflow: hidden; }
+.res-raw-panel { height: 100%; display: flex; flex-direction: column; background: #1e1e1e; overflow-y: auto; overflow-x: hidden; }
 .res-raw-toolbar { display: flex; align-items: center; gap: 2px; padding: 6px 12px; background: #252526; border-bottom: 1px solid #3c3c3c; flex-shrink: 0; flex-wrap: wrap; }
 .raw-lang-item { padding: 3px 10px; border-radius: 3px; font-size: 12px; color: #cccccc; cursor: pointer; user-select: none; transition: all .15s; white-space: nowrap; }
 .raw-lang-item:hover { color: #fff; background: #3c3c3c; }
 .raw-lang-item.active { background: #0e639c; color: #fff; }
-.res-raw-editor { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.res-raw-editor { flex: none; min-height: 0; overflow: visible; padding: 12px; }
 .res-raw-code { margin: 0; font-family: 'Consolas','Monaco',monospace; font-size: 12px; color: #d4d4d4; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
 .res-empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #909399; font-size: 13px; }
 .op-pane { height: 100%; display: flex; flex-direction: column; min-height: 0; }
