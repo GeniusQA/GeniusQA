@@ -718,7 +718,27 @@ class ApiAutomationService:
         return base
 
     @staticmethod
-    async def get_common_params(db: AsyncSession, api_service_id: int, user_id: int) -> Dict[str, Any]:
+    async def get_common_params(db: AsyncSession, api_service_id: int, user_id: int, menu_id: Optional[int] = None) -> Dict[str, Any]:
+        await ApiAutomationService._ensure_menu_common_params_column(db)
+        if menu_id:
+            menu = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.id == int(menu_id),
+                        ApiMenuModel.api_service_id == int(api_service_id),
+                    )
+                )
+            ).scalar_one_or_none()
+            if not menu:
+                raise ValueError("目录不存在或无权限")
+            raw = getattr(menu, "common_params", None)
+            if raw:
+                try:
+                    cp = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                except Exception:
+                    cp = {}
+                return ApiAutomationService._normalize_common_params(cp if isinstance(cp, dict) else {})
+            return ApiAutomationService._empty_common_params()
         await ApiAutomationService._ensure_service_common_params_column(db)
         svc = (
             await db.execute(
@@ -734,7 +754,34 @@ class ApiAutomationService:
         return ApiAutomationService._normalize_common_params(getattr(svc, "common_params", None))
 
     @staticmethod
-    async def save_common_params(db: AsyncSession, api_service_id: int, common_params: Any, user_id: int) -> None:
+    async def _ensure_menu_common_params_column(db: AsyncSession) -> None:
+        """兼容旧库：缺少菜单 common_params 列时自动补齐。"""
+        try:
+            await db.execute(text(
+                "ALTER TABLE api_automation_menus ADD COLUMN common_params TEXT NULL"
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
+    async def save_common_params(db: AsyncSession, api_service_id: int, common_params: Any, user_id: int, menu_id: Optional[int] = None) -> None:
+        await ApiAutomationService._ensure_menu_common_params_column(db)
+        normalized = ApiAutomationService._normalize_common_params(common_params)
+        if menu_id:
+            result = await db.execute(
+                update(ApiMenuModel)
+                .where(
+                    ApiMenuModel.id == int(menu_id),
+                    ApiMenuModel.api_service_id == int(api_service_id),
+                )
+                .values(common_params=json.dumps(normalized, ensure_ascii=False), updated_by=user_id)
+            )
+            if not result.rowcount:
+                raise ValueError("目录不存在或无权限")
+            await db.commit()
+            return
+        await ApiAutomationService._ensure_service_common_params_column(db)
         await ApiAutomationService._ensure_service_common_params_column(db)
         normalized = ApiAutomationService._normalize_common_params(common_params)
         result = await db.execute(
@@ -749,6 +796,22 @@ class ApiAutomationService:
         if not result.rowcount:
             raise ValueError("服务不存在或无权限")
         await db.commit()
+
+    @staticmethod
+    def _merge_common_params(service_cp: Dict[str, Any], menu_cp: Dict[str, Any]) -> Dict[str, Any]:
+        """服务级 + 目录级合并：header/cookie/query/body 同名 key 目录覆盖；before/after 拼接；auth 目录优先。"""
+        out = dict(service_cp or {})
+        for k in ("header", "cookie", "query", "body"):
+            merged = ApiAutomationService._merge_kv_lists(
+                (service_cp or {}).get(k), (menu_cp or {}).get(k), cookie=(k == "cookie")
+            )
+            if merged:
+                out[k] = merged
+        out["before"] = list((service_cp or {}).get("before") or []) + list((menu_cp or {}).get("before") or [])
+        out["after"] = list((service_cp or {}).get("after") or []) + list((menu_cp or {}).get("after") or [])
+        if (menu_cp or {}).get("auth"):
+            out["auth"] = menu_cp.get("auth")
+        return out
 
     @staticmethod
     async def _load_common_params_by_api(db: AsyncSession, api_id: Optional[int] = None, api_service_id: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
@@ -775,7 +838,28 @@ class ApiAutomationService:
         ).scalar_one_or_none()
         if not svc:
             return ApiAutomationService._empty_common_params()
-        return ApiAutomationService._normalize_common_params(getattr(svc, "common_params", None))
+        service_cp = ApiAutomationService._normalize_common_params(getattr(svc, "common_params", None))
+        # 目录级（菜单）公共参数：接口所属菜单（api_id 反查）配置优先合并
+        if api_id:
+            await ApiAutomationService._ensure_menu_common_params_column(db)
+            menu_row = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.api_id == int(api_id),
+                        ApiMenuModel.status == 1,
+                    )
+                )
+            ).scalars().first()
+            if menu_row and getattr(menu_row, "common_params", None):
+                try:
+                    menu_cp = json.loads(menu_row.common_params) if isinstance(menu_row.common_params, str) else (menu_row.common_params or {})
+                except Exception:
+                    menu_cp = {}
+                if isinstance(menu_cp, dict):
+                    return ApiAutomationService._merge_common_params(
+                        service_cp, ApiAutomationService._normalize_common_params(menu_cp)
+                    )
+        return service_cp
 
     @staticmethod
     def _kv_item_key(item: Dict[str, Any], *, cookie: bool = False) -> str:

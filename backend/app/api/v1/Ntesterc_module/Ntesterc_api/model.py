@@ -74,6 +74,7 @@ class ApiMenuModel(Base):
     api_id = Column(BigInteger, comment='接口ID')
     api_service_id = Column(BigInteger, nullable=False, comment='服务ID')
     status = Column(Integer, nullable=False, comment='状态')
+    common_params = Column(Text, nullable=True, comment='目录级公共参数 JSON（header/cookie/query/body/before/after/auth）')
 
 
 class ApiResultModel(Base):

@@ -1,13 +1,14 @@
 <template>
 	<el-dialog
 		v-model="visible"
-		title="全局参数"
+		:title="dialogTitle"
 		width="760px"
 		destroy-on-close
 		append-to-body
 		@closed="onClosed"
 	>
-		<div class="common-params-tip">
+		<div class="common-params-tip">{{ curMenuId ? "目录级参数：仅该目录下接口生效（继承服务级全局参数）" : "服务级全局参数：所有接口生效" }}</div>
+					<div class="common-params-tip">
 			对本服务下所有接口生效。发送时自动合并；接口内同名参数优先生效。
 		</div>
 		<el-tabs v-model="activeTab">
@@ -149,7 +150,11 @@ import { get_common_params, save_common_params } from '/@/api/v1/testing/apiAuto
 
 import OperationPanel from './OperationPanel.vue';
 
-const props = defineProps<{ serviceId: number }>();
+const props = defineProps<{
+	serviceId: number | string;
+	menuId?: number | string;
+}>();
+const dialogTitle = ref(props.menuId ? '目录参数' : '全局参数');
 
 const visible = ref(false);
 const saving = ref(false);
@@ -197,7 +202,10 @@ const normalizeList = (list: any[], cookie = false): KvRow[] => {
 		.filter((x) => x.key);
 };
 
-const open = async () => {
+const curMenuId = ref<number | null>(null)
+const open = async (menuId?: number | string) => {
+	curMenuId.value = menuId ? Number(menuId) : (props.menuId ? Number(props.menuId) : null)
+	dialogTitle.value = curMenuId.value ? '目录参数' : '全局参数'
 	if (!props.serviceId) {
 		ElMessage.warning('请先选择服务');
 		return;
@@ -205,7 +213,7 @@ const open = async () => {
 	activeTab.value = 'header';
 	visible.value = true;
 	try {
-		const res: any = await get_common_params({ api_service_id: props.serviceId });
+		const res: any = await get_common_params({ api_service_id: props.serviceId, menu_id: curMenuId.value || undefined });
 		const data = res?.data || {};
 		form.header = normalizeList(data.header);
 		form.cookie = normalizeList(data.cookie || data.cookies, true);
@@ -241,6 +249,7 @@ const save = async () => {
 				});
 		await save_common_params({
 			api_service_id: props.serviceId,
+			menu_id: curMenuId.value || undefined,
 			common_params: {
 				header: pack(form.header),
 				cookie: pack(form.cookie, true),

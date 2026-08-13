@@ -70,7 +70,8 @@ async def get_common_params(
     try:
         body = await body_to_json(request)
         data = await ApiAutomationService.get_common_params(
-            db, int(body["api_service_id"]), current_user_id
+            db, int(body["api_service_id"]), current_user_id,
+            menu_id=int(body["menu_id"]) if body.get("menu_id") else None,
         )
         return success_response(data, message="请求成功")
     except Exception as e:
@@ -91,6 +92,7 @@ async def save_common_params(
             int(body["api_service_id"]),
             body.get("common_params") or {},
             current_user_id,
+            menu_id=int(body["menu_id"]) if body.get("menu_id") else None,
         )
         return success_response({}, message="保存成功")
     except Exception as e:

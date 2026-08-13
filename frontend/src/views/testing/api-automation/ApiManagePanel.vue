@@ -63,6 +63,7 @@
 									<el-dropdown-menu>
 										<el-dropdown-item v-if="data.type===1" command="add_folder">添加子目录</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===1" command="add_api">添加接口</el-dropdown-item>
+										<el-dropdown-item v-if="data.type===1" command="menu_params">目录参数</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===2" command="copy">复制接口</el-dropdown-item>
 										<el-dropdown-item command="rename">重命名</el-dropdown-item>
 										<el-dropdown-item command="delete" divided>删除</el-dropdown-item>
@@ -460,6 +461,10 @@ const handleAddCommand = (cmd: string) => {
 };
 
 const handleNodeCommand = (cmd: string, data: any) => {
+	if (cmd === 'menu_params') {
+		commonParamsRef.value?.open(data.id)
+		return
+	}
 	if (cmd === 'add_folder') {
 		menuForm.value = { name: '', type: 1, pid: data.id, editId: 0, mode: 'add' };
 		menuDialogTitle.value = '添加子目录';
