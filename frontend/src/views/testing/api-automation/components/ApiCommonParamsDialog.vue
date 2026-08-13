@@ -7,12 +7,12 @@
 		append-to-body
 		@closed="onClosed"
 	>
-		<div class="common-params-tip">{{ curMenuId ? "目录级参数：仅该目录下接口生效（继承服务级全局参数）" : "服务级全局参数：所有接口生效" }}</div>
+		<div class="common-params-tip">{{ curMenuId ? "主要用来对模块内的所有接口进行设置，如：Auth、前后置操作等" : "服务级全局参数：所有接口生效（Header/Cookie/Query/Body）" }}</div>
 					<div class="common-params-tip">
 			对本服务下所有接口生效。发送时自动合并；接口内同名参数优先生效。
 		</div>
 		<el-tabs v-model="activeTab">
-			<el-tab-pane name="header">
+			<el-tab-pane v-if="!curMenuId" name="header">
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.header)" :offset="[10, 2]" type="danger">Header</el-badge>
 				</template>
@@ -26,7 +26,7 @@
 					<el-button type="primary" link size="small" @click="form.header.push(emptyKv())">+ 添加 Header</el-button>
 				</div>
 			</el-tab-pane>
-			<el-tab-pane name="cookie">
+			<el-tab-pane v-if="!curMenuId" name="cookie">
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.cookie)" :offset="[10, 2]" type="danger">Cookie</el-badge>
 				</template>
@@ -41,7 +41,7 @@
 					<el-button type="primary" link size="small" @click="form.cookie.push(emptyCookie())">+ 添加 Cookie</el-button>
 				</div>
 			</el-tab-pane>
-			<el-tab-pane name="query">
+			<el-tab-pane v-if="!curMenuId" name="query">
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.query)" :offset="[10, 2]" type="danger">Query</el-badge>
 				</template>
@@ -55,7 +55,7 @@
 					<el-button type="primary" link size="small" @click="form.query.push(emptyKv())">+ 添加 Query</el-button>
 				</div>
 			</el-tab-pane>
-			<el-tab-pane name="body">
+			<el-tab-pane v-if="!curMenuId" name="body">
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.body)" :offset="[10, 2]" type="danger">Body</el-badge>
 				</template>
@@ -210,7 +210,7 @@ const open = async (menuId?: number | string) => {
 		ElMessage.warning('请先选择服务');
 		return;
 	}
-	activeTab.value = 'header';
+	activeTab.value = curMenuId.value ? 'before' : 'header';
 	visible.value = true;
 	try {
 		const res: any = await get_common_params({ api_service_id: props.serviceId, menu_id: curMenuId.value || undefined });
