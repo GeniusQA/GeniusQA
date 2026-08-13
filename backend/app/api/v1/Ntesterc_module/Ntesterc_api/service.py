@@ -757,6 +757,30 @@ class ApiAutomationService:
         return ApiAutomationService._normalize_common_params(getattr(svc, "common_params", None))
 
     @staticmethod
+    async def _ensure_menu_sort_column(db: AsyncSession) -> None:
+        """兼容旧库：缺少菜单 sort 列时自动补齐。"""
+        try:
+            await db.execute(text("ALTER TABLE api_automation_menus ADD COLUMN sort INT NOT NULL DEFAULT 0"))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
+    async def sort_menu(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
+        """拖拽排序/移动：ids 为同级新顺序（可跨目录——pid 指定新父级）。"""
+        await ApiAutomationService._ensure_menu_sort_column(db)
+        new_pid = int(body.get("pid") if body.get("pid") is not None else 0)
+        ids = body.get("ids") or []
+        for i, item in enumerate(ids):
+            mid = int(item if isinstance(item, (int, str)) else item.get("id"))
+            await db.execute(
+                update(ApiMenuModel)
+                .where(ApiMenuModel.id == mid, ApiMenuModel.enabled_flag == 1)
+                .values(pid=new_pid, sort=i, updated_by=user_id)
+            )
+        await db.commit()
+
+    @staticmethod
     async def _ensure_menu_common_params_column(db: AsyncSession) -> None:
         """兼容旧库：缺少菜单 common_params 列时自动补齐。"""
         try:
@@ -1340,13 +1364,14 @@ class ApiAutomationService:
         ).scalars().all()
         for svc in svc_rows:
             await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
+        await ApiAutomationService._ensure_menu_sort_column(db)
 
         stmt = select(ApiMenuModel).where(ApiMenuModel.enabled_flag == 1, ApiMenuModel.created_by == user_id)
         if search.get("api_service_id"):
             stmt = stmt.where(ApiMenuModel.api_service_id == int(search["api_service_id"]))
         if search.get("name"):
             stmt = stmt.where(ApiMenuModel.name.like(f"%{search['name']}%"))
-        rows = (await db.execute(stmt.order_by(ApiMenuModel.id.asc()))).scalars().all()
+        rows = (await db.execute(stmt.order_by(ApiMenuModel.sort.asc(), ApiMenuModel.id.asc()))).scalars().all()
         items: List[Dict[str, Any]] = []
         api_ids: List[int] = []
         for r in rows:

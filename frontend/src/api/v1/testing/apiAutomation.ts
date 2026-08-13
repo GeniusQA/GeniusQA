@@ -29,6 +29,7 @@ export function useApiAutomationApi() {
     // ---------- 树/菜单 ----------
     api_tree: (data: { search?: Record<string, any> } = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree', data),
     api_tree_list: (data: Record<string, any> = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree_list', data),
+    sort_menu: (data: { pid: number; ids: (number | string)[] }) => postApiAutomation('/v1/Ntesterc_api/sort_menu', data),
     add_menu: (data: { name: string; pid: number; type: number; api_service_id: number }) =>
       postApiAutomation('/v1/Ntesterc_api/add_menu', data),
     edit_menu: (data: { id: number; name: string }) => postApiAutomation('/v1/Ntesterc_api/edit_menu', data),
@@ -177,6 +178,7 @@ export const {
   api_tree,
   api_tree_list,
   add_menu,
+  sort_menu,
   edit_menu,
   del_menu,
   copy_menu,

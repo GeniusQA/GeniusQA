@@ -47,8 +47,11 @@
 					:props="{ children: 'children', label: 'name' }"
 					node-key="id"
 					:filter-node-method="filterNode"
+					:draggable="(node: any) => node.data.type !== 0"
+					:allow-drop="allowDrop"
 					class="api-tree"
 					@node-click="onNodeClick"
+					@node-drop="handleNodeDrop"
 				>
 					<template #default="{ data }">
 						<div class="tree-node">
@@ -218,7 +221,7 @@ import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
 import {
 	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu,
-	pull_api_doc, edit_api_service, add_api_service, del_api_service,
+	pull_api_doc, edit_api_service, add_api_service, del_api_service, sort_menu,
 } from '/@/api/v1/testing/apiAutomation';
 
 const props = defineProps<{
@@ -266,6 +269,51 @@ const loadTree = async () => {
 // ---- 接口 Tab ----
 const apiTabs = ref<any[]>([]);
 const activeTab = ref('');
+
+// ---- 拖拽排序 / 跨目录移动 ----
+const allowDrop = (draggingNode: any, dropNode: any, type: string) => {
+	if (type === 'inner') {
+		return dropNode.data.type === 1 || dropNode.data.type === 0
+	}
+	return true
+}
+
+const collectByPid = (pid: number) => {
+	const out: any[] = []
+	const walk = (nodes: any[]) => {
+		for (const n of nodes || []) {
+			if (n.type !== 0 && (n.pid || 0) === pid) out.push(n)
+			walk(n.children || [])
+		}
+	}
+	walk(treeData.value || [])
+	return out
+}
+
+const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string) => {
+	const drag = draggingNode.data
+	let newPid: number
+	if (dropType === 'inner') {
+		newPid = dropNode.data.type === 0 ? 0 : dropNode.data.id
+	} else {
+		newPid = dropNode.data.pid || 0
+	}
+	const siblings = collectByPid(newPid)
+	const dropId = dropNode.data.id
+	const list = siblings.filter((s) => s.id !== drag.id)
+	const di = list.findIndex((s) => s.id === dropId)
+	if (dropType === 'before' && di >= 0) list.splice(di, 0, drag)
+	else if (dropType === 'after' && di >= 0) list.splice(di + 1, 0, drag)
+	else list.push(drag)
+	try {
+		await sort_menu({ pid: newPid, ids: list.map((s) => s.id) })
+		ElMessage.success('已更新排序/位置')
+		loadTree()
+	} catch (e: any) {
+		ElMessage.error(e?.message || '移动失败')
+		loadTree()
+	}
+}
 
 const onNodeClick = async (data: any) => {
 	if (data.type !== 2 && data.type !== 3) return;

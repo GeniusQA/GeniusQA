@@ -60,6 +60,21 @@ async def edit_api_service(
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
 
+@router.post("/sort_menu")
+async def sort_menu(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """拖拽排序/移动（同级排序 + 跨目录移动）"""
+    try:
+        body = await body_to_json(request)
+        await ApiAutomationService.sort_menu(db, body, current_user_id)
+        return success_response({}, message="排序成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/get_common_params")
 async def get_common_params(
     request: Request,
