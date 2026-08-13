@@ -163,7 +163,8 @@ def start_backend() -> bool:
 
 
 def ensure_services() -> bool:
-    if port_listening(BACKEND_PORT):
+    # 三件套全就绪才算 OK：后端在跑但 MySQL/Redis 缺一不可
+    if port_listening(BACKEND_PORT) and port_listening(MYSQL_PORT) and port_listening(REDIS_PORT):
         return True
     # 串行化：已有拉起在进行则跳过（页面会自动刷新重试）
     if not _start_lock.acquire(blocking=False):
@@ -178,7 +179,7 @@ def ensure_services() -> bool:
             start_redis()
         if not port_listening(BACKEND_PORT):
             start_backend()
-        return port_listening(BACKEND_PORT)
+        return port_listening(BACKEND_PORT) and port_listening(MYSQL_PORT) and port_listening(REDIS_PORT)
     finally:
         _start_lock.release()
 
