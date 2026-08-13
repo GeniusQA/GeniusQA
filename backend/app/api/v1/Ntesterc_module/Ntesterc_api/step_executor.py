@@ -311,6 +311,7 @@ class StepExecutor:
         url = await ApiAutomationService.handle_var(
             self.db, self.env_id, self.ctx.resolve(api_row.url or "")
         )
+        url = await ApiAutomationService._resolve_base_url(self.db, self.env_id, str(url or ""))
         headers = await ApiAutomationService.handle_var(
             self.db, self.env_id, self.ctx.resolve(ApiAutomationService.params_header(api_cfg.get("header")))
         )
