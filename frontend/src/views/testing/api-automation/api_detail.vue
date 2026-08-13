@@ -616,12 +616,29 @@ mode="assert"
 									<div v-if="!(res.console&&res.console.length)" class="res-dark-empty">暂无控制台输出</div>
 									<div v-for="(log,i) in (res.console||[])" :key="i" class="res-console-line" :class="'console-'+log.level">
 										<div class="res-console-msg">{{ log.msg }}</div>
-										<pre v-if="log.output" class="res-console-detail">{{ log.output }}</pre>
+										<div v-if="log.output" class="res-console-detail">
+											<div v-for="(ol, oi) in log.output.split('\n')" :key="oi" class="res-console-outline">{{ ol || ' ' }}</div>
+										</div>
 									</div>
 								</div>
 							</template>
 							<template v-else-if="res_active==='res_raw'">
 								<div class="res-raw-panel">
+									<div v-if="res.raw_request" class="res-raw-meta">
+										<span class="res-raw-method">{{ res.raw_request.method }}</span>
+										<span class="res-raw-url">{{ res.raw_request.url }}</span>
+									</div>
+									<div v-if="res.raw_request && Object.keys(res.raw_request.headers||{}).length" class="res-raw-section">
+										<div class="res-raw-section-title">Header</div>
+										<table class="res-dark-kv-table raw-header-table">
+											<thead><tr><th>名称</th><th>值</th></tr></thead>
+											<tbody><tr v-for="(v,k) in res.raw_request.headers" :key="k"><td class="res-dark-key">{{ k }}</td><td class="res-dark-val">{{ v }}</td></tr></tbody>
+										</table>
+									</div>
+									<div v-if="res.raw_request && res.raw_request.body" class="res-raw-section">
+										<div class="res-raw-section-title">Body</div>
+										<pre class="res-raw-body">{{ res.raw_request.body }}</pre>
+									</div>
 									<div class="res-raw-toolbar">
 										<span v-for="lang in rawLangs" :key="lang.value" class="raw-lang-item" :class="{active: rawLang===lang.value}" @click="rawLang=lang.value">{{ lang.label }}</span>
 									</div>
@@ -1529,6 +1546,36 @@ const confirmSaveAsCase = async () => {
 .console-error { color: #f48771; }
 .console-warn { color: #dcdcaa; }
 .console-info { color: #9cdcfe; }
+/* 实际请求 Apifox 风格分区 */
+.res-raw-meta {
+	display: flex; align-items: center; gap: 10px;
+	padding: 8px 12px; margin-bottom: 8px;
+	background: #f6f8fa; border: 1px solid #e4e7ed; border-radius: 6px;
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace; font-size: 12px;
+}
+.res-raw-method {
+	padding: 2px 8px; border-radius: 4px;
+	background: #409eff; color: #fff; font-weight: 600; font-size: 11px;
+}
+.res-raw-url { color: #303133; word-break: break-all; }
+.res-raw-section { margin-bottom: 8px; }
+.res-raw-section-title {
+	font-size: 12px; font-weight: 600; color: #606266;
+	margin-bottom: 4px; padding-left: 2px;
+}
+.raw-header-table { max-height: 160px; overflow: auto; display: block; }
+.res-raw-body {
+	margin: 0; padding: 10px 12px;
+	background: #0f1115; border: 1px solid #262b33; border-radius: 6px;
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace; font-size: 12px; line-height: 1.55;
+	color: #c9d1d9; white-space: pre-wrap; word-break: break-all;
+	max-height: 200px; overflow: auto;
+}
+/* 控制台逐行输出 */
+.res-console-outline {
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+	font-size: 12px; line-height: 1.55; color: #c9d1d9;
+}
 .res-raw-panel { height: 100%; display: flex; flex-direction: column; background: #1e1e1e; overflow: hidden; }
 .res-raw-toolbar { display: flex; align-items: center; gap: 2px; padding: 6px 12px; background: #252526; border-bottom: 1px solid #3c3c3c; flex-shrink: 0; flex-wrap: wrap; }
 .raw-lang-item { padding: 3px 10px; border-radius: 3px; font-size: 12px; color: #cccccc; cursor: pointer; user-select: none; transition: all .15s; white-space: nowrap; }
