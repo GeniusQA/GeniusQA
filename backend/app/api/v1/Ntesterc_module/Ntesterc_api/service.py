@@ -4166,7 +4166,11 @@ class ApiAutomationService:
                 r = requests.get(url, headers=headers, params=params, **common)
             elif method == 2:
                 if body_type in (1, 2):
-                    r = requests.post(url, headers=headers, params=params, json=(body if body_type == 2 else {}), **common)
+                    if body_type == 2 and isinstance(body, str):
+                        # 字符串 body 原样发送（与前置脚本 raw_body 签名一致），避免 requests json= 二次转义
+                        r = requests.post(url, headers=headers, params=params, data=body.encode('utf-8'), **common)
+                    else:
+                        r = requests.post(url, headers=headers, params=params, json=(body if body_type == 2 else {}), **common)
                 elif body_type == 3:
                     r = requests.post(url, headers=headers, params=params, data=form_data, **common)
                 elif body_type == 4:
