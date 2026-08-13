@@ -630,10 +630,12 @@ mode="assert"
 									</div>
 									<div v-if="res.raw_request && Object.keys(res.raw_request.headers||{}).length" class="res-raw-section">
 										<div class="res-raw-section-title">Header</div>
+										<div class="raw-header-wrap">
 										<table class="res-dark-kv-table raw-header-table">
 											<thead><tr><th>名称</th><th>值</th></tr></thead>
 											<tbody><tr v-for="(v,k) in res.raw_request.headers" :key="k"><td class="res-dark-key">{{ k }}</td><td class="res-dark-val">{{ v }}</td></tr></tbody>
 										</table>
+										</div>
 									</div>
 									<div v-if="res.raw_request && res.raw_request.body" class="res-raw-section">
 										<div class="res-raw-section-title">Body</div>
@@ -1563,7 +1565,15 @@ const confirmSaveAsCase = async () => {
 	font-size: 12px; font-weight: 600; color: #606266;
 	margin-bottom: 4px; padding-left: 2px;
 }
-.raw-header-table { max-height: 160px; overflow: auto; display: block; }
+.raw-header-wrap {
+	max-height: 220px;
+	overflow: auto;
+	background: #1e1e1e;
+	border: 1px solid #2d2d2d;
+	border-radius: 6px;
+}
+.raw-header-table { width: 100%; border-collapse: collapse; }
+.raw-header-table thead { position: sticky; top: 0; z-index: 1; }
 .res-raw-body {
 	margin: 0; padding: 10px 12px;
 	background: #0f1115; border: 1px solid #262b33; border-radius: 6px;
