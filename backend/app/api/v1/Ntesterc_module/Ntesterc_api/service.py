@@ -4266,6 +4266,10 @@ class ApiAutomationService:
             "params": req.get("params"),
             "body": req.get("body"),
             "body_type": req.get("body_type"),
+            # raw_body：请求体字符串形态（签名脚本用），恒为字符串
+            "raw_body": req.get("body") if isinstance(req.get("body"), str)
+                        else json.dumps(req.get("body"), ensure_ascii=False, default=str) if req.get("body") is not None
+                        else "", 
             "form_data": req.get("form_data"),
             "form_urlencoded": req.get("form_urlencoded"),
             "file_path": req.get("file_path"),
