@@ -636,6 +636,7 @@ mode="assert"
 											<span class="ops-icon">{{ b.status===1?"✓":"✗" }}</span>
 											<span>{{ i+1+'. '+b.message }}</span>
 										</div>
+										<div v-if="b.output" class="res-ops-output"><pre>{{ b.output }}</pre></div>
 										<div v-if="b.type===1&&b.content" class="res-ops-body">
 											<vue-json-pretty v-model:data="b.content.body" :height="160" :showIcon="true" :showLine="true" :virtual="true" :showSelectController="true" class="res-json-pretty" />
 										</div>
@@ -650,6 +651,7 @@ mode="assert"
 											<span class="ops-icon">{{ a.status===1?"✓":"✗" }}</span>
 											<span>{{ i+1+'. '+a.message }}</span>
 										</div>
+										<div v-if="a.output" class="res-ops-output"><pre>{{ a.output }}</pre></div>
 									</div>
 								</div>
 							</template>
@@ -661,6 +663,7 @@ mode="assert"
 											<span class="ops-icon">{{ a.status===1?"✓":"✗" }}</span>
 											<span>{{ i+1+'. '+a.message }}</span>
 										</div>
+										<div v-if="a.output" class="res-ops-output"><pre>{{ a.output }}</pre></div>
 									</div>
 								</div>
 							</template>
@@ -1558,6 +1561,25 @@ const confirmSaveAsCase = async () => {
 .res-dark-val { color: #ce9178; word-break: break-all; }
 .res-dark-muted { color: #858585; }
 .res-dark-empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #555; font-size: 13px; background: #1e1e1e; font-family: 'Consolas','Monaco',monospace; }
+/* 脚本输出详细块 */
+.res-ops-output {
+	margin: 6px 0 10px 26px;
+	padding: 10px 12px;
+	background: #0f1115;
+	border: 1px solid #262b33;
+	border-radius: 6px;
+	max-height: 320px;
+	overflow: auto;
+}
+.res-ops-output pre {
+	margin: 0;
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+	font-size: 12px;
+	line-height: 1.6;
+	color: #c9d1d9;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
 .res-ops-panel { height: 100%; overflow-y: auto; background: #1e1e1e; padding: 8px 0; font-family: 'Consolas','Monaco',monospace; font-size: 12px; }
 .res-ops-item { border-bottom: 1px solid #2d2d2d; }
 .res-ops-title { display: flex; align-items: flex-start; gap: 8px; padding: 7px 16px; line-height: 1.5; }

@@ -2963,7 +2963,7 @@ class ApiAutomationService:
             "status": 1,
             "message": f"{phase}操作-自定义脚本成功（{language}）",
             "type": op.get("type"),
-            "output": (run_res.output or "")[:500],
+            "output": (run_res.output or "")[:5000],
             "vars": {k: v for k, v in (run_res.vars or {}).items() if k != "__request__"},
             "language": language,
         }
@@ -4128,7 +4128,7 @@ class ApiAutomationService:
                                 "message": f"{label}：执行通过（{language}）",
                                 "type": t,
                                 "language": language,
-                                "output": (run_res.output or "")[:500],
+                                "output": (run_res.output or "")[:5000],
                             })
                         else:
                             err = str(run_res.error or "unknown")
@@ -4138,7 +4138,7 @@ class ApiAutomationService:
                                 "message": (f"{label}失败：{err}" if is_fail else f"{label}脚本执行错误：{err}"),
                                 "type": t,
                                 "language": language,
-                                "output": (run_res.output or "")[:500],
+                                "output": (run_res.output or "")[:5000],
                             })
                     except Exception as se:
                         results.append({
