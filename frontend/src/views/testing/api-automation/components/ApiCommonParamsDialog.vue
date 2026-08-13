@@ -71,7 +71,17 @@
 					<el-button type="primary" link size="small" @click="form.body.push(emptyKv())">+ 添加 Body 字段</el-button>
 				</div>
 			</el-tab-pane>
-		</el-tabs>
+						<el-tab-pane name="before">
+					<template #label><el-badge :show-zero="false" :value="form.before.length" :offset="[10, 2]" type="danger">前置操作</el-badge></template>
+					<div class="common-params-tip">父级前置操作：子级接口自动继承执行（公共在前，接口自己的在后）。支持自定义脚本 / 等待时长 / 提取变量等。</div>
+					<OperationPanel :items="form.before" mode="before" :env-list="[]" :tree-list="[]" :db-list="[]" :script-list="[]" :res-type-list="[]" :val-type-list="[]" />
+				</el-tab-pane>
+				<el-tab-pane name="after">
+					<template #label><el-badge :show-zero="false" :value="form.after.length" :offset="[10, 2]" type="danger">后置操作</el-badge></template>
+					<div class="common-params-tip">父级后置操作：子级接口自动继承执行（公共在前，接口自己的在后）。</div>
+					<OperationPanel :items="form.after" mode="after" :env-list="[]" :tree-list="[]" :db-list="[]" :script-list="[]" :res-type-list="[]" :val-type-list="[]" />
+				</el-tab-pane>
+</el-tabs>
 		<template #footer>
 			<el-button @click="visible = false">取消</el-button>
 			<el-button type="primary" :loading="saving" @click="save">保存</el-button>
@@ -83,6 +93,8 @@
 import { reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { get_common_params, save_common_params } from '/@/api/v1/testing/apiAutomation';
+
+import OperationPanel from './OperationPanel.vue';
 
 const props = defineProps<{ serviceId: number }>();
 
@@ -97,11 +109,15 @@ const form = reactive<{
 	cookie: KvRow[];
 	query: KvRow[];
 	body: KvRow[];
+	before: any[];
+	after: any[];
 }>({
 	header: [],
 	cookie: [],
 	query: [],
 	body: [],
+	before: [],
+	after: [],
 });
 
 const emptyKv = (): KvRow => ({ key: '', value: '', status: true });
@@ -140,6 +156,8 @@ const open = async () => {
 		form.cookie = normalizeList(data.cookie || data.cookies, true);
 		form.query = normalizeList(data.query || data.params);
 		form.body = normalizeList(data.body);
+		form.before = Array.isArray(data.before) ? JSON.parse(JSON.stringify(data.before)) : [];
+		form.after = Array.isArray(data.after) ? JSON.parse(JSON.stringify(data.after)) : [];
 		if (!form.header.length) form.header.push(emptyKv());
 		if (!form.cookie.length) form.cookie.push(emptyCookie());
 		if (!form.query.length) form.query.push(emptyKv());
@@ -171,6 +189,8 @@ const save = async () => {
 				cookie: pack(form.cookie, true),
 				query: pack(form.query),
 				body: pack(form.body),
+				before: form.before,
+				after: form.after,
 			},
 		});
 		ElMessage.success('全局参数已保存');
@@ -187,6 +207,8 @@ const onClosed = () => {
 	form.cookie = [];
 	form.query = [];
 	form.body = [];
+	form.before = [];
+	form.after = [];
 };
 
 defineExpose({ open });

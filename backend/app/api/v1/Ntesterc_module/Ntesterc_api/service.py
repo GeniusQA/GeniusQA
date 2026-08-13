@@ -681,7 +681,7 @@ class ApiAutomationService:
 
     @staticmethod
     def _empty_common_params() -> Dict[str, List[Dict[str, Any]]]:
-        return {"header": [], "cookie": [], "query": [], "body": []}
+        return {"header": [], "cookie": [], "query": [], "body": [], "before": [], "after": [], "auth": None}
 
     @staticmethod
     def _normalize_common_params(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
@@ -708,6 +708,13 @@ class ApiAutomationService:
                     row["domain"] = str(it.get("domain") or "")
                 out.append(row)
             base[dst] = out
+        # before/after/auth：原样保留（操作列表 + 鉴权配置），供子级接口继承
+        if isinstance(raw.get("before"), list):
+            base["before"] = [x for x in raw.get("before") if isinstance(x, dict)]
+        if isinstance(raw.get("after"), list):
+            base["after"] = [x for x in raw.get("after") if isinstance(x, dict)]
+        if raw.get("auth") is not None:
+            base["auth"] = raw.get("auth")
         return base
 
     @staticmethod
@@ -827,12 +834,21 @@ class ApiAutomationService:
         else:
             req = dict(req)
         common = ApiAutomationService._normalize_common_params(common)
-        if not any(common.get(k) for k in ("header", "cookie", "query", "body")):
+        if not any(common.get(k) for k in ("header", "cookie", "query", "body", "before", "after", "auth")):
             return req
 
         req["header"] = ApiAutomationService._merge_kv_lists(common.get("header"), req.get("header"))
         req["params"] = ApiAutomationService._merge_kv_lists(common.get("query"), req.get("params"))
         req["cookies"] = ApiAutomationService._merge_kv_lists(common.get("cookie"), req.get("cookies"), cookie=True)
+
+        # 前置/后置操作继承：公共在前 + 接口在后（父级配置默认被所有子级接口继承执行）
+        if common.get("before"):
+            req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
+        if common.get("after"):
+            req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
+        # 鉴权继承：接口未配置鉴权时使用公共鉴权
+        if common.get("auth") is not None and not req.get("auth"):
+            req["auth"] = common.get("auth")
 
         body_dict = ApiAutomationService._common_body_dict(common)
         body_type = int(req.get("body_type") or 2)
