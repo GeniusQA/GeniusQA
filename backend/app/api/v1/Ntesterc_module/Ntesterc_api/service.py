@@ -2739,12 +2739,40 @@ class ApiAutomationService:
         menu = m.scalar_one_or_none()
         if not menu:
             return
-        # 根目录保护：模块下的根目录不可删除（Apifox 模型）
-        if int(menu.type) == 1 and int(menu.pid) == 0:
+        # 根目录保护：仅名为"接口"的根目录不可删除（旧平级脏数据 pid=0 不受保护）
+        if int(menu.type) == 1 and int(menu.pid) == 0 and menu.name == "接口":
             raise ValueError("根目录不可删除")
-        if int(body.get("type", menu.type)) != 1 and menu.api_id:
-            await db.execute(update(ApiModel).where(ApiModel.id == int(menu.api_id)).values(enabled_flag=0))
-        await db.execute(update(ApiMenuModel).where(ApiMenuModel.id == menu_id).values(enabled_flag=0, updated_by=user_id))
+        # 收集所有后代菜单（目录/接口节点）级联软删
+        to_del: List[int] = [menu_id]
+        frontier = [menu_id]
+        while frontier:
+            children = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.enabled_flag == 1,
+                        ApiMenuModel.pid.in_(frontier),
+                    )
+                )
+            ).scalars().all()
+            frontier = [ch.id for ch in children]
+            to_del.extend(frontier)
+        api_ids = []
+        if to_del:
+            mrows = (
+                await db.execute(
+                    select(ApiMenuModel).where(ApiMenuModel.id.in_(to_del))
+                )
+            ).scalars().all()
+            api_ids = [int(m.api_id) for m in mrows if m.api_id]
+            await db.execute(
+                update(ApiMenuModel)
+                .where(ApiMenuModel.id.in_(to_del))
+                .values(enabled_flag=0, updated_by=user_id)
+            )
+        if api_ids:
+            await db.execute(
+                update(ApiModel).where(ApiModel.id.in_(api_ids)).values(enabled_flag=0)
+            )
         await db.commit()
 
     @staticmethod
