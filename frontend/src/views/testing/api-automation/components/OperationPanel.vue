@@ -111,6 +111,23 @@
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.environment.set / ntest.set / request' : '# Python：ntest.set / pm.environment.set / request'"
                   spellcheck="false"
                 />
+                <div class="op-code-validate">
+                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                    <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
+                  </el-button>
+                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
+                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
+                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                    </el-tag>
+                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
+                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
+                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ item._validateResult.ai_review.summary }}
+                    </div>
+                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                  </div>
+                </div>
               </div>
             </template>
 
@@ -255,6 +272,23 @@
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.response.json() / ntest.set' : '# Python：pm.response.json() / ntest.set'"
                   spellcheck="false"
                 />
+                <div class="op-code-validate">
+                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                    <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
+                  </el-button>
+                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
+                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
+                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                    </el-tag>
+                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
+                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
+                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ item._validateResult.ai_review.summary }}
+                    </div>
+                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                  </div>
+                </div>
               </div>
             </template>
 
@@ -394,6 +428,23 @@
                     : '# Python：assert / pm.response.json() / response / status_code'"
                   spellcheck="false"
                 />
+                <div class="op-code-validate">
+                  <el-button type="primary" link size="small" :loading="item._validating" @click="validateOpScript(item)">
+                    <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
+                  </el-button>
+                  <div v-if="item._validateResult" class="op-cv-panel" :class="item._validateResult.passed ? 'ok' : 'fail'">
+                    <el-tag :type="item._validateResult.passed ? 'success' : 'danger'" size="small">
+                      {{ item._validateResult.passed ? '校验通过' : '校验未通过' }}
+                    </el-tag>
+                    <div v-if="item._validateResult.syntax_ok === false" class="op-cv-line">{{ item._validateResult.syntax_error }}</div>
+                    <div v-for="(s, i) in item._validateResult.spec_issues || []" :key="'sp' + i" class="op-cv-line">• {{ s }}</div>
+                    <div v-if="item._validateResult.run_ok === false" class="op-cv-line">试运行失败: {{ item._validateResult.run_error }}</div>
+                    <div v-if="item._validateResult.ai_review && item._validateResult.ai_review.summary" class="op-cv-line ai">
+                      AI: {{ item._validateResult.ai_review.summary }}
+                    </div>
+                    <div v-for="(s, i) in (item._validateResult.ai_review && item._validateResult.ai_review.suggestions) || []" :key="'sg' + i" class="op-cv-line ai">💡 {{ s }}</div>
+                  </div>
+                </div>
               </div>
             </template>
           </template>
@@ -436,8 +487,26 @@ import {
   ArrowDown,
 } from '@element-plus/icons-vue'
 import AssertEditor from './AssertEditor.vue'
+import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation'
 
 // ---- Props ----
+const validateOpScript = async (item: any) => {
+  const code = item.code || ''
+  if (!code.trim()) {
+    item._validateResult = { passed: false, syntax_ok: false, syntax_error: '脚本内容为空', spec_issues: [], run_ok: null, ai_review: null }
+    return
+  }
+  item._validating = true
+  try {
+    const res: any = await useApiAutomationApi().script_validate({ code, language: item.language || 'python', use_ai: true })
+    item._validateResult = res.code === 200 ? res.data : { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [res.message || '校验失败'], run_ok: null, ai_review: null }
+  } catch (e: any) {
+    item._validateResult = { passed: false, syntax_ok: true, syntax_error: '', spec_issues: [e?.message || '校验接口调用失败'], run_ok: null, ai_review: null }
+  } finally {
+    item._validating = false
+  }
+}
+
 const props = withDefaults(defineProps<{
   items: any[]
   mode: 'before' | 'after' | 'assert'
@@ -766,6 +835,12 @@ const addItem = (type: number) => {
   color: #94a3b8;
 }
 
+.op-code-validate { margin-top: 6px; }
+.op-cv-panel { margin-top: 4px; padding: 6px 10px; border-radius: 6px; font-size: 12px; line-height: 1.6; border: 1px solid; }
+.op-cv-panel.ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.op-cv-panel.fail { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.op-cv-line { margin-top: 2px; }
+.op-cv-line.ai { color: #b45309; }
 .op-code-editor {
   width: 100%;
   min-height: 80px;
