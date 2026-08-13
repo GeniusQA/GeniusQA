@@ -5667,6 +5667,18 @@ class ApiAutomationService:
             await db.rollback()
 
     @staticmethod
+    async def _ensure_ntest_script_code_map_column(db: AsyncSession) -> None:
+        """兼容旧库：缺少 code_map 列时自动补齐。"""
+        try:
+            await db.execute(text(
+                "ALTER TABLE api_automation_ntest_scripts "
+                "ADD COLUMN code_map TEXT NULL"
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
     async def get_ntest_scripts(db: AsyncSession, api_service_id: int, user_id: int) -> List[Dict]:
         """查询指定服务下的公共脚本列表（仅返回未软删除的记录）"""
         from .model import NtestScriptModel
@@ -5685,6 +5697,7 @@ class ApiAutomationService:
                 "code": r.code,
                 "language": getattr(r, "language", None) or "python",
                 "exec_mode": getattr(r, "exec_mode", None) or "sandbox",
+                "code_map": (json.loads(getattr(r, "code_map", None)) if getattr(r, "code_map", None) else None),
                 "api_service_id": r.api_service_id,
             }
             for r in rows
@@ -5697,6 +5710,8 @@ class ApiAutomationService:
         from .script_runtime import normalize_language
         await ApiAutomationService._ensure_ntest_script_language_column(db)
         await ApiAutomationService._ensure_ntest_script_exec_mode_column(db)
+        await ApiAutomationService._ensure_ntest_script_code_map_column(db)
+        await ApiAutomationService._ensure_ntest_script_code_map_column(db)
         name = (body.get("name") or "").strip()
         if not name:
             raise ValueError("脚本名称不能为空")
@@ -5710,6 +5725,7 @@ class ApiAutomationService:
             code=body.get("code") or "",
             language=language,
             exec_mode=body.get("exec_mode") or "sandbox",
+            code_map=json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None,
             api_service_id=int(api_service_id),
             created_by=user_id,
             enabled_flag=1,
@@ -5737,6 +5753,8 @@ class ApiAutomationService:
             values["language"] = normalize_language(body.get("language") or "python")
         if "exec_mode" in body:
             values["exec_mode"] = body.get("exec_mode") or "sandbox"
+        if "code_map" in body:
+            values["code_map"] = json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None
         from .model import NtestScriptModel
         await db.execute(
             update(NtestScriptModel)

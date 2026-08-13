@@ -120,7 +120,7 @@
           <el-input v-model="form.name" placeholder="请输入脚本名称" />
         </el-form-item>
         <el-form-item label="语言" prop="language">
-          <el-radio-group v-model="form.language" size="small">
+          <el-radio-group v-model="form.language" size="small" @change="onLangChange">
             <el-radio-button value="python">Python</el-radio-button>
             <el-radio-button value="javascript">JavaScript</el-radio-button>
           </el-radio-group>
@@ -388,9 +388,19 @@ async function loadScripts() {
   }
 }
 
+let prevLang = 'python'
+const onLangChange = (lang: string) => {
+  const cm = form.value.code_map || {}
+  if (form.value.code) cm[prevLang] = form.value.code
+  form.value.code = cm[lang] || ''
+  form.value.code_map = cm
+  prevLang = lang
+}
+
 function openAdd() {
   isEdit.value = false
-  form.value = { id: undefined, name: '', description: '', code: '', language: 'python', exec_mode: 'sandbox'}
+  form.value = { id: undefined, name: '', description: '', code: '', language: 'python', exec_mode: 'sandbox', code_map: {}}
+  prevLang = 'python'
   validateResult.value = null
   dialogVisible.value = true
 }
@@ -403,7 +413,9 @@ function openEdit(row: any) {
     description: row.description || '',
     code: row.code || '',
     language: row.language || 'python',
+    code_map: (row.code_map && typeof row.code_map === 'object') ? row.code_map : { [row.language || 'python']: row.code || '' },
   }
+  prevLang = form.value.language
   dialogVisible.value = true
 }
 
@@ -424,6 +436,7 @@ async function saveDetail() {
       code: detailScript.value.code,
       language: detailScript.value.language,
       exec_mode: execMode.value,
+      code_map: detailScript.value.code_map || { [detailScript.value.language]: detailScript.value.code },
     })
     ElMessage.success('保存成功')
     await loadScripts()
@@ -450,6 +463,7 @@ async function submitForm() {
         code: form.value.code,
         language: form.value.language,
         exec_mode: execMode.value,
+        code_map: { ...(form.value.code_map || {}), [form.value.language]: form.value.code },
       })
       ElMessage.success('编辑成功')
     } else {
@@ -459,6 +473,7 @@ async function submitForm() {
         code: form.value.code,
         language: form.value.language,
         exec_mode: execMode.value,
+        code_map: { ...(form.value.code_map || {}), [form.value.language]: form.value.code },
         api_service_id: props.serviceId,
       })
       ElMessage.success('添加成功')
