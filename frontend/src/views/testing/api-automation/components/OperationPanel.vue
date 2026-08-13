@@ -106,7 +106,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
-                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
+                  :value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @input="(e: any) => { const v = e.target ? e.target.value : e; if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.environment.set / ntest.set / request' : '# Python：ntest.set / pm.environment.set / request'"
                   spellcheck="false"
@@ -267,7 +267,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}</span>
                 </div>
                 <textarea
-                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
+                  :value="item.code_map ? (item.code_map[item.language] ?? '') : (item.code || '')" @input="(e: any) => { const v = e.target ? e.target.value : e; if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.code = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript' ? '// JavaScript：pm.response.json() / ntest.set' : '# Python：pm.response.json() / ntest.set'"
                   spellcheck="false"
@@ -421,7 +421,7 @@
                   <span class="op-code-hint">可用 ntest / pm / request / response{{ (item.language || 'python') === 'javascript' ? '（需本机 Node）' : '' }}；失败请 throw / assert</span>
                 </div>
                 <textarea
-                  :model-value="item.code_map ? (item.code_map[item.language] ?? '') : (item.custom_script || '')" @update:model-value="(v: string) => { if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.custom_script = v }"
+                  :value="item.code_map ? (item.code_map[item.language] ?? '') : (item.custom_script || '')" @input="(e: any) => { const v = e.target ? e.target.value : e; if (!item.code_map) item.code_map = {}; item.code_map[item.language] = v; item.custom_script = v }"
                   class="op-code-editor"
                   :placeholder="(item.language || 'python') === 'javascript'
                     ? '// JavaScript：pm.response.json() / ntest.get'
