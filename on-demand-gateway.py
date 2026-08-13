@@ -68,26 +68,51 @@ def run_cmd(args, timeout=30):
 
 
 def start_mysql() -> bool:
+    # 先清理残留 mysqld（服务已停但进程残留会导致新实例绑定失败）
+    run_cmd(["taskkill", "/F", "/IM", "mysqld.exe"])
+    time.sleep(2)
     log("starting MySQL service...")
     run_cmd(["sc.exe", "start", MYSQL_SERVICE])
-    for _ in range(60):
+    for _ in range(90):
         if port_listening(MYSQL_PORT):
             log("MySQL ready")
             return True
         time.sleep(1)
-    log("WARN: MySQL not ready within 60s")
+    # 超时：重置服务再试一次（可能处于异常状态）
+    log("WARN: MySQL not ready in 90s, retry once...")
+    run_cmd(["sc.exe", "stop", MYSQL_SERVICE])
+    time.sleep(3)
+    run_cmd(["taskkill", "/F", "/IM", "mysqld.exe"])
+    run_cmd(["sc.exe", "start", MYSQL_SERVICE])
+    for _ in range(90):
+        if port_listening(MYSQL_PORT):
+            log("MySQL ready (retry)")
+            return True
+        time.sleep(1)
+    log("WARN: MySQL not ready after retry")
     return False
 
 
 def start_redis() -> bool:
+    run_cmd(["taskkill", "/F", "/IM", "redis-server.exe"])
+    time.sleep(1)
     log("starting Redis service...")
     run_cmd(["sc.exe", "start", REDIS_SERVICE])
-    for _ in range(15):
+    for _ in range(30):
         if port_listening(REDIS_PORT):
             log("Redis ready")
             return True
         time.sleep(1)
-    log("WARN: Redis not ready within 15s")
+    log("WARN: Redis not ready in 30s, retry once...")
+    run_cmd(["sc.exe", "stop", REDIS_SERVICE])
+    time.sleep(2)
+    run_cmd(["sc.exe", "start", REDIS_SERVICE])
+    for _ in range(30):
+        if port_listening(REDIS_PORT):
+            log("Redis ready (retry)")
+            return True
+        time.sleep(1)
+    log("WARN: Redis not ready after retry")
     return False
 
 
@@ -95,7 +120,7 @@ def _pids_by_cmdline():
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and ($_.CommandLine -match 'guard_loop|run_portable') } | Select-Object -ExpandProperty ProcessId"],
+             "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and ($_.CommandLine -match 'guard_loop|run_portable') -and ($_.CommandLine -notmatch 'on-demand-gateway') } | Select-Object -ExpandProperty ProcessId"],
             capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW)
         pids = [int(x.strip()) for x in out.stdout.split() if x.strip().isdigit()]
         return pids
@@ -103,8 +128,23 @@ def _pids_by_cmdline():
         return []
 
 
+def _guard_loop_running() -> bool:
+    out = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'guard_loop' } | Select-Object -ExpandProperty ProcessId"],
+        capture_output=True, text=True, timeout=15, creationflags=_NO_WINDOW)
+    return bool([x for x in out.stdout.split() if x.strip().isdigit()])
+
+
 def start_backend() -> bool:
     log("starting backend guard_loop...")
+    if _guard_loop_running():
+        log("guard_loop already running, skip")
+        for _ in range(STARTUP_TIMEOUT):
+            if port_listening(BACKEND_PORT):
+                return True
+            time.sleep(1)
+        return port_listening(BACKEND_PORT)
     if not VENV_PYTHON.exists():
         log(f"FATAL: pythonw not found: {VENV_PYTHON}")
         return False
@@ -125,15 +165,22 @@ def start_backend() -> bool:
 def ensure_services() -> bool:
     if port_listening(BACKEND_PORT):
         return True
-    need_mysql = not port_listening(MYSQL_PORT)
-    need_redis = not port_listening(REDIS_PORT)
-    if need_mysql:
-        start_mysql()
-    if need_redis:
-        start_redis()
-    if not port_listening(BACKEND_PORT):
-        start_backend()
-    return port_listening(BACKEND_PORT)
+    # 串行化：已有拉起在进行则跳过（页面会自动刷新重试）
+    if not _start_lock.acquire(blocking=False):
+        log("startup already in progress, skip")
+        return False
+    try:
+        need_mysql = not port_listening(MYSQL_PORT)
+        need_redis = not port_listening(REDIS_PORT)
+        if need_mysql:
+            start_mysql()
+        if need_redis:
+            start_redis()
+        if not port_listening(BACKEND_PORT):
+            start_backend()
+        return port_listening(BACKEND_PORT)
+    finally:
+        _start_lock.release()
 
 
 def stop_backend() -> None:
@@ -157,6 +204,7 @@ def stop_all() -> None:
 
 _last_activity = time.time()
 _stop_lock = threading.Lock()
+_start_lock = threading.Lock()  # 拉起串行锁：同一时刻只有一个 ensure_services 执行
 
 
 def idle_monitor():
