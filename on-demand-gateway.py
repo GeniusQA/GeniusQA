@@ -171,6 +171,9 @@ def ensure_services() -> bool:
         log("startup already in progress, skip")
         return False
     try:
+        # 锁内重查：端口可能在锁外检查后刚恢复（如后端重启窗口），避免误启动
+        if port_listening(BACKEND_PORT) and port_listening(MYSQL_PORT) and port_listening(REDIS_PORT):
+            return True
         need_mysql = not port_listening(MYSQL_PORT)
         need_redis = not port_listening(REDIS_PORT)
         if need_mysql:
