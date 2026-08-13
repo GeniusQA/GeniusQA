@@ -798,32 +798,32 @@ class ApiAutomationService:
         req["cookies"] = ApiAutomationService._merge_kv_lists(common.get("cookie"), req.get("cookies"), cookie=True)
 
         body_dict = ApiAutomationService._common_body_dict(common)
+        body_type = int(req.get("body_type") or 2)
+        # body_type 0/2：无论有无公共 body，字符串 JSON 一律压缩（保证签名/发送/复制代码形态一致）
+        if body_type in (0, 2):
+            raw_body = req.get("body")
+            parsed: Any = raw_body
+            if isinstance(raw_body, str):
+                text_body = raw_body.strip()
+                if not text_body:
+                    parsed = {}
+                else:
+                    try:
+                        parsed = json.loads(text_body)
+                    except Exception:
+                        parsed = None
+            if isinstance(parsed, dict):
+                merged_body = {**body_dict, **parsed} if body_dict else parsed
+                req["body"] = json.dumps(merged_body, ensure_ascii=False) if isinstance(raw_body, str) else merged_body
+            elif parsed is None and not raw_body:
+                req["body"] = body_dict
         if body_dict:
-            body_type = int(req.get("body_type") or 2)
             if body_type == 3:
                 form_kv = [{"key": k, "value": v, "status": True} for k, v in body_dict.items()]
                 req["form_data"] = ApiAutomationService._merge_kv_lists(form_kv, req.get("form_data"))
             elif body_type == 4:
                 form_kv = [{"key": k, "value": v, "status": True} for k, v in body_dict.items()]
                 req["form_urlencoded"] = ApiAutomationService._merge_kv_lists(form_kv, req.get("form_urlencoded"))
-            elif body_type in (0, 2):
-                raw_body = req.get("body")
-                parsed: Any = raw_body
-                if isinstance(raw_body, str):
-                    text_body = raw_body.strip()
-                    if not text_body:
-                        parsed = {}
-                    else:
-                        try:
-                            parsed = json.loads(text_body)
-                        except Exception:
-                            parsed = None
-                if isinstance(parsed, dict):
-                    merged_body = {**body_dict, **parsed}
-                    
-                    req["body"] = json.dumps(merged_body, ensure_ascii=False) if isinstance(raw_body, str) else merged_body
-                elif parsed is None and not raw_body:
-                    req["body"] = body_dict
         return req
 
     @staticmethod
