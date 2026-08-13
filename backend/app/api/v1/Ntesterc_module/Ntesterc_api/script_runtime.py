@@ -143,7 +143,12 @@ class SimpleNtest:
         self._vars[key] = value
 
     def env(self, key, default=None):
-        return self._env.get(key, default)
+        if key in self._env:
+            return self._env[key]
+        # 兼容：变量放在"环境变量"区块（session_vars）时也能读到
+        if key in self._vars:
+            return self._vars[key]
+        return default
 
 
 def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
@@ -249,7 +254,12 @@ class _Ntest:
         _exported[key] = value
         _vars[key] = value
     def env(self, key, default=None):
-        return _env.get(key, default)
+        if key in _env:
+            return _env[key]
+        # 兼容：变量放在"环境变量"区块（_vars/session_vars）时也能读到
+        if key in _vars:
+            return _vars[key]
+        return default
 
 ntest = _Ntest()
 
