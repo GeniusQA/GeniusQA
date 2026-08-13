@@ -65,8 +65,8 @@
 										<el-dropdown-item v-if="data.type===1" command="add_api">添加接口</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===1" command="menu_params">目录参数</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===2" command="copy">复制接口</el-dropdown-item>
-										<el-dropdown-item command="rename">重命名</el-dropdown-item>
-										<el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+										<el-dropdown-item v-if="!(data.type===1 && data.pid===0)" command="rename">重命名</el-dropdown-item>
+										<el-dropdown-item v-if="!(data.type===1 && data.pid===0)" command="delete" divided>删除</el-dropdown-item>
 									</el-dropdown-menu>
 								</template>
 							</el-dropdown>

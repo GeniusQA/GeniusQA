@@ -650,6 +650,8 @@ class ApiAutomationService:
             updated_by=user_id,
         )
         db.add(svc)
+        await db.flush()
+        await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, str(body["name"]))
         await db.commit()
 
     @staticmethod
@@ -967,12 +969,8 @@ class ApiAutomationService:
 
     @staticmethod
     async def delete_service(db: AsyncSession, service_id: int, user_id: int) -> None:
-        await db.execute(
-            update(ApiServiceModel)
-            .where(ApiServiceModel.id == int(service_id), ApiServiceModel.enabled_flag == 1, ApiServiceModel.created_by == user_id)
-            .values(enabled_flag=0, updated_by=user_id)
-        )
-        await db.commit()
+        # 模块保护：模块（服务）不可删除（Apifox 模型，只能删模块下的子目录/接口）
+        raise ValueError("模块不可删除（Apifox 模型：只能删除模块下的子目录与接口）")
 
     @staticmethod
     async def api_tree_list(db: AsyncSession, user_id: int) -> List[Dict[str, Any]]:
@@ -1260,8 +1258,54 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
+    async def _ensure_service_root_menu(db: AsyncSession, service_id: int, user_id: int, service_name: Optional[str] = None) -> None:
+        """Apifox 模型：确保每个模块（服务）下有且只有一个根目录（pid=0, type=1），没有则自动创建。"""
+        existing = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_service_id == int(service_id),
+                    ApiMenuModel.enabled_flag == 1,
+                    ApiMenuModel.type == 1,
+                    ApiMenuModel.pid == 0,
+                )
+            )
+        ).scalars().first()
+        if existing:
+            return
+        if not service_name:
+            svc = (
+                await db.execute(select(ApiServiceModel).where(ApiServiceModel.id == int(service_id)))
+            ).scalar_one_or_none()
+            service_name = svc.name if svc else "根目录"
+        db.add(
+            ApiMenuModel(
+                name=str(service_name),
+                type=1,
+                pid=0,
+                api_id=None,
+                api_service_id=int(service_id),
+                status=1,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+        )
+        await db.commit()
+
+    @staticmethod
     async def get_api_tree(db: AsyncSession, search: Dict[str, Any], user_id: int) -> List[Dict[str, Any]]:
     
+        # 惰性补建：每个模块（服务）确保有根目录
+        svc_rows = (
+            await db.execute(
+                select(ApiServiceModel).where(
+                    ApiServiceModel.enabled_flag == 1,
+                    ApiServiceModel.created_by == user_id,
+                )
+            )
+        ).scalars().all()
+        for svc in svc_rows:
+            await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, svc.name)
+
         stmt = select(ApiMenuModel).where(ApiMenuModel.enabled_flag == 1, ApiMenuModel.created_by == user_id)
         if search.get("api_service_id"):
             stmt = stmt.where(ApiMenuModel.api_service_id == int(search["api_service_id"]))
@@ -2608,6 +2652,9 @@ class ApiAutomationService:
         menu = m.scalar_one_or_none()
         if not menu:
             return
+        # 根目录保护：模块下的根目录不可删除（Apifox 模型）
+        if int(menu.type) == 1 and int(menu.pid) == 0:
+            raise ValueError("根目录不可删除")
         if int(body.get("type", menu.type)) != 1 and menu.api_id:
             await db.execute(update(ApiModel).where(ApiModel.id == int(menu.api_id)).values(enabled_flag=0))
         await db.execute(update(ApiMenuModel).where(ApiMenuModel.id == menu_id).values(enabled_flag=0, updated_by=user_id))
