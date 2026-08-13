@@ -473,7 +473,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import {
   Delete,
   Connection,
@@ -525,6 +525,27 @@ const props = withDefaults(defineProps<{
   resTypeList: () => [],
   valTypeList: () => [],
 })
+
+// ---- code_map 迁移：旧数据（code/custom_script）初始化到对应语言槽位，
+//      切换语言时自动加载该语言历史代码，互不覆盖 ----
+watch(() => props.items, (list) => {
+  if (!Array.isArray(list)) return
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const isScript = (props.mode === 'before' && item.type === 4) ||
+                     (props.mode === 'after' && item.type === 5) ||
+                     (props.mode === 'assert' && item.type === 5)
+    if (!isScript) continue
+    const lang = item.language || 'python'
+    const src = item.code ?? item.custom_script ?? ''
+    if (!item.code_map || typeof item.code_map !== 'object') {
+      item.code_map = { [lang]: src }
+    } else if (item.code_map[lang] === undefined && src) {
+      item.code_map[lang] = src
+    }
+  }
+}, { deep: true, immediate: true })
+
 
 const emit = defineEmits<{
   (e: 'refresh-scripts'): void
