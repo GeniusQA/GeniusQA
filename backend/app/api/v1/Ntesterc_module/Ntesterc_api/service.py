@@ -846,9 +846,11 @@ class ApiAutomationService:
             req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
         if common.get("after"):
             req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
-        # 鉴权继承：接口未配置鉴权时使用公共鉴权
-        if common.get("auth") is not None and not req.get("auth"):
-            req["auth"] = common.get("auth")
+        # 鉴权继承：接口未配置鉴权时继承公共鉴权（平铺字段）
+        if not req.get("auth_type") and isinstance(common.get("auth"), dict) and common["auth"].get("auth_type"):
+            for k, v in common["auth"].items():
+                if k == "auth_type" or k.startswith("auth_"):
+                    req[k] = v
 
         body_dict = ApiAutomationService._common_body_dict(common)
         body_type = int(req.get("body_type") or 2)

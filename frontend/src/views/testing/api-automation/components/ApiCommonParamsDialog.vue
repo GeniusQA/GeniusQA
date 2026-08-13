@@ -71,7 +71,60 @@
 					<el-button type="primary" link size="small" @click="form.body.push(emptyKv())">+ 添加 Body 字段</el-button>
 				</div>
 			</el-tab-pane>
-						<el-tab-pane name="before">
+						<el-tab-pane name="auth">
+					<template #label><el-badge :show-zero="false" value="继承" :offset="[10, 2]" type="danger">Auth</el-badge></template>
+					<div class="common-params-tip">父级鉴权：子级接口未单独配置鉴权时自动继承（接口配置了则用自己的）。</div>
+					<el-form label-width="130px">
+						<el-form-item label="认证类型：">
+							<el-select v-model="form.auth.auth_type" style="width:280px">
+								<el-option label="无认证" value="none" />
+								<el-option label="Bearer Token" value="bearer" />
+								<el-option label="JWT Bearer" value="jwt" />
+								<el-option label="Basic Auth" value="basic" />
+								<el-option label="API Key" value="apikey" />
+							</el-select>
+						</el-form-item>
+						<template v-if="form.auth.auth_type === 'bearer'">
+							<el-form-item label="Token：">
+								<el-input v-model="form.auth.auth_token" placeholder="支持 {{变量}}，如 {{token}}" style="width:420px" />
+							</el-form-item>
+							<el-form-item label="前缀：">
+								<el-input v-model="form.auth.auth_prefix" placeholder="默认 Bearer，可留空" style="width:200px" />
+							</el-form-item>
+						</template>
+						<template v-if="form.auth.auth_type === 'jwt'">
+							<el-form-item label="JWT Token：">
+								<el-input v-model="form.auth.auth_token" type="textarea" :rows="3" placeholder="粘贴 JWT，支持 {{变量}}" style="width:480px" />
+							</el-form-item>
+							<el-form-item label="前缀：">
+								<el-input v-model="form.auth.auth_prefix" placeholder="默认 Bearer" style="width:200px" />
+							</el-form-item>
+						</template>
+						<template v-if="form.auth.auth_type === 'basic'">
+							<el-form-item label="用户名：">
+								<el-input v-model="form.auth.auth_username" placeholder="支持 {{变量}}" style="width:320px" />
+							</el-form-item>
+							<el-form-item label="密码：">
+								<el-input v-model="form.auth.auth_password" type="password" show-password placeholder="支持 {{变量}}" style="width:320px" />
+							</el-form-item>
+						</template>
+						<template v-if="form.auth.auth_type === 'apikey'">
+							<el-form-item label="Key：">
+								<el-input v-model="form.auth.auth_key" placeholder="如 X-API-KEY" style="width:320px" />
+							</el-form-item>
+							<el-form-item label="Value：">
+								<el-input v-model="form.auth.auth_value" placeholder="支持 {{变量}}" style="width:320px" />
+							</el-form-item>
+							<el-form-item label="位置：">
+								<el-radio-group v-model="form.auth.auth_in">
+									<el-radio value="header">Header</el-radio>
+									<el-radio value="query">Query</el-radio>
+								</el-radio-group>
+							</el-form-item>
+						</template>
+					</el-form>
+				</el-tab-pane>
+				<el-tab-pane name="before">
 					<template #label><el-badge :show-zero="false" :value="form.before.length" :offset="[10, 2]" type="danger">前置操作</el-badge></template>
 					<div class="common-params-tip">父级前置操作：子级接口自动继承执行（公共在前，接口自己的在后）。支持自定义脚本 / 等待时长 / 提取变量等。</div>
 					<OperationPanel :items="form.before" mode="before" :env-list="[]" :tree-list="[]" :db-list="[]" :script-list="[]" :res-type-list="[]" :val-type-list="[]" />
@@ -111,6 +164,7 @@ const form = reactive<{
 	body: KvRow[];
 	before: any[];
 	after: any[];
+	auth: any;
 }>({
 	header: [],
 	cookie: [],
@@ -118,6 +172,7 @@ const form = reactive<{
 	body: [],
 	before: [],
 	after: [],
+	auth: { auth_type: 'none' },
 });
 
 const emptyKv = (): KvRow => ({ key: '', value: '', status: true });
@@ -158,6 +213,8 @@ const open = async () => {
 		form.body = normalizeList(data.body);
 		form.before = Array.isArray(data.before) ? JSON.parse(JSON.stringify(data.before)) : [];
 		form.after = Array.isArray(data.after) ? JSON.parse(JSON.stringify(data.after)) : [];
+		form.auth = (data.auth && typeof data.auth === 'object') ? JSON.parse(JSON.stringify(data.auth)) : { auth_type: 'none' };
+		if (!form.auth.auth_type) form.auth.auth_type = 'none';
 		if (!form.header.length) form.header.push(emptyKv());
 		if (!form.cookie.length) form.cookie.push(emptyCookie());
 		if (!form.query.length) form.query.push(emptyKv());
@@ -191,6 +248,7 @@ const save = async () => {
 				body: pack(form.body),
 				before: form.before,
 				after: form.after,
+				auth: form.auth,
 			},
 		});
 		ElMessage.success('全局参数已保存');
@@ -209,6 +267,7 @@ const onClosed = () => {
 	form.body = [];
 	form.before = [];
 	form.after = [];
+	form.auth = { auth_type: 'none' };
 };
 
 defineExpose({ open });
