@@ -614,7 +614,10 @@ mode="assert"
 							<template v-else-if="res_active==='res_console'">
 								<div class="res-console-panel">
 									<div v-if="!(res.console&&res.console.length)" class="res-dark-empty">暂无控制台输出</div>
-									<div v-for="(log,i) in (res.console||[])" :key="i" class="res-console-line" :class="'console-'+log.level">{{ log.msg }}</div>
+									<div v-for="(log,i) in (res.console||[])" :key="i" class="res-console-line" :class="'console-'+log.level">
+										<div class="res-console-msg">{{ log.msg }}</div>
+										<pre v-if="log.output" class="res-console-detail">{{ log.output }}</pre>
+									</div>
 								</div>
 							</template>
 							<template v-else-if="res_active==='res_raw'">
@@ -1503,6 +1506,24 @@ const confirmSaveAsCase = async () => {
 .res-json-pretty :deep(.vjs-tree-node.is-highlight) { background: rgba(255,255,255,.06) !important; }
 .res-json-pretty :deep(.vjs-tree-node-actions) { background: transparent !important; }
 .res-json-pretty :deep(.vjs-tree-node:hover .vjs-tree-node-actions) { background: rgba(255,255,255,.06) !important; }
+/* console 详情块（Apifox 风格） */
+.res-console-line { padding: 3px 0; }
+.res-console-msg { font-family: 'JetBrains Mono', Consolas, Menlo, monospace; font-size: 12px; line-height: 1.6; }
+.res-console-detail {
+	margin: 4px 0 10px 14px;
+	padding: 8px 10px;
+	background: #0f1115;
+	border: 1px solid #262b33;
+	border-radius: 6px;
+	max-height: 280px;
+	overflow: auto;
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+	font-size: 12px;
+	line-height: 1.55;
+	color: #c9d1d9;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
 .res-console-panel { height: 100%; overflow-y: auto; background: #1e1e1e; padding: 8px 12px; font-family: 'Consolas','Monaco',monospace; font-size: 12px; }
 .res-console-line { padding: 2px 0; line-height: 1.6; color: #d4d4d4; }
 .console-error { color: #f48771; }

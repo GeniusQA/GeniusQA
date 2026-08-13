@@ -4376,22 +4376,42 @@ class ApiAutomationService:
         res["assert"] = assert_list
         res["time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # console: collect log lines from before/after/assert results
+        # console: Apifox 风格详细日志（脚本输出 / 请求 / 请求头体 / 响应头体 / 后置 / 断言）
         console_logs: List[Dict[str, Any]] = []
         for item in before_list:
             level = "info" if item.get("status") == 1 else "error"
-            console_logs.append({"level": level, "msg": f"[前置] {item.get('message', '')}"})
+            console_logs.append({"level": level, "msg": f"[前置] {item.get('message', '')}", "output": item.get("output") or ""})
         raw_req = res.get("raw_request") or {}
         console_logs.append({
             "level": "info" if int(res.get("code") or 0) < 400 else "error",
             "msg": f"[请求] {raw_req.get('method', '')} {raw_req.get('url', '')} → {res.get('code')} ({res.get('res_time')} ms)",
         })
+        if raw_req.get("headers"):
+            console_logs.append({
+                "level": "info", "msg": "[请求头]",
+                "output": json.dumps(raw_req.get("headers"), ensure_ascii=False, indent=2, default=str),
+            })
+        if raw_req.get("body"):
+            console_logs.append({"level": "info", "msg": "[请求体]", "output": str(raw_req.get("body"))})
+        resp_headers = res.get("header") or {}
+        if resp_headers:
+            console_logs.append({
+                "level": "info", "msg": "[响应头]",
+                "output": json.dumps(resp_headers, ensure_ascii=False, indent=2, default=str),
+            })
+        resp_body = res.get("body")
+        if resp_body is not None:
+            try:
+                resp_body_str = json.dumps(resp_body, ensure_ascii=False, indent=2, default=str)
+            except Exception:
+                resp_body_str = str(resp_body)
+            console_logs.append({"level": "info", "msg": "[响应体]", "output": resp_body_str})
         for item in after_list:
             level = "info" if item.get("status") == 1 else "error"
-            console_logs.append({"level": level, "msg": f"[后置] {item.get('message', '')}"})
+            console_logs.append({"level": level, "msg": f"[后置] {item.get('message', '')}", "output": item.get("output") or ""})
         for item in assert_list:
             level = "info" if item.get("status") == 1 else "error"
-            console_logs.append({"level": level, "msg": f"[断言] {item.get('message', '')}"})
+            console_logs.append({"level": level, "msg": f"[断言] {item.get('message', '')}", "output": item.get("output") or ""})
         res["console"] = console_logs
 
         db.add(
