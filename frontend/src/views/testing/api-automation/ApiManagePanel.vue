@@ -193,8 +193,13 @@
 				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
 					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根目录）">
-						<el-option label="模块（根目录）" :value="0" />
-						<el-option v-for="opt in folderOptions" :key="opt.id" :label="opt.path" :value="opt.id" />
+						<el-option label="模块（根目录，当前模块）" :value="0" />
+						<el-option-group v-if="folderOptions.mods.length" label="模块">
+							<el-option v-for="m in folderOptions.mods" :key="m.id" :label="m.path" :value="m.id" />
+						</el-option-group>
+						<el-option-group v-if="folderOptions.dirs.length" label="目录">
+							<el-option v-for="d in folderOptions.dirs" :key="d.id" :label="d.path" :value="d.id" />
+						</el-option-group>
 					</el-select>
 					<div style="font-size:11px;color:var(--el-text-color-placeholder);line-height:1.4;margin-top:2px">根目录 = 直接挂在模块下；子目录 = 挂在已有目录下</div>
 				</el-form-item>
@@ -511,18 +516,22 @@ const importByFile = async () => {
 
 // ---- 菜单操作 ----
 const folderOptions = computed(() => {
-	const walk = (nodes: any[], prefix: string): any[] => {
-		let out: any[] = []
+	const mods: any[] = []
+	const dirs: any[] = []
+	const walk = (nodes: any[], prefix: string) => {
 		for (const n of nodes || []) {
-			if (n.type === 1) {
+			if (n.type === 0) {
+				mods.push({ id: 'svc_' + n.api_service_id, path: n.name, api_service_id: n.api_service_id })
+				walk(n.children || [], n.name)
+			} else if (n.type === 1) {
 				const p = prefix ? prefix + ' / ' + n.name : n.name
-				out.push({ id: n.id, path: p })
-				out = out.concat(walk(n.children || [], p))
+				dirs.push({ id: n.id, path: p })
+				walk(n.children || [], p)
 			}
 		}
-		return out
 	}
-	return walk(treeData.value || [], '')
+	walk(treeData.value || [], '')
+	return { mods, dirs }
 });
 
 const menuDialogVisible = ref(false);
@@ -600,7 +609,13 @@ const confirmMenu = async () => {
 		if (menuForm.value.mode === 'edit') {
 			await edit_menu({ id: menuForm.value.editId, name: menuForm.value.name.trim() });
 		} else {
-			await add_menu({ name: menuForm.value.name.trim(), pid: menuForm.value.pid, type: menuForm.value.type, api_service_id: props.serviceId });
+			let pidVal = menuForm.value.pid
+			let svcId: any = props.serviceId
+			if (typeof pidVal === 'string' && pidVal.startsWith('svc_')) {
+				svcId = Number(pidVal.replace('svc_', ''))
+				pidVal = 0
+			}
+			await add_menu({ name: menuForm.value.name.trim(), pid: pidVal, type: menuForm.value.type, api_service_id: svcId });
 		}
 		menuDialogVisible.value = false;
 		await loadTree();
