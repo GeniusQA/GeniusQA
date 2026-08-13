@@ -1326,6 +1326,7 @@ class ApiAutomationService:
                     ApiMenuModel.enabled_flag == 1,
                     ApiMenuModel.type == 1,
                     ApiMenuModel.pid == 0,
+                    ApiMenuModel.name == "接口",
                 )
             )
         ).scalars().first()
