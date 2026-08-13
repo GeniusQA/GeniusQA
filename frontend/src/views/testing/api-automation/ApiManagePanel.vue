@@ -47,7 +47,7 @@
 					:props="{ children: 'children', label: 'name' }"
 					node-key="id"
 					:filter-node-method="filterNode"
-					:draggable="(node: any) => node.data.type !== 0"
+					draggable
 					:allow-drop="allowDrop"
 					class="api-tree"
 					@node-click="onNodeClick"
@@ -292,6 +292,7 @@ const collectByPid = (pid: number) => {
 
 const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string) => {
 	const drag = draggingNode.data
+	if (drag.type === 0) { loadTree(); return }
 	let newPid: number
 	if (dropType === 'inner') {
 		newPid = dropNode.data.type === 0 ? 0 : dropNode.data.id
