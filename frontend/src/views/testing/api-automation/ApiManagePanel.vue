@@ -34,6 +34,7 @@
 						<el-button type="primary" size="small">添加<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
 						<template #dropdown>
 							<el-dropdown-menu>
+								<el-dropdown-item command="add_module">添加模块</el-dropdown-item>
 								<el-dropdown-item command="add_folder">添加目录</el-dropdown-item>
 								<el-dropdown-item command="add_api">添加接口</el-dropdown-item>
 							</el-dropdown-menu>
@@ -52,7 +53,8 @@
 					<template #default="{ data }">
 						<div class="tree-node">
 							<div class="node-left">
-								<el-icon v-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
+								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
+								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
 								<span v-if="data.type===2||data.type===3" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
 								<span class="node-name">{{ data.name }}</span>
@@ -61,10 +63,12 @@
 								<el-icon class="node-more"><MoreFilled /></el-icon>
 								<template #dropdown>
 									<el-dropdown-menu>
+										<el-dropdown-item v-if="data.type===0" command="add_folder">添加目录</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===1" command="add_folder">添加子目录</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===1" command="add_api">添加接口</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===1" command="menu_params">目录参数</el-dropdown-item>
 										<el-dropdown-item v-if="data.type===2" command="copy">复制接口</el-dropdown-item>
+										<el-dropdown-item v-if="data.type===0" command="menu_params">目录参数</el-dropdown-item>
 										<el-dropdown-item v-if="!(data.type===1 && data.pid===0)" command="rename">重命名</el-dropdown-item>
 										<el-dropdown-item v-if="!(data.type===1 && data.pid===0)" command="delete" divided>删除</el-dropdown-item>
 									</el-dropdown-menu>
@@ -204,7 +208,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, FolderOpened, Link, MoreFilled, Document } from '@element-plus/icons-vue';
+import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ApiVarPopover from './components/ApiVarPopover.vue';
@@ -214,7 +218,7 @@ import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
 import {
 	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu,
-	pull_api_doc, edit_api_service,
+	pull_api_doc, edit_api_service, add_api_service, del_api_service,
 } from '/@/api/v1/testing/apiAutomation';
 
 const props = defineProps<{
@@ -477,6 +481,12 @@ const menuDialogTitle = ref('');
 const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit' });
 
 const handleAddCommand = (cmd: string) => {
+	if (cmd === 'add_module') {
+		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
+		menuDialogTitle.value = '添加模块';
+		menuDialogVisible.value = true;
+		return;
+	}
 	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: 0, editId: 0, mode: 'add' };
 	menuDialogTitle.value = cmd === 'add_folder' ? '添加目录' : '添加接口';
 	menuDialogVisible.value = true;
@@ -488,14 +498,21 @@ const handleNodeCommand = (cmd: string, data: any) => {
 		return
 	}
 	if (cmd === 'add_folder') {
-		menuForm.value = { name: '', type: 1, pid: data.id, editId: 0, mode: 'add' };
-		menuDialogTitle.value = '添加子目录';
+		const isModule = data.type === 0;
+		menuForm.value = { name: '', type: 1, pid: isModule ? 0 : data.id, editId: 0, mode: 'add' };
+		menuDialogTitle.value = isModule ? '添加目录' : '添加子目录';
 		menuDialogVisible.value = true;
 	} else if (cmd === 'add_api') {
 		menuForm.value = { name: '', type: 2, pid: data.id, editId: 0, mode: 'add' };
 		menuDialogTitle.value = '添加接口';
 		menuDialogVisible.value = true;
 	} else if (cmd === 'rename') {
+		if (data.type === 0) {
+			menuForm.value = { name: data.name, type: 0, pid: 0, editId: Number(data.api_service_id), mode: 'edit_module' };
+			menuDialogTitle.value = '重命名模块';
+			menuDialogVisible.value = true;
+			return;
+		}
 		menuForm.value = { name: data.name, type: data.type, pid: data.pid || 0, editId: data.id, mode: 'edit' };
 		menuDialogTitle.value = '重命名';
 		menuDialogVisible.value = true;
@@ -507,6 +524,28 @@ const handleNodeCommand = (cmd: string, data: any) => {
 };
 
 const confirmMenu = async () => {
+	if (menuForm.value.mode === 'add_module') {
+		try {
+			await add_api_service({ name: menuForm.value.name, api_project_id: props.serviceId || 0 });
+			ElMessage.success('模块已创建（自动生成"接口"根目录）');
+			menuDialogVisible.value = false;
+			loadTree();
+		} catch (e: any) {
+			ElMessage.error(e?.message || '创建失败');
+		}
+		return;
+	}
+	if (menuForm.value.mode === 'edit_module') {
+		try {
+			await edit_api_service({ id: menuForm.value.editId, name: menuForm.value.name });
+			ElMessage.success('模块已重命名');
+			menuDialogVisible.value = false;
+			loadTree();
+		} catch (e: any) {
+			ElMessage.error(e?.message || '重命名失败');
+		}
+		return;
+	}
 	if (!menuForm.value.name.trim()) { ElMessage.warning('请输入名称'); return; }
 	try {
 		if (menuForm.value.mode === 'edit') {
@@ -528,6 +567,19 @@ const copyApi = async (data: any) => {
 };
 
 const deleteNode = async (data: any) => {
+	if (data.type === 0) {
+		try {
+			await ElMessageBox.confirm(`确定删除模块「${data.name}」？所属根目录、子目录、接口将一并删除！`, '删除模块', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+		} catch { return; }
+		try {
+			await del_api_service({ id: Number(data.api_service_id) });
+			ElMessage.success('模块已删除');
+			loadTree();
+		} catch (e: any) {
+			ElMessage.error(e?.message || '删除失败');
+		}
+		return;
+	}
 	try {
 		await ElMessageBox.confirm(`确认删除「${data.name}」？`, '提示', { type: 'warning' });
 		await del_menu({ id: data.id, type: data.type });

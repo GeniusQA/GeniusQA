@@ -1388,7 +1388,33 @@ class ApiAutomationService:
             if api_id and int(api_id) in method_map:
                 it["method"] = method_map[int(api_id)]
 
-        return _build_tree(items)
+        menu_tree = _build_tree(items)
+        # 模块层：每个服务（模块）包一层节点（id 加 svc_ 前缀避免与菜单 id 冲突）
+        svc_rows_all = (
+            await db.execute(
+                select(ApiServiceModel).where(
+                    ApiServiceModel.enabled_flag == 1,
+                    ApiServiceModel.created_by == user_id,
+                )
+            )
+        ).scalars().all()
+        svc_map: Dict[int, List[Dict[str, Any]]] = {}
+        for n in menu_tree:
+            svc_map.setdefault(int(n.get("api_service_id") or 0), []).append(n)
+        tree: List[Dict[str, Any]] = []
+        for svc in svc_rows_all:
+            tree.append(
+                {
+                    "id": f"svc_{svc.id}",
+                    "name": svc.name,
+                    "pid": 0,
+                    "type": 0,  # 0 = 模块（服务）节点
+                    "api_id": None,
+                    "api_service_id": svc.id,
+                    "children": svc_map.get(int(svc.id), []),
+                }
+            )
+        return tree
 
     @staticmethod
     def _doc_method_to_int(method: str) -> int:
