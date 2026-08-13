@@ -231,8 +231,17 @@ class ForwardHandler:
         try:
             peer = client_sock.getpeername()
             if not port_listening(BACKEND_PORT):
-                with _stop_lock:
-                    log(f"request arrived from {peer}, services cold-starting...")
+                # 后端可能正在重启（restart-backend 窗口期，通常 5-15 秒内恢复）：
+                # 短暂重试，避免把"重启窗口"误判成冷启动返回"服务启动中"页面
+                recovered = False
+                for _ in range(4):
+                    time.sleep(0.5)
+                    if port_listening(BACKEND_PORT):
+                        recovered = True
+                        break
+                if not recovered:
+                    with _stop_lock:
+                        log(f"request arrived from {peer}, services cold-starting...")
                     # 立即返回'启动中'页面（浏览器自动刷新），后台异步拉起服务
                     try:
                         page = ("<html><head><meta http-equiv=\"refresh\" content=\"5\"><meta charset=\"utf-8\"></head>"
@@ -245,6 +254,8 @@ class ForwardHandler:
                         pass
                     threading.Thread(target=ensure_services, daemon=True).start()
                     return
+                # recovered：后端已恢复，继续走正常转发
+
             _last_activity = time.time()
             upstream = socket.create_connection(("127.0.0.1", BACKEND_PORT), timeout=10)
             client_sock.settimeout(0.5)
