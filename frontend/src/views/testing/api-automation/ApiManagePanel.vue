@@ -184,6 +184,13 @@
 				<el-form-item label="名称" required>
 					<el-input v-model="menuForm.name" placeholder="请输入名称" />
 				</el-form-item>
+				<el-form-item v-if="menuForm.type === 1" label="父级目录">
+					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根目录）">
+						<el-option label="模块（根目录）" :value="0" />
+						<el-option v-for="opt in folderOptions" :key="opt.id" :label="opt.path" :value="opt.id" />
+					</el-select>
+					<div style="font-size:11px;color:var(--el-text-color-placeholder);line-height:1.4;margin-top:2px">根目录 = 直接挂在模块下；子目录 = 挂在已有目录下</div>
+				</el-form-item>
 			</el-form>
 			<template #footer>
 				<el-button @click="menuDialogVisible=false">取消</el-button>
@@ -194,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, FolderOpened, Link, MoreFilled, Document } from '@element-plus/icons-vue';
@@ -450,6 +457,21 @@ const importByFile = async () => {
 };
 
 // ---- 菜单操作 ----
+const folderOptions = computed(() => {
+	const walk = (nodes: any[], prefix: string): any[] => {
+		let out: any[] = []
+		for (const n of nodes || []) {
+			if (n.type === 1) {
+				const p = prefix ? prefix + ' / ' + n.name : n.name
+				out.push({ id: n.id, path: p })
+				out = out.concat(walk(n.children || [], p))
+			}
+		}
+		return out
+	}
+	return walk(treeData.value || [], '')
+});
+
 const menuDialogVisible = ref(false);
 const menuDialogTitle = ref('');
 const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit' });

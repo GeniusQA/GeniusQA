@@ -651,7 +651,8 @@ class ApiAutomationService:
         )
         db.add(svc)
         await db.flush()
-        await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, str(body["name"]))
+        # 模块创建自动生成根目录（固定名"接口"，不可删除/重命名）
+        await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
         await db.commit()
 
     @staticmethod
@@ -1294,7 +1295,7 @@ class ApiAutomationService:
     @staticmethod
     async def get_api_tree(db: AsyncSession, search: Dict[str, Any], user_id: int) -> List[Dict[str, Any]]:
     
-        # 惰性补建：每个模块（服务）确保有根目录
+        # 惰性补建：每个模块（服务）确保有根目录（固定名"接口"）
         svc_rows = (
             await db.execute(
                 select(ApiServiceModel).where(
@@ -1304,7 +1305,7 @@ class ApiAutomationService:
             )
         ).scalars().all()
         for svc in svc_rows:
-            await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, svc.name)
+            await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
 
         stmt = select(ApiMenuModel).where(ApiMenuModel.enabled_flag == 1, ApiMenuModel.created_by == user_id)
         if search.get("api_service_id"):
