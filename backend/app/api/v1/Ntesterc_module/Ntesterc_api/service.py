@@ -970,8 +970,42 @@ class ApiAutomationService:
 
     @staticmethod
     async def delete_service(db: AsyncSession, service_id: int, user_id: int) -> None:
-        # 模块保护：模块（服务）不可删除（Apifox 模型，只能删模块下的子目录/接口）
-        raise ValueError("模块不可删除（Apifox 模型：只能删除模块下的子目录与接口）")
+        """删除模块：级联删除所属根目录/子目录/接口数据（软删）。"""
+        sid = int(service_id)
+        # 1. 收集服务下所有菜单节点（根目录/子目录/接口节点）
+        menus = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_service_id == sid,
+                    ApiMenuModel.enabled_flag == 1,
+                )
+            )
+        ).scalars().all()
+        api_ids = [int(m.api_id) for m in menus if m.api_id]
+        # 2. 软删接口
+        if api_ids:
+            await db.execute(
+                update(ApiModel)
+                .where(ApiModel.id.in_(api_ids))
+                .values(enabled_flag=0, updated_by=user_id)
+            )
+        # 3. 软删所有菜单（含根目录）
+        await db.execute(
+            update(ApiMenuModel)
+            .where(ApiMenuModel.api_service_id == sid, ApiMenuModel.enabled_flag == 1)
+            .values(enabled_flag=0, updated_by=user_id)
+        )
+        # 4. 软删模块
+        await db.execute(
+            update(ApiServiceModel)
+            .where(
+                ApiServiceModel.id == sid,
+                ApiServiceModel.enabled_flag == 1,
+                ApiServiceModel.created_by == user_id,
+            )
+            .values(enabled_flag=0, updated_by=user_id)
+        )
+        await db.commit()
 
     @staticmethod
     async def api_tree_list(db: AsyncSession, user_id: int) -> List[Dict[str, Any]]:
