@@ -9,6 +9,8 @@ from app.core.dependencies import get_current_user_id
 from app.common.response import success_response, error_response
 from app.utils.common import body_to_json
 from .service import ApiAutomationService
+from .script_validator import validate_script
+
 
 router = APIRouter()
 
@@ -1263,3 +1265,20 @@ async def execute_db_query(
         return success_response(data, message="请求成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/script/validate", summary="脚本 AI 校验（语法/规范/试运行/AI 审查）")
+async def validate_script_endpoint(
+        body: dict,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id)):
+    code = (body or {}).get("code", "")
+    language = (body or {}).get("language", "python")
+    use_ai = bool((body or {}).get("use_ai", True))
+    if not code or not code.strip():
+        return success_response(data={
+            "syntax_ok": False, "syntax_error": "代码为空", "spec_issues": [],
+            "run_ok": None, "run_output": "", "run_error": "", "ai_review": None, "passed": False,
+        }, message="校验完成")
+    data = await validate_script(db, code, language, use_ai)
+    return success_response(data=data, message="校验完成")

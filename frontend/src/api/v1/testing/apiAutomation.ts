@@ -10,6 +10,8 @@ const postApiAutomation = <T = any>(url: string, data?: any) => {
 
 export function useApiAutomationApi() {
   return {
+    // AI 脚本校验（语法/规范/试运行/AI 审查）
+    script_validate: (data: any) => request.post('/v1/Ntesterc_api/script/validate', data),
     // ---------- 服务 ----------
     api_service: (data: { page?: number; pageSize?: number; search?: { api_project_id?: number | null; name?: string; manager?: number | null; business_id?: number | null } } = {}) =>
       postApiAutomation('/v1/Ntesterc_api/api_service', data),
