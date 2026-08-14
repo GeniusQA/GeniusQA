@@ -600,6 +600,15 @@ global.pm = {{
   test: (name, fn) => {{
     try {{ fn(); }} catch (e) {{
       throw new Error('pm.test(' + JSON.stringify(name) + ') failed: ' + (e && e.message ? e.message : e));
+    }},
+  }},
+  executeAsync: (cmd, args) => {{
+    const {{ execFileSync }} = require('child_process');
+    try {{
+      const out = execFileSync(cmd, Array.isArray(args) ? args : [], {{ encoding: 'utf-8', timeout: 30000 }});
+      return String(out || '');
+    }} catch (e) {{
+      return '执行失败: ' + (e && e.message ? e.message : String(e));
     }}
   }},
 }};
