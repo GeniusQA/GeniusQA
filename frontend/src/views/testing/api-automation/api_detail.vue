@@ -64,7 +64,7 @@
 									<div style="overflow: auto; height: 100%">
 										<div v-for="(h, i) in req.header" :key="i" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
 											<el-checkbox v-model="h.status" />
-											<el-input v-model="h.key" placeholder="Header名" style="flex:1" size="small" />
+											<el-input v-model="h.name" placeholder="Header名" style="flex:1" size="small" />
 											<el-input v-model="h.value" placeholder="Header值" style="flex:1" size="small" />
 											<el-button type="danger" link size="small" @click="removeHeader(i)">删除</el-button>
 										</div>
@@ -1281,7 +1281,7 @@ watch(
 		req.value = {
 			method: reqSrc.method ?? 2, url: reqSrc.url ?? apiInfo.url ?? '',
 			params: Array.isArray(reqSrc.params) ? reqSrc.params : [],
-			header: Array.isArray(reqSrc.header) ? reqSrc.header : [],
+			header: Array.isArray(reqSrc.header) ? reqSrc.header.map((h: any) => ({ ...h, name: h.name ?? h.key ?? '' })) : [],
 			body: typeof reqSrc.body === 'string' ? reqSrc.body : JSON.stringify(reqSrc.body != null ? reqSrc.body : {}, null, 2),
 			body_type: reqSrc.body_type ?? 2,
 			form_data: Array.isArray(reqSrc.form_data) ? reqSrc.form_data : [],

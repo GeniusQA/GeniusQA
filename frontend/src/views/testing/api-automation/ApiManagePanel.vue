@@ -281,7 +281,7 @@ watch(
 	() => {
 		try {
 			const saved = {
-				tabs: apiTabs.value.map((t) => ({ id: t.id, name: t.name, apiId: t.data?.api_id || t.apiId, innerTab: t.innerTab || 'debug' })),
+				tabs: apiTabs.value.map((t) => ({ id: t.id, name: t.name, title: t.title || t.name, apiId: t.data?.api_id || t.apiId, innerTab: t.innerTab || 'debug' })),
 				active: activeTab.value,
 			}
 			localStorage.setItem(tabsStorageKey(), JSON.stringify(saved))
@@ -684,7 +684,7 @@ onMounted(() => {
 					const r: any = await api_info({ api_id: Number(t.apiId) })
 					const info = r?.data || {}
 					const data = { id: t.id, name: t.name, api_id: Number(t.apiId), api_info: { ...info, id: info.id ?? Number(t.apiId) } }
-					apiTabs.value.push({ id: t.id, name: t.name, title: t.name, data, innerTab: t.innerTab || 'debug' })
+					apiTabs.value.push({ id: t.id, name: t.name, title: t.title || info.name || t.name, data, innerTab: t.innerTab || 'debug' })
 				} catch {}
 			}
 			if (saved.active && apiTabs.value.some((x) => x.name === saved.active)) {
