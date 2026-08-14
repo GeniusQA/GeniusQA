@@ -2,7 +2,7 @@
   <div class="op-panel">
     <!-- 操作卡片列表（可滚动） -->
     <div class="op-list">
-      <div v-if="!items.length" class="op-empty">
+      <div v-if="!items.length && !hideEmpty" class="op-empty">
         <el-icon size="32" color="#c0c4cc"><DocumentAdd /></el-icon>
         <p>暂无{{ panelLabel }}，点击下方按钮添加</p>
       </div>
@@ -551,6 +551,7 @@ const props = withDefaults(defineProps<{
   scriptList?: any[]
   resTypeList?: any[]
   valTypeList?: any[]
+  hideEmpty?: boolean
 }>(), {
   envList: () => [],
   treeList: () => [],

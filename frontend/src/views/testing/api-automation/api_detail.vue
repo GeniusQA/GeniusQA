@@ -321,6 +321,7 @@
 									<div class="op-scroll-wrap">
 										<OperationPanel
 											:items="req.before"
+											:hide-empty="inheritBefore.length > 0"
 											mode="before"
 											:env-list="env_list"
 											:tree-list="tree_list"
@@ -353,6 +354,7 @@
 <div class="op-scroll-wrap">
 <OperationPanel
 :items="req.after"
+:hide-empty="inheritAfter.length > 0"
 mode="after"
 :env-list="env_list"
 :tree-list="tree_list"
