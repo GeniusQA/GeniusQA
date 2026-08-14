@@ -30,6 +30,12 @@ export function useApiAutomationApi() {
     api_tree: (data: { search?: Record<string, any> } = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree', data),
     api_tree_list: (data: Record<string, any> = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree_list', data),
     sort_menu: (data: { pid: number; ids: (number | string)[] }) => postApiAutomation('/v1/Ntesterc_api/sort_menu', data),
+    upload_script_file: (file: File) => {
+    	const fd = new FormData()
+    	fd.append('file', file)
+    	return request.post('/v1/Ntesterc_api/upload_script_file', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
+    del_script_file: (data: { path: string }) => postApiAutomation('/v1/Ntesterc_api/del_script_file', data),
     add_menu: (data: { name: string; pid: number; type: number; api_service_id: number }) =>
       postApiAutomation('/v1/Ntesterc_api/add_menu', data),
     edit_menu: (data: { id: number; name: string }) => postApiAutomation('/v1/Ntesterc_api/edit_menu', data),
@@ -179,6 +185,8 @@ export const {
   api_tree_list,
   add_menu,
   sort_menu,
+  upload_script_file,
+  del_script_file,
   edit_menu,
   del_menu,
   copy_menu,

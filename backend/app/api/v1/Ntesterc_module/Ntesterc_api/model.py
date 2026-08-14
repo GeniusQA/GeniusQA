@@ -218,4 +218,5 @@ class NtestScriptModel(Base):
     language = Column(String(32), nullable=False, default='python', comment='脚本语言：python/javascript')
     exec_mode = Column(String(16), nullable=False, default='sandbox', comment='执行模式：sandbox/native')
     code_map = Column(Text, nullable=True, comment='按语言分槽代码 JSON：{python:.., javascript:..}')
+    external_files = Column(Text, nullable=True, comment='关联的外部程序文件 JSON：[{name, path, rel_path}]')
     api_service_id = Column(BigInteger, nullable=False, comment='所属服务ID')

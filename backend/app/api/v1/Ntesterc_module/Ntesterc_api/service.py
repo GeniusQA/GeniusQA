@@ -781,6 +781,17 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
+    async def _ensure_ntest_script_external_files_column(db: AsyncSession) -> None:
+        """兼容旧库：缺少 external_files 列时自动补齐。"""
+        try:
+            await db.execute(text(
+                "ALTER TABLE api_automation_ntest_scripts ADD COLUMN external_files TEXT NULL"
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
     async def _ensure_menu_common_params_column(db: AsyncSession) -> None:
         """兼容旧库：缺少菜单 common_params 列时自动补齐。"""
         try:
@@ -6065,6 +6076,7 @@ class ApiAutomationService:
                 "language": getattr(r, "language", None) or "python",
                 "exec_mode": getattr(r, "exec_mode", None) or "sandbox",
                 "code_map": (json.loads(getattr(r, "code_map", None)) if getattr(r, "code_map", None) else None),
+                "external_files": (json.loads(getattr(r, "external_files", None)) if getattr(r, "external_files", None) else []),
                 "api_service_id": r.api_service_id,
             }
             for r in rows
@@ -6078,6 +6090,8 @@ class ApiAutomationService:
         await ApiAutomationService._ensure_ntest_script_language_column(db)
         await ApiAutomationService._ensure_ntest_script_exec_mode_column(db)
         await ApiAutomationService._ensure_ntest_script_code_map_column(db)
+        await ApiAutomationService._ensure_ntest_script_external_files_column(db)
+        await ApiAutomationService._ensure_ntest_script_external_files_column(db)
         await ApiAutomationService._ensure_ntest_script_code_map_column(db)
         name = (body.get("name") or "").strip()
         if not name:
@@ -6093,6 +6107,7 @@ class ApiAutomationService:
             language=language,
             exec_mode=body.get("exec_mode") or "sandbox",
             code_map=json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None,
+            external_files=json.dumps(body.get("external_files") or [], ensure_ascii=False) if body.get("external_files") else None,
             api_service_id=int(api_service_id),
             created_by=user_id,
             enabled_flag=1,
@@ -6122,6 +6137,8 @@ class ApiAutomationService:
             values["exec_mode"] = body.get("exec_mode") or "sandbox"
         if "code_map" in body:
             values["code_map"] = json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None
+        if "external_files" in body:
+            values["external_files"] = json.dumps(body.get("external_files") or [], ensure_ascii=False) if body.get("external_files") else None
         from .model import NtestScriptModel
         await db.execute(
             update(NtestScriptModel)

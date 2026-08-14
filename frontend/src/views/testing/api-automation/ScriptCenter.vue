@@ -153,6 +153,18 @@
               :placeholder="codePlaceholder"
               spellcheck="false"
             />
+            <div class="sc-ext-files">
+              <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1">
+                <el-button size="small" type="primary" plain>上传外部程序文件</el-button>
+              </el-upload>
+              <div class="sc-ext-tip">支持 .py/.js/.jar/.sh 等；脚本中调用：pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名'])（原生模式）</div>
+              <div v-for="(f, i) in form.external_files" :key="i" class="sc-ext-file">
+                <el-icon style="margin-right:4px"><Document /></el-icon>
+                <span class="sc-ext-name">{{ f.name }}</span>
+                <code class="sc-ext-path">{{ f.rel_path }}</code>
+                <el-button type="danger" link size="small" @click="removeExtFile(i)">删除</el-button>
+              </div>
+            </div>
             <!-- AI 校验结果 -->
             <div v-if="validateResult" class="sc-validate" :class="validateResult.passed ? 'ok' : 'fail'">
               <div class="vr-head">
@@ -265,7 +277,7 @@ import { notifyNtestScriptsChanged } from './composables/scriptListSync'
 
 const props = defineProps<{ serviceId: number }>()
 
-const { ntest_script_list, add_ntest_script, edit_ntest_script, del_ntest_script, run_api_script, get_api_script_result } = useApiAutomationApi()
+const { ntest_script_list, add_ntest_script, edit_ntest_script, del_ntest_script, run_api_script, get_api_script_result, upload_script_file, del_script_file } = useApiAutomationApi()
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const scriptList = ref<any[]>([])
@@ -305,6 +317,7 @@ const form = ref({
   description: '',
   code: '',
   language: 'python',
+  external_files: [] as any[],
 })
 
 // Detail / fullscreen
@@ -397,9 +410,31 @@ const onLangChange = (lang: string) => {
   prevLang = lang
 }
 
+const doUploadFile = async (opt: any) => {
+	try {
+		const res: any = await upload_script_file(opt.file)
+		if (res?.code === 200 && res?.data) {
+			form.value.external_files.push(res.data)
+			ElMessage.success('上传成功')
+		} else {
+			ElMessage.error(res?.message || '上传失败')
+		}
+	} catch (e: any) {
+		ElMessage.error(e?.message || '上传失败')
+	}
+}
+
+const removeExtFile = async (i: number) => {
+	const f = form.value.external_files[i]
+	try {
+		if (f?.path) await del_script_file({ path: f.path })
+	} catch {}
+	form.value.external_files.splice(i, 1)
+}
+
 function openAdd() {
   isEdit.value = false
-  form.value = { id: undefined, name: '', description: '', code: '', language: 'python', exec_mode: 'sandbox', code_map: {}}
+  form.value = { id: undefined, name: '', description: '', code: '', language: 'python', exec_mode: 'sandbox', code_map: {}, external_files: []}
   prevLang = 'python'
   validateResult.value = null
   dialogVisible.value = true
@@ -414,6 +449,7 @@ function openEdit(row: any) {
     code: row.code || '',
     language: row.language || 'python',
     code_map: (row.code_map && typeof row.code_map === 'object') ? row.code_map : { [row.language || 'python']: row.code || '' },
+    external_files: Array.isArray(row.external_files) ? row.external_files : [],
   }
   prevLang = form.value.language
   dialogVisible.value = true
@@ -437,6 +473,7 @@ async function saveDetail() {
       language: detailScript.value.language,
       exec_mode: execMode.value,
       code_map: detailScript.value.code_map || { [detailScript.value.language]: detailScript.value.code },
+      external_files: detailScript.value.external_files || [],
     })
     ElMessage.success('保存成功')
     await loadScripts()
@@ -464,6 +501,7 @@ async function submitForm() {
         language: form.value.language,
         exec_mode: execMode.value,
         code_map: { ...(form.value.code_map || {}), [form.value.language]: form.value.code },
+        external_files: form.value.external_files || [],
       })
       ElMessage.success('编辑成功')
     } else {
@@ -474,6 +512,7 @@ async function submitForm() {
         language: form.value.language,
         exec_mode: execMode.value,
         code_map: { ...(form.value.code_map || {}), [form.value.language]: form.value.code },
+        external_files: form.value.external_files || [],
         api_service_id: props.serviceId,
       })
       ElMessage.success('添加成功')
@@ -867,6 +906,11 @@ onMounted(loadScripts)
 .vr-title { font-weight: 600; margin-top: 4px; }
 .vr-line { margin-left: 4px; }
 .vr-line.suggest { color: #b45309; }
+.sc-ext-files { margin-top: 8px; }
+.sc-ext-tip { font-size: 11px; color: #94a3b8; line-height: 1.6; margin: 6px 0; }
+.sc-ext-file { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; }
+.sc-ext-name { color: #334155; font-weight: 500; }
+.sc-ext-path { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px; color: #64748b; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
 .sc-code-editor {
   width: 100%;
   min-height: 280px;

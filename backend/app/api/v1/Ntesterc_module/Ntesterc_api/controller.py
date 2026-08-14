@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # @author: Rebort
 
-from fastapi import APIRouter, Depends, Request
+from pathlib import Path
+from fastapi import APIRouter, Depends, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.db.sqlalchemy import get_db
 from app.core.dependencies import get_current_user_id
@@ -58,6 +59,57 @@ async def edit_api_service(
         return success_response({}, message="编辑成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+EXT_SCRIPT_DIR = Path(r"D:\GeniusQA\backend\scripts_ext")
+
+
+@router.post("/upload_script_file")
+async def upload_script_file(
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+):
+    """上传外部程序代码文件（.py/.js/.jar/.sh 等），保存到平台脚本目录。"""
+    import shutil, uuid, time as _t
+    try:
+        EXT_SCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+        suffix = Path(file.filename or "x").suffix or ""
+        if suffix.lower() not in (".py", ".js", ".jar", ".sh", ".go", ".java", ".php", ".rb", ".bat", ".exe", ".ps1", ".ts", ".txt", ".json", ".sql", ".c", ".cpp"):
+            suffix = ".txt"
+        fname = f"{int(_t.time())}_{uuid.uuid4().hex[:6]}{suffix}"
+        dest = EXT_SCRIPT_DIR / fname
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        return success_response({
+            "name": file.filename,
+            "path": str(dest),
+            "rel_path": f"scripts_ext/{fname}",
+        }, message="上传成功")
+    except Exception as e:
+        return error_response(f"上传失败，原因是：{str(e)}")
+
+
+@router.post("/del_script_file")
+async def del_script_file(
+    request: Request,
+    user_id: int = Depends(get_current_user_id),
+):
+    """删除已上传的外部程序文件（仅限平台脚本目录内）。"""
+    try:
+        body = await body_to_json(request)
+        path = str(body.get("path") or "")
+        if not path:
+            return error_response("缺少文件路径")
+        p = Path(path)
+        try:
+            p.resolve().relative_to(EXT_SCRIPT_DIR.resolve())
+        except Exception:
+            return error_response("仅允许删除平台脚本目录内的文件")
+        if p.exists():
+            p.unlink()
+        return success_response({}, message="删除成功")
+    except Exception as e:
+        return error_response(f"删除失败，原因是：{str(e)}")
 
 
 @router.post("/sort_menu")
