@@ -7,9 +7,9 @@
 		append-to-body
 		@closed="onClosed"
 	>
-		<div class="common-params-tip">{{ curMenuId ? "主要用来对模块内的所有接口进行设置，如：Auth、前后置操作等" : "服务级全局参数：所有接口生效（Header/Cookie/Query/Body）" }}</div>
+		<div class="common-params-tip">{{ curMenuId ? "目录参数：对当前目录（根目录/子目录）及其下所有接口生效，可配置 Auth、前置操作、后置操作" : "模块级全局参数：对本模块所有接口生效（Header/Cookie/Query/Body）" }}</div>
 					<div class="common-params-tip">
-			对本服务下所有接口生效。发送时自动合并；接口内同名参数优先生效。
+			对本模块下所有接口生效。发送时自动合并；接口内同名参数优先生效。
 		</div>
 		<el-tabs v-model="activeTab">
 			<el-tab-pane v-if="!curMenuId" name="header">
