@@ -887,6 +887,23 @@ onMounted(loadScripts)
   background: #2a2a3e;
   border-bottom: 1px solid #3a3a4e;
 }
+.sc-editor-toolbar :deep(.el-upload) {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  height: 100%;
+}
+.sc-editor-toolbar :deep(.el-upload .el-button) {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  height: 24px;
+}
+.sc-editor-toolbar .el-button {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
 
 .sc-lang-badge {
   font-size: 11px;
