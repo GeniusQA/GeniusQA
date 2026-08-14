@@ -419,8 +419,12 @@ const doUploadFile = async (opt: any) => {
 	try {
 		const res: any = await upload_script_file(opt.file)
 		if (res?.code === 200 && res?.data) {
-			form.value.external_files.push(res.data)
-			ElMessage.success('上传成功')
+			const files = form.value.external_files || []
+			// 同名文件替换，避免重复关联
+			const idx = files.findIndex((f: any) => f.name === res.data.name)
+			if (idx >= 0) files[idx] = res.data
+			else files.push(res.data)
+			ElMessage.success(res?.message || '上传成功')
 		} else {
 			ElMessage.error(res?.message || '上传失败')
 		}
