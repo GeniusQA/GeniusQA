@@ -331,7 +331,7 @@ class _Pm:
             )
             out = (r.stdout or '')
             if r.stderr and r.stderr.strip():
-                out = out + ('\n' if out else '') + r.stderr
+                out = out + (chr(10) if out else '') + r.stderr
             return out or ('（退出码 %s）' % r.returncode)
         except Exception as e:
             return '执行失败: %s' % e
