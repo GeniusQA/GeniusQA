@@ -302,14 +302,14 @@ const validating = ref(false)
 const validateResult = ref<any>(null)
 
 const runValidate = async () => {
-  const code = form.code || ''
+  const code = form.value.code || ''
   if (!code.trim()) {
     validateResult.value = { passed: false, syntax_ok: false, syntax_error: '脚本内容为空', spec_issues: [], run_ok: null, ai_review: null }
     return
   }
   validating.value = true
   try {
-    const res: any = await useApiAutomationApi().script_validate({ code, language: form.language, exec_mode: execMode.value, use_ai: true })
+    const res: any = await useApiAutomationApi().script_validate({ code, language: form.value.language, exec_mode: execMode.value, use_ai: true })
     if (res.code === 200) {
       validateResult.value = res.data
     } else {
