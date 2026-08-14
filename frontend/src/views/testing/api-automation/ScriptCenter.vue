@@ -130,7 +130,7 @@
         </el-form-item>
         <el-form-item label="外部程序">
           <div class="sc-ext-field">
-            <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1">
+            <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.php,.bsh,.go,.sh,.rb,.lua,.rs,.bat,.ps1,.exe,.java,.ts,.c,.cpp">
               <el-button size="small" type="primary" plain>
                 <el-icon style="margin-right:3px"><ele-Upload /></el-icon>上传文件
               </el-button>
@@ -712,9 +712,15 @@ async function execExternalFile(f: any, i: number) {
 		const args: string[] = []
 		if (ext === 'js') cmd = 'node'
 		else if (ext === 'jar') { cmd = 'java'; args.push('-jar') }
-		else if (ext === 'sh') cmd = 'bash'
+		else if (ext === 'php') cmd = 'php'
+		else if (ext === 'bsh') { cmd = 'java'; args.push('bsh.Interpreter') }
 		else if (ext === 'go') { cmd = 'go'; args.push('run') }
-		else if (ext === 'bat') cmd = 'cmd'
+		else if (ext === 'sh') cmd = 'bash'
+		else if (ext === 'rb') cmd = 'ruby'
+		else if (ext === 'lua') cmd = 'lua'
+		else if (ext === 'rs') { cmd = 'cargo'; args.push('run') }
+		else if (ext === 'bat') { cmd = 'cmd'; args.push('/c') }
+		else if (ext === 'ps1') { cmd = 'powershell'; args.push('-File') }
 		const filePath = f.path || `D:/GeniusQA/backend/scripts_ext/${f.name}`
 		const cmdJson = JSON.stringify(cmd)
 		const argsJson = JSON.stringify([...args, filePath])

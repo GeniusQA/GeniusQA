@@ -77,7 +77,7 @@ async def upload_script_file(
         # 安全文件名（防路径穿越），同名覆盖
         safe_name = Path(file.filename or "x").name or "file"
         suffix = Path(safe_name).suffix or ""
-        if suffix.lower() not in (".py", ".js", ".jar", ".sh", ".go", ".java", ".php", ".rb", ".bat", ".exe", ".ps1", ".ts", ".txt", ".json", ".sql", ".c", ".cpp"):
+        if suffix.lower() not in (".py", ".js", ".jar", ".php", ".bsh", ".go", ".sh", ".rb", ".lua", ".rs", ".bat", ".ps1", ".exe", ".java", ".ts", ".txt", ".json", ".sql", ".c", ".cpp"):
             safe_name = safe_name + ".txt"
         dest = EXT_SCRIPT_DIR / safe_name
         if dest.exists():
