@@ -135,7 +135,7 @@
                 <el-icon style="margin-right:3px"><ele-Upload /></el-icon>上传文件
               </el-button>
             </el-upload>
-            <span class="sc-ext-hint">支持 .py/.js/.jar/.sh 等；脚本内用 pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名']) 调用（原生模式）</span>
+            <span class="sc-ext-hint">支持 .jar/.php/.js/.py/.bsh/.go/.sh/.rb/.lua/.rs/.bat/.ps1；脚本内用 pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名']) 调用（原生模式）</span>
             <div v-if="form.external_files.length" class="sc-ext-tags">
               <el-tag v-for="(f, i) in form.external_files" :key="i" size="small" type="info" effect="plain" closable @close="removeExtFile(i)" style="margin-right:6px">
                 {{ f.name }}
