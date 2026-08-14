@@ -39,7 +39,8 @@ class ApiEnvironmentModel(Base):
     
     name = Column(String(255), nullable=False, comment='环境名称')
     config = Column(JSON, comment='环境配置')
-    variable = Column(JSON, comment='环境变量')
+    variable = Column(JSON, comment='环境变量（手动配置）')
+    runtime_vars = Column(JSON, comment='运行期变量（脚本自动生成，请求执行时更新）')
     description = Column(Text, comment='环境描述')
 
 

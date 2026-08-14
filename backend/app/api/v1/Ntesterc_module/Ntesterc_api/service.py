@@ -110,6 +110,9 @@ class ApiAutomationService:
                 for j in (env_row.variable or []):
                     if isinstance(j, dict) and ApiAutomationService._normalize_var_name(j.get("name")) == lookup:
                         return j.get("value")
+                for k in (env_row.runtime_vars or []):
+                    if isinstance(k, dict) and ApiAutomationService._normalize_var_name(k.get("name")) == lookup:
+                        return k.get("value")
 
         g = await db.execute(select(ApiVariableModel).where(ApiVariableModel.enabled_flag == 1))
         for row in g.scalars().all():
@@ -3254,6 +3257,9 @@ class ApiAutomationService:
                 for j in (env_row.variable or []):
                     if isinstance(j, dict) and j.get("name") is not None:
                         session_vars[str(j.get("name"))] = j.get("value")
+                for k in (env_row.runtime_vars or []):
+                    if isinstance(k, dict) and k.get("name") is not None:
+                        session_vars[str(k.get("name"))] = k.get("value")
         g_rows = (
             await db.execute(
                 select(ApiVariableModel).where(
@@ -3668,7 +3674,8 @@ class ApiAutomationService:
                 ).scalar_one_or_none()
                 if not env_row:
                     return {"status": 0, "message": f"前置操作-设置环境变量：{name} 失败，原因：环境不存在"}
-                vars_list = list(env_row.variable or [])
+                # 脚本 set 的变量写入运行期变量区（不污染手动配置 variable）
+                vars_list = list(env_row.runtime_vars or [])
                 found = False
                 for item in vars_list:
                     if item.get("name") == name:
@@ -3679,6 +3686,7 @@ class ApiAutomationService:
                     vars_list.append({"name": name, "value": value})
                 await db.execute(
                     update(ApiEnvironmentModel)
+                    .values(runtime_vars=vars_list)
                     .where(
                         ApiEnvironmentModel.id == env_row.id,
                         ApiEnvironmentModel.enabled_flag == 1,
