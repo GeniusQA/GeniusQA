@@ -866,10 +866,12 @@ class ApiAutomationService:
         if not svc:
             return ApiAutomationService._empty_common_params()
         service_cp = ApiAutomationService._normalize_common_params(getattr(svc, "common_params", None))
-        # 目录级（菜单）公共参数：接口所属菜单（api_id 反查）配置优先合并
+        # 目录级（菜单）公共参数：沿菜单链递归继承
+        # 接口 ← 直接目录 ← 祖先目录 ← … ← 根目录 ← 模块（服务级）
         if api_id:
             await ApiAutomationService._ensure_menu_common_params_column(db)
-            menu_row = (
+            chain: List[ApiMenuModel] = []
+            cur = (
                 await db.execute(
                     select(ApiMenuModel).where(
                         ApiMenuModel.api_id == int(api_id),
@@ -877,15 +879,36 @@ class ApiAutomationService:
                     )
                 )
             ).scalars().first()
-            if menu_row and getattr(menu_row, "common_params", None):
+            seen: set = set()
+            while cur and cur.id not in seen:
+                seen.add(cur.id)
+                chain.append(cur)
+                pid = int(cur.pid or 0)
+                if not pid:
+                    break
+                cur = (
+                    await db.execute(
+                        select(ApiMenuModel).where(
+                            ApiMenuModel.id == pid,
+                            ApiMenuModel.status == 1,
+                        )
+                    )
+                ).scalars().first()
+            # 从远到近合并（根目录/祖先在前，直接目录在后；before/after 拼接，header 同名近层覆盖）
+            merged = service_cp
+            for menu_row in reversed(chain):
+                raw = getattr(menu_row, "common_params", None)
+                if not raw:
+                    continue
                 try:
-                    menu_cp = json.loads(menu_row.common_params) if isinstance(menu_row.common_params, str) else (menu_row.common_params or {})
+                    menu_cp = json.loads(raw) if isinstance(raw, str) else (raw or {})
                 except Exception:
                     menu_cp = {}
                 if isinstance(menu_cp, dict):
-                    return ApiAutomationService._merge_common_params(
-                        service_cp, ApiAutomationService._normalize_common_params(menu_cp)
+                    merged = ApiAutomationService._merge_common_params(
+                        merged, ApiAutomationService._normalize_common_params(menu_cp)
                     )
+            return merged
         return service_cp
 
     @staticmethod
