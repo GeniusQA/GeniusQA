@@ -3300,7 +3300,7 @@ class ApiAutomationService:
         )
         return {
             "status": 1,
-            "message": f"{phase}操作-自定义脚本成功（{language}）",
+            "message": f"{phase}操作-自定义脚本成功（{'Python' if language == 'python' else 'JavaScript'}）",
             "type": op.get("type"),
             "output": (run_res.output or "")[:5000],
             "vars": {k: v for k, v in (run_res.vars or {}).items() if k != "__request__"},
@@ -4467,7 +4467,7 @@ class ApiAutomationService:
                             )
                             results.append({
                                 "status": 1,
-                                "message": f"{label}：执行通过（{language}）",
+                                "message": f"{label}：执行通过（{'Python' if language == 'python' else 'JavaScript'}）",
                                 "type": t,
                                 "language": language,
                                 "output": (run_res.output or "")[:5000],
