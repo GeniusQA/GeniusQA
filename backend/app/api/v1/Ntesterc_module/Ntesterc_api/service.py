@@ -3270,6 +3270,16 @@ class ApiAutomationService:
         language = normalize_language(language_override or op.get("language") or "python")
         if not str(code).strip():
             return {"status": 0, "message": f"{phase}操作-自定义脚本：代码为空", "type": op.get("type")}
+        # 全角标点清洗（防从文档/聊天粘贴时混入全角括号导致语法错误）
+        _FW = str.maketrans({
+            0xFF08: '(', 0xFF09: ')', 0xFF0C: ',', 0xFF1B: ';', 0xFF1A: ':',
+            0xFF1F: '?', 0xFF01: '!', 0xFF0E: '.', 0xFF0D: '-', 0xFF0F: '/',
+            0xFF1C: '<', 0xFF1E: '>', 0xFF02: '"', 0xFF07: "'", 0xFF5B: '{',
+            0xFF5D: '}', 0xFF3B: '[', 0xFF3D: ']', 0xFF0B: '+', 0xFF0A: '*',
+            0xFF1D: '=', 0xFF5E: '~', 0xFF40: '`',
+        })
+        if any(ord(ch) >= 0xFF01 and ord(ch) <= 0xFF5E for ch in code):
+            code = code.translate(_FW)
         # 语言自动检测：声明为 JS 但代码为 Python 特征时按 Python 执行（防继承脚本语言配错）
         code_l = str(code).lstrip()
         if language == "javascript" and code_l.startswith(("import ", "from ", "def ", "# ")) \
