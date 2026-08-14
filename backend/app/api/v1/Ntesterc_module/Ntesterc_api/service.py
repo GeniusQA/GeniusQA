@@ -976,9 +976,10 @@ class ApiAutomationService:
         req["cookies"] = ApiAutomationService._merge_kv_lists(common.get("cookie"), req.get("cookies"), cookie=True)
 
         # 前置/后置操作继承：公共在前 + 接口在后（父级配置默认被所有子级接口继承执行）
-        if common.get("before"):
+        # 接口可单独关闭继承：req.inherit_before / req.inherit_after = false 时跳过父级
+        if common.get("before") and req.get("inherit_before", True) is not False:
             req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
-        if common.get("after"):
+        if common.get("after") and req.get("inherit_after", True) is not False:
             req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
         # 鉴权继承：接口未配置鉴权时继承公共鉴权（平铺字段）
         if not req.get("auth_type") and isinstance(common.get("auth"), dict) and common["auth"].get("auth_type"):
@@ -2841,7 +2842,14 @@ class ApiAutomationService:
             return None
         data = row.__dict__.copy()
         data.pop("_sa_instance_state", None)
-
+        # 附加继承的父级操作列表（供前端展示"继承父级"）
+        try:
+            common = await ApiAutomationService._load_common_params_by_api(db, api_id=int(api_id))
+            data["inherit_before"] = (common or {}).get("before") or []
+            data["inherit_after"] = (common or {}).get("after") or []
+        except Exception:
+            data["inherit_before"] = []
+            data["inherit_after"] = []
         return data
 
     @staticmethod

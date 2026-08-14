@@ -307,6 +307,17 @@
 									<template #label>
 										<el-badge :show-zero="false" :value="req.before.length" :offset="[10, 2]" type="danger">前置操作</el-badge>
 									</template>
+									<div v-if="inheritBefore.length" class="inherit-bar">
+										<div class="inherit-info">
+											<span class="inherit-label">继承父级</span>
+											<el-tag v-for="(op, i) in inheritBefore" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
+											<span class="inherit-muted">（{{ inheritBefore.length }} 个操作，来自根目录/父级目录）</span>
+										</div>
+										<div class="inherit-switch">
+											<span class="inherit-muted">执行父级前置操作</span>
+											<el-switch v-model="req.inherit_before" />
+										</div>
+									</div>
 									<div class="op-scroll-wrap">
 										<OperationPanel
 											:items="req.before"
@@ -328,6 +339,17 @@
 <template #label>
 <el-badge :show-zero="false" :value="req.after.length" :offset="[10, 2]" type="danger">后置操作</el-badge>
 </template>
+<div v-if="inheritAfter.length" class="inherit-bar">
+<div class="inherit-info">
+<span class="inherit-label">继承父级</span>
+<el-tag v-for="(op, i) in inheritAfter" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
+<span class="inherit-muted">（{{ inheritAfter.length }} 个操作，来自根目录/父级目录）</span>
+</div>
+<div class="inherit-switch">
+<span class="inherit-muted">执行父级后置操作</span>
+<el-switch v-model="req.inherit_after" />
+</div>
+</div>
 <div class="op-scroll-wrap">
 <OperationPanel
 :items="req.after"
@@ -1088,8 +1110,22 @@ const effectiveDbList = computed(() => {
 	return internal.length > 0 ? internal : fromProp;
 });
 
+const inheritBefore = ref<any[]>([]);
+const inheritAfter = ref<any[]>([]);
+
+const opLabel = (op: any) => {
+	if (!op || typeof op !== 'object') return '操作'
+	const t = op.type
+	if (t === 4 || t === 5) return '自定义脚本'
+	if (t === 1 || t === 2) return '提取变量'
+	if (t === 3) return `等待 ${op.wait_time ?? ''} 秒`
+	if (t === 6) return `脚本库${op.func_name ? '：' + op.func_name : ''}`
+	return '操作'
+}
+
 const req = ref({
 	method: 1, url: '', params: [], header: [], body: '', body_type: 2,
+	inherit_before: true, inherit_after: true,
 	form_data: [], form_urlencoded: [], file_path: [],
 	before: [], after: [], assert: [],
 	config: { retry: 0, req_timeout: 30, res_timeout: 30, ssl_verify: true, allow_redirects: true, url_encode: false },
@@ -1204,6 +1240,8 @@ watch(
 			file_path: Array.isArray(reqSrc.file_path) ? reqSrc.file_path : [],
 			before: Array.isArray(reqSrc.before) ? reqSrc.before : [],
 			after: Array.isArray(reqSrc.after) ? reqSrc.after : [],
+			inherit_before: reqSrc.inherit_before !== false,
+			inherit_after: reqSrc.inherit_after !== false,
 			assert: Array.isArray(reqSrc.assert) ? reqSrc.assert : [],
 			config: { retry: reqSrc.config?.retry ?? 0, req_timeout: reqSrc.config?.req_timeout ?? 30, res_timeout: reqSrc.config?.res_timeout ?? 30, ssl_verify: reqSrc.config?.ssl_verify ?? true, allow_redirects: reqSrc.config?.allow_redirects ?? true, url_encode: reqSrc.config?.url_encode ?? false },
 			xml_body: reqSrc.xml_body ?? '', text_body: reqSrc.text_body ?? '',
@@ -1231,6 +1269,8 @@ watch(
 			auth_oauth_client_auth: reqSrc.auth_oauth_client_auth ?? 'basic',
 		};
 		res.value = { body: resSrc.body ?? {}, header: resSrc.header ?? {}, before: Array.isArray(resSrc.before) ? resSrc.before : [], after: Array.isArray(resSrc.after) ? resSrc.after : [], assert: Array.isArray(resSrc.assert) ? resSrc.assert : [], code: resSrc.code ?? 0, size: resSrc.size ?? 0, res_time: resSrc.res_time ?? 0, cookies: Array.isArray(resSrc.cookies) ? resSrc.cookies : [], console: Array.isArray(resSrc.console) ? resSrc.console : [], raw_request: resSrc.raw_request ?? null };
+		inheritBefore.value = Array.isArray(apiInfo.inherit_before) ? apiInfo.inherit_before : [];
+		inheritAfter.value = Array.isArray(apiInfo.inherit_after) ? apiInfo.inherit_after : [];
 	},
 	{ immediate: true }
 );
@@ -1502,6 +1542,15 @@ const confirmSaveAsCase = async () => {
 .apifox-tabs :deep(.el-tab-pane[id*="pane-after"]),
 .apifox-tabs :deep(.el-tab-pane[id*="pane-assert"]) { height: auto; min-height: 0; }
 /* 操作面板滚动容器：撑开内容，让父级 el-tabs__content 滚动 */
+.inherit-bar {
+	display: flex; align-items: center; justify-content: space-between; gap: 8px;
+	padding: 8px 10px; margin-bottom: 8px;
+	background: #f6f8fa; border: 1px solid #e4e7ed; border-radius: 6px;
+}
+.inherit-info { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.inherit-label { font-size: 12px; font-weight: 600; color: #606266; margin-right: 6px; }
+.inherit-muted { font-size: 11px; color: #909399; }
+.inherit-switch { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .op-scroll-wrap { width: 100%; }
 .apifox-tabs :deep(.el-badge__content) { top: 6px; right: 0px; font-size: 9px; height: 14px; line-height: 14px; padding: 0 3px; min-width: 14px; border: none; }
 .res-badge :deep(.el-badge__content) { font-size: 9px; height: 13px; line-height: 13px; padding: 0 3px; min-width: 13px; border: none; }
