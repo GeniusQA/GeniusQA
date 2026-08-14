@@ -62,6 +62,7 @@ async def edit_api_service(
 
 
 EXT_SCRIPT_DIR = Path(r"D:\GeniusQA\backend\scripts_ext")
+EXT_SCRIPT_TMP = Path(r"D:\GeniusQA\backend\scripts_ext_tmp")
 
 
 @router.post("/upload_script_file")
@@ -69,16 +70,16 @@ async def upload_script_file(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
 ):
-    """上传外部程序代码文件（.py/.js/.jar/.sh 等），保存到平台脚本目录；同名文件直接覆盖更新。"""
+    """上传外部程序代码文件到临时目录；保存脚本时才正式存储（同名覆盖）。"""
     import shutil
     try:
-        EXT_SCRIPT_DIR.mkdir(parents=True, exist_ok=True)
-        # 安全文件名（防路径穿越），同名覆盖
+        EXT_SCRIPT_TMP.mkdir(parents=True, exist_ok=True)
+        # 安全文件名（防路径穿越）
         safe_name = Path(file.filename or "x").name or "file"
         suffix = Path(safe_name).suffix or ""
         if suffix.lower() not in (".py", ".js", ".jar", ".sh", ".go", ".java", ".php", ".rb", ".bat", ".exe", ".ps1", ".ts", ".txt", ".json", ".sql", ".c", ".cpp"):
             safe_name = safe_name + ".txt"
-        dest = EXT_SCRIPT_DIR / safe_name
+        dest = EXT_SCRIPT_TMP / safe_name
         if dest.exists():
             dest.unlink()
         with open(dest, "wb") as f:
@@ -86,8 +87,8 @@ async def upload_script_file(
         return success_response({
             "name": safe_name,
             "path": str(dest),
-            "rel_path": f"scripts_ext/{safe_name}",
-        }, message="上传成功" + ("（已覆盖同名文件）" if dest.exists() else ""))
+            "rel_path": f"scripts_ext_tmp/{safe_name}",
+        }, message="上传成功（保存脚本时正式存储）")
     except Exception as e:
         return error_response(f"上传失败，原因是：{str(e)}")
 
