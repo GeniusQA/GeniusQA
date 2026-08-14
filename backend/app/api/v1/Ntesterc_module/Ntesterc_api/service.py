@@ -4745,6 +4745,11 @@ class ApiAutomationService:
 
         # 服务级全局参数（Header/Cookie/Query/Body），请求侧同名覆盖
         api_id = int(body.get("id") or req.get("id") or 0)
+        # 解析 api_service_id（两级全局变量按服务解析项目/部门）
+        api_service_id = body.get("api_service_id")
+        if not api_service_id and api_id:
+            _api_row = (await db.execute(select(ApiModel).where(ApiModel.id == api_id))).scalar_one_or_none()
+            api_service_id = int(_api_row.api_service_id) if _api_row and _api_row.api_service_id else None
         common = await ApiAutomationService._load_common_params_by_api(db, api_id=api_id or None)
         req = ApiAutomationService.apply_common_params_to_req(req, common)
 
@@ -4803,12 +4808,12 @@ class ApiAutomationService:
                 "请确认环境配置中的接口前缀（如 https://uapis.cn）已正确替换到 URL。"
             )
 
-        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body", api_service_id=api_service_id) or {})
+        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body") or {}, api_service_id=api_service_id)
         method = int(req.get("method") or 2)
         body_type = int(req.get("body_type") or 2)
-        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header", api_service_id=api_service_id)))
-        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params", api_service_id=api_service_id)))
-        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data", api_service_id=api_service_id)))
+        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header")), api_service_id=api_service_id)
+        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params")), api_service_id=api_service_id)
+        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data")), api_service_id=api_service_id)
         form_urlencoded = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_urlencoded")))
         file_paths = req.get("file_path") or []
         config = req.get("config") if isinstance(req.get("config"), dict) else None
