@@ -205,6 +205,21 @@ def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
             except Exception as e:
                 raise AssertionError(f"pm.test({name!r}) failed: {e}") from e
 
+        def executeAsync(self, cmd, args=None):
+            import subprocess
+            try:
+                r = subprocess.run(
+                    [cmd] + list(args or []),
+                    capture_output=True, text=True, timeout=30,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                )
+                out = (r.stdout or '')
+                if r.stderr and r.stderr.strip():
+                    out = out + ('\n' if out else '') + r.stderr
+                return out or f'（退出码 {r.returncode}）'
+            except Exception as e:
+                return f'执行失败: {e}'
+
     return _Pm()
 
 
