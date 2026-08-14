@@ -6086,15 +6086,6 @@ class ApiAutomationService:
 
     @staticmethod
     async def get_ntest_scripts(db: AsyncSession, api_service_id: int, user_id: int) -> List[Dict]:
-        # 清理未保存的临时上传文件（scripts_ext_tmp）
-        try:
-            tmp_dir = Path(r"D:\GeniusQA\backend\scripts_ext_tmp")
-            if tmp_dir.exists():
-                for f in tmp_dir.iterdir():
-                    if f.is_file():
-                        f.unlink()
-        except Exception:
-            pass
         """查询指定服务下的公共脚本列表（仅返回未软删除的记录）"""
         from .model import NtestScriptModel
         await ApiAutomationService._ensure_ntest_script_language_column(db)
@@ -6144,7 +6135,7 @@ class ApiAutomationService:
             language=language,
             exec_mode=body.get("exec_mode") or "sandbox",
             code_map=json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None,
-            external_files=json.dumps(ApiAutomationService._finalize_external_files(body.get("external_files") or []), ensure_ascii=False) if body.get("external_files") else None,
+            external_files=json.dumps(body.get("external_files") or [], ensure_ascii=False) if body.get("external_files") else None,
             api_service_id=int(api_service_id),
             created_by=user_id,
             enabled_flag=1,
@@ -6175,7 +6166,7 @@ class ApiAutomationService:
         if "code_map" in body:
             values["code_map"] = json.dumps(body.get("code_map") or {}, ensure_ascii=False) if body.get("code_map") else None
         if "external_files" in body:
-            values["external_files"] = json.dumps(ApiAutomationService._finalize_external_files(body.get("external_files") or []), ensure_ascii=False) if body.get("external_files") else None
+            values["external_files"] = json.dumps(body.get("external_files") or [], ensure_ascii=False) if body.get("external_files") else None
         from .model import NtestScriptModel
         await db.execute(
             update(NtestScriptModel)
