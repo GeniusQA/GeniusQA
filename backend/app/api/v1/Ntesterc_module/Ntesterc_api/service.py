@@ -1185,7 +1185,7 @@ class ApiAutomationService:
                 .values(
                     name=env.get("name"),
                     config=env.get("config"),
-                    variable=env.get("variable"),
+                    variable=[v for v in (env.get("variable") or []) if isinstance(v, dict) and not str(v.get("name") or "").upper().startswith("X_")],
                     updated_by=user_id,
                 )
             )
@@ -1196,7 +1196,7 @@ class ApiAutomationService:
         env = ApiEnvironmentModel(
             name=data["name"],
             config=data.get("config") or [],
-            variable=data.get("variable") or [],
+            variable=[v for v in (data.get("variable") or []) if isinstance(v, dict) and not str(v.get("name") or "").upper().startswith("X_")],
             created_by=user_id,
             updated_by=user_id,
         )

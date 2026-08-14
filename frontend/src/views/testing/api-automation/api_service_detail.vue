@@ -318,7 +318,7 @@ const submitEnvForm = async () => {
 		const payload = {
 			name: envForm.value.name.trim(),
 			config: envForm.value.config.filter((c) => String(c.name || '').trim()),
-			variable: envForm.value.variable.filter((v) => String(v.name || '').trim()),
+			variable: envForm.value.variable.filter((v) => { const n = String(v.name || '').trim(); return n && !n.toUpperCase().startsWith('X_') }),
 		};
 		if (envForm.value.id) {
 			await save_env({ env_list: [{ id: envForm.value.id, ...payload }] });
