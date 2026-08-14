@@ -212,6 +212,15 @@
         <el-input v-model="funcSearch" placeholder="输入函数名或说明查询" clearable style="width:240px" />
       </div>
       <div style="max-height:480px;overflow-y:auto">
+        <div v-if="(funcListScript?.external_files || []).length" class="fl-ext">
+          <div class="fl-ext-title">外部程序文件（点击执行查看运行结果）</div>
+          <div v-for="(f, i) in funcListScript.external_files" :key="i" class="fl-ext-item">
+            <el-icon style="margin-right:4px;color:#64748b"><Document /></el-icon>
+            <span class="fl-ext-name">{{ f.name }}</span>
+            <el-button type="primary" link size="small" :loading="extRunning === i" @click="execExternalFile(f, i)">执行</el-button>
+          </div>
+          <div v-if="extOutput" class="fl-ext-output"><pre>{{ extOutput }}</pre></div>
+        </div>
         <el-table :data="filteredFuncs" border stripe empty-text="未解析到函数定义">
           <el-table-column prop="name" label="函数名称" width="200">
             <template #default="{ row }">
@@ -689,6 +698,79 @@ function openDebugFunc(func: any) {
   debugFuncVisible.value = true
 }
 
+const extRunning = ref(-1)
+const extOutput = ref('')
+
+async function execExternalFile(f: any, i: number) {
+	if (!funcListScript.value) return
+	extRunning.value = i
+	extOutput.value = '执行中...'
+	try {
+		const lang = normalizeLang(funcListScript.value.language)
+		const ext = String(f.name || '').split('.').pop()?.toLowerCase() || ''
+		let cmd = 'python'
+		const args: string[] = []
+		if (ext === 'js') cmd = 'node'
+		else if (ext === 'jar') { cmd = 'java'; args.push('-jar') }
+		else if (ext === 'sh') cmd = 'bash'
+		else if (ext === 'go') { cmd = 'go'; args.push('run') }
+		else if (ext === 'bat') cmd = 'cmd'
+		const filePath = f.path || `D:/GeniusQA/backend/scripts_ext/${f.name}`
+		const cmdJson = JSON.stringify(cmd)
+		const argsJson = JSON.stringify([...args, filePath])
+		const fullCode = lang === 'javascript'
+			? `const _extOut = pm.executeAsync(${cmdJson}, ${argsJson});\nconsole.log('=== 外部程序输出 ===');\nconsole.log(_extOut);\nntest.set('_result', _extOut);`
+			: `_extOut = pm.executeAsync(${cmdJson}, ${argsJson})\nprint('=== 外部程序输出 ===')\nprint(_extOut)\nntest.set('_result', _extOut)`
+		const resultId = Date.now()
+		const stepName = `执行外部文件: ${f.name}`
+
+		await run_api_script({
+			result_id: resultId,
+			name: stepName,
+			api_service_id: props.serviceId,
+			config: { env_id: 0 },
+			run_list: [{
+				name: stepName,
+				config: {},
+				script: [{
+					step_type: 'script',
+					name: stepName,
+					enable: true,
+					request: {
+						script_content: fullCode,
+						exec_mode: 'native',
+						language: lang,
+					},
+					extracts: [],
+					validators: [],
+					children_steps: [],
+				}],
+			}],
+		})
+
+		const step = await fetchScriptStepResult(resultId)
+		if (!step) {
+			extOutput.value = '执行完成，但未获取到结果'
+			return
+		}
+		const resBody = step.res?.body || step.res || {}
+		const output: string = resBody.output || ''
+		const vars: Record<string, any> = resBody.vars || {}
+		const error: string = step.res?.error || step.error || resBody.exception || resBody.msg || ''
+		const lines: string[] = []
+		if (vars._result !== undefined) lines.push('返回值:\n' + JSON.stringify(vars._result, null, 2))
+		if (output.trim()) lines.push('输出:\n' + output.trim())
+		if (error) lines.push('错误:\n' + error)
+		if (!step.status && !error) lines.push('错误:\n执行失败')
+		if (!lines.length) lines.push(JSON.stringify(step.res, null, 2) || '执行完成（无输出）')
+		extOutput.value = lines.join('\n\n')
+	} catch (e: any) {
+		extOutput.value = '执行失败: ' + (e?.message || String(e))
+	} finally {
+		extRunning.value = -1
+	}
+}
+
 async function execDebugFunc() {
   if (!debugFunc.value || !funcListScript.value) return
   running.value = true
@@ -935,6 +1017,16 @@ onMounted(loadScripts)
 .sc-ext-field { width: 100%; }
 .sc-ext-hint { font-size: 11px; color: #94a3b8; line-height: 1.6; margin: 6px 0 0; display: block; }
 .sc-ext-tags { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; }
+.fl-ext { margin-bottom: 10px; padding: 8px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+.fl-ext-title { font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+.fl-ext-item { display: flex; align-items: center; gap: 4px; font-size: 13px; padding: 3px 0; }
+.fl-ext-name { font-family: 'JetBrains Mono', Consolas, monospace; color: #475569; }
+.fl-ext-output { margin-top: 8px; }
+.fl-ext-output pre {
+	margin: 0; padding: 8px 10px; background: #0f1115; border-radius: 6px;
+	font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; line-height: 1.55;
+	color: #c9d1d9; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto;
+}
 .sc-code-editor {
   width: 100%;
   min-height: 280px;
