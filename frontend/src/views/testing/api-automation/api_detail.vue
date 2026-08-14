@@ -1,4 +1,4 @@
-<<template>
+<template>
 	<div class="api-detail-container" :class="{'is-embedded': props.embedded}">
 		<el-card class="api-detail-card">
 			<!-- 顶部大 Tab（嵌入模式下隐藏）-->

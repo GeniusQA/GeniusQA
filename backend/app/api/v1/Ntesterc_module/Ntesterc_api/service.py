@@ -160,12 +160,14 @@ class ApiAutomationService:
             return int(_time.time() * (1000 if m.group(1) == "3" else 1)) if m.group(1) else int(_time.time())
         if k == "$timestamp_ms":
             return int(_time.time() * 1000)
-        m2 = re.match(r"^\$randomInt(?:\[(\d+),(\d+)\])?$", k)
+        m2 = re.match(r"^\$randomInt(?:\[\s*(\d+)\s*,\s*(\d+)\s*\])?$", k)
         if m2:
             if m2.group(1) and m2.group(2):
                 lo, hi = int(m2.group(1)), int(m2.group(2))
-                return _random.randint(lo, hi) if hi >= lo else lo
-            return _random.randint(0, 9999)
+                if hi < lo:
+                    lo, hi = hi, lo
+                return _random.randint(lo, hi)
+            return _random.randint(0, 1000)
         if k == "$uuid":
             return _uuid.uuid4().hex
         if k == "$guid":
@@ -306,10 +308,10 @@ class ApiAutomationService:
         elif grant in ("password", "password_credentials"):
             data["grant_type"] = "password"
             data["username"] = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "", temp_vars=temp_vars)
             ).strip()
             data["password"] = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "", temp_vars=temp_vars)
             ).strip()
             if scope:
                 data["scope"] = scope
@@ -342,26 +344,27 @@ class ApiAutomationService:
         return token
 
     @staticmethod
-    async def _build_jwt_bearer_token(db: AsyncSession, env_id: int, req: Dict[str, Any]) -> str:
+    async def _build_jwt_bearer_token(db: AsyncSession, env_id: int, req: Dict[str, Any],
+                                      temp_vars: Optional[Dict[str, Any]] = None) -> str:
         """JWT Bearer：可直接填 Token，或按密钥/Payload 现场签发。"""
         mode = str(req.get("auth_jwt_mode") or "token").strip().lower()
         if mode != "generate":
-            token = await ApiAutomationService.handle_var(db, env_id, req.get("auth_token") or "")
+            token = await ApiAutomationService.handle_var(db, env_id, req.get("auth_token") or "", temp_vars=temp_vars)
             return str(token or "").strip()
 
         import jwt as pyjwt
 
         alg = str(req.get("auth_jwt_alg") or "HS256").strip() or "HS256"
         secret = str(
-            await ApiAutomationService.handle_var(db, env_id, req.get("auth_jwt_secret") or "")
+            await ApiAutomationService.handle_var(db, env_id, req.get("auth_jwt_secret") or "", temp_vars=temp_vars)
         )
         if not secret:
             raise ValueError("JWT Bearer 生成模式缺少 Secret / Private Key")
 
         raw_payload = req.get("auth_jwt_payload") or "{}"
         raw_headers = req.get("auth_jwt_headers") or "{}"
-        raw_payload = await ApiAutomationService.handle_var(db, env_id, raw_payload)
-        raw_headers = await ApiAutomationService.handle_var(db, env_id, raw_headers)
+        raw_payload = await ApiAutomationService.handle_var(db, env_id, raw_payload, temp_vars=temp_vars)
+        raw_headers = await ApiAutomationService.handle_var(db, env_id, raw_headers, temp_vars=temp_vars)
 
         def _as_dict(v: Any, label: str) -> Dict[str, Any]:
             if isinstance(v, dict):
@@ -387,6 +390,7 @@ class ApiAutomationService:
         req: Dict[str, Any],
         headers: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        temp_vars: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Any]:
         """
         将 Auth / Cookies 应用到请求。
@@ -404,7 +408,7 @@ class ApiAutomationService:
             name = str(c.get("name") or c.get("key") or "").strip()
             if not name:
                 continue
-            val = await ApiAutomationService.handle_var(db, env_id, c.get("value") or "")
+            val = await ApiAutomationService.handle_var(db, env_id, c.get("value") or "", temp_vars=temp_vars)
             cookie_parts.append(f"{name}={val}")
         if cookie_parts:
             existing = ""
@@ -421,20 +425,22 @@ class ApiAutomationService:
 
         prefix = str(
             await ApiAutomationService.handle_var(
-                db, env_id, req.get("auth_prefix") if req.get("auth_prefix") is not None else "Bearer"
+                db, env_id,
+                req.get("auth_prefix") if req.get("auth_prefix") is not None else "Bearer",
+                temp_vars=temp_vars,
             )
         ).strip()
 
         if auth_type in ("bearer", "bearer_token"):
             token = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_token") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_token") or "", temp_vars=temp_vars)
             ).strip()
             if token:
                 value = f"{prefix} {token}".strip() if prefix else token
                 ApiAutomationService._set_header_ci(headers, "Authorization", value)
 
         elif auth_type in ("jwt", "jwt_bearer"):
-            token = await ApiAutomationService._build_jwt_bearer_token(db, env_id, req)
+            token = await ApiAutomationService._build_jwt_bearer_token(db, env_id, req, temp_vars=temp_vars)
             if token:
                 value = f"{prefix} {token}".strip() if prefix else token
                 ApiAutomationService._set_header_ci(headers, "Authorization", value)
@@ -443,10 +449,10 @@ class ApiAutomationService:
             import base64
 
             username = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "", temp_vars=temp_vars)
             )
             password = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "", temp_vars=temp_vars)
             )
             raw = f"{username}:{password}".encode("utf-8")
             ApiAutomationService._set_header_ci(
@@ -457,19 +463,19 @@ class ApiAutomationService:
             from requests.auth import HTTPDigestAuth
 
             username = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_username") or "", temp_vars=temp_vars)
             )
             password = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_password") or "", temp_vars=temp_vars)
             )
             requests_auth = HTTPDigestAuth(username, password)
 
         elif auth_type in ("apikey", "api_key", "api-key"):
             key = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_key") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_key") or "", temp_vars=temp_vars)
             ).strip()
             value = str(
-                await ApiAutomationService.handle_var(db, env_id, req.get("auth_value") or "")
+                await ApiAutomationService.handle_var(db, env_id, req.get("auth_value") or "", temp_vars=temp_vars)
             )
             if key:
                 dest = str(req.get("auth_in") or "header").strip().lower()
@@ -479,7 +485,7 @@ class ApiAutomationService:
                     ApiAutomationService._set_header_ci(headers, key, value)
 
         elif auth_type in ("oauth2", "oauth_2", "oauth 2.0"):
-            token = await ApiAutomationService._resolve_oauth2_token(db, env_id, req)
+            token = await ApiAutomationService._resolve_oauth2_token(db, env_id, req, temp_vars=temp_vars)
             if token:
                 value = f"{prefix} {token}".strip() if prefix else token
                 ApiAutomationService._set_header_ci(headers, "Authorization", value)
@@ -3574,6 +3580,7 @@ class ApiAutomationService:
         user_id: int,
         *,
         phase: str,
+        request_ctx: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         db_id = op.get("db_id")
         sql = str(op.get("sql") or "").strip()
@@ -3594,7 +3601,7 @@ class ApiAutomationService:
         if not row:
             return {"status": 0, "message": f"{phase}操作-数据库：配置不存在", "type": op.get("type")}
 
-        sql = await ApiAutomationService.handle_var(db, env_id, sql)
+        sql = await ApiAutomationService.handle_var(db, env_id, sql, temp_vars=(request_ctx or {}).get("__temp_vars__"))
         try:
             cfg = row.config or {}
             host = cfg.get("host") or row.host
@@ -3638,6 +3645,7 @@ class ApiAutomationService:
         user_id: int,
         *,
         phase: str,
+        request_ctx: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """引入接口。
         """
@@ -3913,7 +3921,7 @@ class ApiAutomationService:
                 elif t == 5:
                     results.append(
                         await ApiAutomationService._op_run_db(
-                            db, op, env_id, user_id, phase="前置"
+                            db, op, env_id, user_id, phase="前置", request_ctx=request_ctx
                         )
                     )
                 elif t == 6:
@@ -4065,8 +4073,12 @@ class ApiAutomationService:
                 )
             elif env_type == 3:
                 # 临时变量：写入请求上下文临时区，不落库，请求结束自动消失
-                if isinstance(request_ctx, dict):
-                    request_ctx.setdefault("__temp_vars__", {})[target_name] = value
+                if not isinstance(request_ctx, dict):
+                    return {
+                        "status": 0,
+                        "message": f"后置操作-提取目标值：{data.get('name')} 失败，原因是：当前上下文不支持临时变量",
+                    }
+                request_ctx.setdefault("__temp_vars__", {})[target_name] = value
                 return {
                     "status": 1,
                     "message": f"后置操作-提取目标值：{data.get('name')}={value} ，赋值给临时变量 {target_name} 成功",
@@ -4177,7 +4189,7 @@ class ApiAutomationService:
                 elif t == 4:
                     results.append(
                         await ApiAutomationService._op_run_db(
-                            db, op, env_id, user_id, phase="后置"
+                            db, op, env_id, user_id, phase="后置", request_ctx=request_ctx
                         )
                     )
                 elif t == 5:
@@ -4899,7 +4911,8 @@ class ApiAutomationService:
         config = config or {"retry": 0, "req_timeout": 5, "res_timeout": 5}
 
         headers, params, req_auth = await ApiAutomationService.apply_request_auth(
-            db, env_id, req, headers=headers, params=params
+            db, env_id, req, headers=headers, params=params,
+            temp_vars=request_ctx.get("__temp_vars__") if isinstance(request_ctx, dict) else None,
         )
 
         res = await ApiAutomationService._send_request(

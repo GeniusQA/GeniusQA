@@ -325,7 +325,6 @@ class _PmVars:
         return ntest.get(key, default)
     def set(self, key, value):
         _exported.setdefault("__temp__", {{}})[key] = value
-        _vars[key] = value
     def has(self, key):
         tmp = _exported.get("__temp__", {{}})
         if key in tmp:
