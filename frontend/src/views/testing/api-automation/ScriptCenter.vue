@@ -779,7 +779,14 @@ async function execExternalFile(f: any, i: number) {
 		const lines: string[] = []
 		const pretty = (t: string) => {
 			const s = String(t ?? '').trim()
-			try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
+			// 整段是 JSON → 直接美化
+			try { return JSON.stringify(JSON.parse(s), null, 2) } catch {}
+			// 文本中嵌入 JSON（如 response:{...}）→ 提取 JSON 片段美化
+			const m = s.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+			if (m) {
+				try { return s.replace(m[0], JSON.stringify(JSON.parse(m[0]), null, 2)) } catch {}
+			}
+			return s
 		}
 		if (vars._result !== undefined) lines.push('返回值:\n' + pretty(String(vars._result)))
 		if (output.trim()) lines.push('输出:\n' + pretty(output))
