@@ -1,4 +1,4 @@
-﻿<<template>
+<<template>
 	<div class="api-detail-container" :class="{'is-embedded': props.embedded}">
 		<el-card class="api-detail-card">
 			<!-- 顶部大 Tab（嵌入模式下隐藏）-->
@@ -1219,7 +1219,7 @@ const method_list = ref([
 	{ name: 'PATCH', value: 5, color: '#8E44AD' }, { name: 'OPTIONS', value: 6, color: '#909399' },
 ]);
 
-const val_type_list = ref([{ name: '环境变量', value: 1 }, { name: '全局变量', value: 2 }]);
+const val_type_list = ref([{ name: '环境变量', value: 1 }, { name: '全局变量', value: 2 }, { name: '临时变量', value: 3 }]);
 const res_type_list = ref([
 	{ name: '响应结果-JSON', value: 1 }, { name: '请求-Headers', value: 2 },
 	{ name: '请求-Body', value: 3 }, { name: 'Headers-响应结果', value: 4 }, { name: '自定义目标', value: 5 }

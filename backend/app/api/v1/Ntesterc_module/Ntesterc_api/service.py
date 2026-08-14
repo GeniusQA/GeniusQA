@@ -93,10 +93,17 @@ class ApiAutomationService:
         return n
 
     @staticmethod
-    async def _complete_var(db: AsyncSession, env_id: int, key: str, api_service_id: Optional[int] = None) -> Any:
+    async def _complete_var(db: AsyncSession, env_id: int, key: str,
+                            api_service_id: Optional[int] = None,
+                            temp_vars: Optional[Dict[str, Any]] = None) -> Any:
         lookup = ApiAutomationService._normalize_var_name(key)
         if not lookup:
             return ""
+        # 临时变量（单次请求内有效）优先级最高
+        if isinstance(temp_vars, dict):
+            for tk, tv in temp_vars.items():
+                if ApiAutomationService._normalize_var_name(str(tk)) == lookup:
+                    return tv
 
         if env_id:
             env = await db.execute(
@@ -133,14 +140,44 @@ class ApiAutomationService:
                     return row.value
             elif ApiAutomationService._normalize_var_name(row.name) == lookup:
                 return row.value
+        # 动态值兜底：{{$timestamp}} / {{$randomInt}} / {{$uuid}} / {{$guid}} 等
+        dyn = ApiAutomationService._dynamic_value(key)
+        if dyn is not None:
+            return dyn
         return ""
 
     @staticmethod
-    async def _find_var(db: AsyncSession, env_id: int, s: str, api_service_id: Optional[int] = None) -> str:
+    def _dynamic_value(key: str) -> Any:
+        """Apifox 风格动态值（最小集）：$timestamp / $timestamp_ms / $randomInt / $uuid / $guid。"""
+        import random as _random
+        import time as _time
+        import uuid as _uuid
+        k = (key or "").strip()
+        if not k.startswith("$"):
+            return None
+        m = re.match(r"^\$timestamp(?:\[(\d+)\])?$", k)
+        if m:
+            return int(_time.time() * (1000 if m.group(1) == "3" else 1)) if m.group(1) else int(_time.time())
+        if k == "$timestamp_ms":
+            return int(_time.time() * 1000)
+        m2 = re.match(r"^\$randomInt(?:\[(\d+),(\d+)\])?$", k)
+        if m2:
+            if m2.group(1) and m2.group(2):
+                lo, hi = int(m2.group(1)), int(m2.group(2))
+                return _random.randint(lo, hi) if hi >= lo else lo
+            return _random.randint(0, 9999)
+        if k == "$uuid":
+            return _uuid.uuid4().hex
+        if k == "$guid":
+            return str(_uuid.uuid4())
+        return None
+
+    @staticmethod
+    async def _find_var(db: AsyncSession, env_id: int, s: str, api_service_id: Optional[int] = None, temp_vars: Optional[Dict[str, Any]] = None) -> str:
         keys = re.findall(r"\{\{(.+?)\}\}", s) if ("{{" in s and "}}" in s) else []
         for k in keys:
             var = "{{" + k + "}}"
-            val = await ApiAutomationService._complete_var(db, env_id, k, api_service_id=api_service_id)
+            val = await ApiAutomationService._complete_var(db, env_id, k, api_service_id=api_service_id, temp_vars=temp_vars)
             
             if val is None or val == "":
                 continue
@@ -185,18 +222,25 @@ class ApiAutomationService:
         return u
 
     @staticmethod
-    async def handle_var(db: AsyncSession, env_id: int, data: Any, api_service_id: Optional[int] = None) -> Any:
+    async def handle_var(db: AsyncSession, env_id: int, data: Any,
+                         api_service_id: Optional[int] = None,
+                         temp_vars: Optional[Dict[str, Any]] = None) -> Any:
         if isinstance(data, str):
             if "{{" in data and "}}" in data:
-                return await ApiAutomationService._find_var(db, env_id, data, api_service_id=api_service_id)
+                return await ApiAutomationService._find_var(db, env_id, data, api_service_id=api_service_id, temp_vars=temp_vars)
             return data
         if isinstance(data, dict):
             out = {}
             for k, v in data.items():
-                out[k] = await ApiAutomationService.handle_var(db, env_id, v)
+                out[k] = await ApiAutomationService.handle_var(
+                    db, env_id, v, api_service_id=api_service_id, temp_vars=temp_vars)
             return out
         if isinstance(data, list):
-            return [await ApiAutomationService.handle_var(db, env_id, x) for x in data]
+            return [
+                await ApiAutomationService.handle_var(
+                    db, env_id, x, api_service_id=api_service_id, temp_vars=temp_vars)
+                for x in data
+            ]
         return data
 
     @staticmethod
@@ -207,10 +251,11 @@ class ApiAutomationService:
         for i in params:
             if not isinstance(i, dict):
                 continue
-            if i.get("status"):
-                key = i.get("key")
-                if key:
-                    res[key] = i.get("value")
+            if i.get("status") is False:
+                continue
+            key = i.get("name") or i.get("key")
+            if key:
+                res[key] = i.get("value")
         return res
 
     @staticmethod
@@ -3305,7 +3350,7 @@ class ApiAutomationService:
 
     @staticmethod
     async def _load_script_env_maps(
-        db: AsyncSession, env_id: int, user_id: int
+        db: AsyncSession, env_id: int, user_id: int, temp_vars: Optional[Dict[str, Any]] = None
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """返回 (session_vars, env_vars) 供脚本 ntest 使用。"""
         session_vars: Dict[str, Any] = {}
@@ -3338,6 +3383,10 @@ class ApiAutomationService:
         for row in g_rows:
             if row.name and row.name not in session_vars:
                 session_vars[str(row.name)] = row.value
+        # 临时变量（单次请求内）优先注入，脚本 ntest.get/pm.variables.get 可读
+        if isinstance(temp_vars, dict):
+            for tk, tv in temp_vars.items():
+                session_vars[str(tk)] = tv
         return session_vars, env_vars
 
     @staticmethod
@@ -3352,10 +3401,18 @@ class ApiAutomationService:
         if not exported:
             return
         for key, value in exported.items():
+            if key == "__temp__":
+                # pm.variables.set 的临时变量：写入请求上下文临时区，不落库
+                if isinstance(value, dict) and isinstance(request_ctx, dict):
+                    request_ctx.setdefault("__temp_vars__", {}).update(value)
+                continue
             if key == "__request__":
                 if isinstance(value, dict) and isinstance(request_ctx, dict):
+                    temp_save = request_ctx.get("__temp_vars__")
                     request_ctx.clear()
                     request_ctx.update(value)
+                    if isinstance(temp_save, dict):
+                        request_ctx["__temp_vars__"] = temp_save
                 continue
             await ApiAutomationService._pre_set_var(
                 db,
@@ -3404,7 +3461,10 @@ class ApiAutomationService:
                 and not code_l.startswith(("const ", "let ", "var ", "function ", "require(", "module.")):
             language = "python"
 
-        session_vars, env_vars = await ApiAutomationService._load_script_env_maps(db, env_id, user_id)
+        session_vars, env_vars = await ApiAutomationService._load_script_env_maps(
+            db, env_id, user_id,
+            temp_vars=request_ctx.get("__temp_vars__") if isinstance(request_ctx, dict) else None,
+        )
         req_snap = dict(request_ctx) if isinstance(request_ctx, dict) else None
         run_res = await run_script_async(
             code,
@@ -3718,17 +3778,25 @@ class ApiAutomationService:
         return resolved
   
     @staticmethod
-    async def _pre_set_var(db: AsyncSession, data: Dict[str, Any], env_id: int, user_id: int) -> Dict[str, Any]:
+    async def _pre_set_var(db: AsyncSession, data: Dict[str, Any], env_id: int, user_id: int,
+                          request_ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         前置操作-设置变量：
         - env_type 1: 环境变量 ApiEnvironmentModel.variable
         - env_type 2: 全局变量 ApiVariableModel
+        - env_type 3: 临时变量（单次请求内有效，不落库）
         """
         try:
             env_type = int(data.get("env_type") or 1)
             name = data.get("name", "")
             value = data.get("value", "")
             message = ""
+            if env_type == 3:
+                # 临时变量：只写请求上下文，不落库
+                if isinstance(request_ctx, dict):
+                    request_ctx.setdefault("__temp_vars__", {})[name] = value
+                    return {"status": 1, "message": f"前置操作-设置临时变量：{name} 成功"}
+                return {"status": 0, "message": f"前置操作-设置临时变量：{name} 失败，原因：无请求上下文"}
             if env_type == 1:
                 env_row = (
                     await db.execute(
@@ -3829,7 +3897,7 @@ class ApiAutomationService:
                         )
                     )
                 elif t == 2:
-                    r = await ApiAutomationService._pre_set_var(db, op, env_id, user_id)
+                    r = await ApiAutomationService._pre_set_var(db, op, env_id, user_id, request_ctx=request_ctx)
                     r["type"] = t
                     results.append(r)
                 elif t == 3:
@@ -3946,6 +4014,7 @@ class ApiAutomationService:
         body: Any,
         env_id: int,
         user_id: int,
+        request_ctx: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         后置操作-提取变量，after_set_var：
@@ -3994,6 +4063,14 @@ class ApiAutomationService:
                     )
                     .values(variable=vars_list, updated_by=user_id)
                 )
+            elif env_type == 3:
+                # 临时变量：写入请求上下文临时区，不落库，请求结束自动消失
+                if isinstance(request_ctx, dict):
+                    request_ctx.setdefault("__temp_vars__", {})[target_name] = value
+                return {
+                    "status": 1,
+                    "message": f"后置操作-提取目标值：{data.get('name')}={value} ，赋值给临时变量 {target_name} 成功",
+                }
             else:
                 row = (
                     await db.execute(
@@ -4067,7 +4144,7 @@ class ApiAutomationService:
                 if t == 1:
                     results.append(
                         await ApiAutomationService._after_set_var(
-                            db, op, res, header, body, env_id, user_id
+                            db, op, res, header, body, env_id, user_id, request_ctx=request_ctx
                         )
                     )
                 elif t == 2:
@@ -4584,7 +4661,8 @@ class ApiAutomationService:
                         continue
                     try:
                         session_vars, env_vars = await ApiAutomationService._load_script_env_maps(
-                            db, int(env_id or 0), user_id
+                            db, int(env_id or 0), user_id,
+                            temp_vars=request_ctx.get("__temp_vars__") if isinstance(request_ctx, dict) else None,
                         )
                         run_res = await run_script_async(
                             str(script),
@@ -4770,6 +4848,7 @@ class ApiAutomationService:
             "file_path": req.get("file_path"),
             "config": req.get("config"),
             "cookies": req.get("cookies"),
+            "__temp_vars__": {},
         }
 
         before_ops = req.get("before") or []
@@ -4794,7 +4873,7 @@ class ApiAutomationService:
                 req[k] = request_ctx.get(k)
 
         raw_url = request_ctx.get("url") or body.get("url") or req.get("url") or ""
-        url = await ApiAutomationService.handle_var(db, env_id, raw_url, api_service_id=api_service_id)
+        url = await ApiAutomationService.handle_var(db, env_id, raw_url, api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
         url = str(url or "").strip()
         url = await ApiAutomationService._resolve_base_url(db, env_id, url)
         if "{{" in url and "}}" in url:
@@ -4808,13 +4887,13 @@ class ApiAutomationService:
                 "请确认环境配置中的接口前缀（如 https://uapis.cn）已正确替换到 URL。"
             )
 
-        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body") or {}, api_service_id=api_service_id)
+        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body") or {}, api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
         method = int(req.get("method") or 2)
         body_type = int(req.get("body_type") or 2)
-        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header")), api_service_id=api_service_id)
-        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params")), api_service_id=api_service_id)
-        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data")), api_service_id=api_service_id)
-        form_urlencoded = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_urlencoded")))
+        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header")), api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
+        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params")), api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
+        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data")), api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
+        form_urlencoded = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_urlencoded")), temp_vars=request_ctx.get("__temp_vars__"))
         file_paths = req.get("file_path") or []
         config = req.get("config") if isinstance(req.get("config"), dict) else None
         config = config or {"retry": 0, "req_timeout": 5, "res_timeout": 5}

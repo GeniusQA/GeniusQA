@@ -162,11 +162,41 @@ def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
             ntest.set(key, value)
 
     class _Vars:
+        """pm.variables = 临时变量（单次请求内有效，不落库）。"""
+
+        def _temp(self):
+            tmp = getattr(ntest, "exported_vars", None)
+            if isinstance(tmp, dict):
+                return tmp.setdefault("__temp__", {})
+            return None
+
         def get(self, key, default=None):
+            tmp = self._temp()
+            if tmp is not None and key in tmp:
+                return tmp[key]
             return ntest.get(key, default)
 
         def set(self, key, value):
-            ntest.set(key, value)
+            tmp = self._temp()
+            if tmp is not None:
+                tmp[key] = value
+            else:
+                ntest.set(key, value)
+
+        def has(self, key):
+            tmp = self._temp()
+            if tmp is not None and key in tmp:
+                return True
+            try:
+                v = ntest.get(key)
+                return v is not None
+            except Exception:
+                return False
+
+        def unset(self, key):
+            tmp = self._temp()
+            if tmp is not None:
+                tmp.pop(key, None)
 
     class _Resp:
         def __init__(self, res):
@@ -285,10 +315,24 @@ class _PmEnv:
         ntest.set(key, value)
 
 class _PmVars:
+    """pm.variables = 临时变量（单次请求内有效，不落库）。"""
+    def _temp(self):
+        return _exported.setdefault("__temp__", {{}})
     def get(self, key, default=None):
+        tmp = _exported.get("__temp__", {{}})
+        if key in tmp:
+            return tmp[key]
         return ntest.get(key, default)
     def set(self, key, value):
-        ntest.set(key, value)
+        _exported.setdefault("__temp__", {{}})[key] = value
+        _vars[key] = value
+    def has(self, key):
+        tmp = _exported.get("__temp__", {{}})
+        if key in tmp:
+            return True
+        return ntest.get(key) is not None
+    def unset(self, key):
+        _exported.get("__temp__", {{}}).pop(key, None)
 
 class _PmResp:
     def __init__(self, res):
@@ -583,8 +627,21 @@ global.pm = {{
     set: (k, v) => global.ntest.set(k, v),
   }},
   variables: {{
-    get: (k, d) => global.ntest.get(k, d),
-    set: (k, v) => global.ntest.set(k, v),
+    get: (k, d) => {{
+      if (typeof _exported.__temp__ === 'object' && _exported.__temp__ !== null && k in _exported.__temp__) return _exported.__temp__[k];
+      return global.ntest.get(k, d);
+    }},
+    set: (k, v) => {{
+      if (typeof _exported.__temp__ !== 'object' || _exported.__temp__ === null) _exported.__temp__ = {{}};
+      _exported.__temp__[k] = v;
+    }},
+    has: (k) => {{
+      if (typeof _exported.__temp__ === 'object' && _exported.__temp__ !== null && k in _exported.__temp__) return true;
+      return global.ntest.get(k) !== undefined;
+    }},
+    unset: (k) => {{
+      if (typeof _exported.__temp__ === 'object' && _exported.__temp__ !== null) delete _exported.__temp__[k];
+    }},
   }},
   request: global.request,
   response: _response ? {{
