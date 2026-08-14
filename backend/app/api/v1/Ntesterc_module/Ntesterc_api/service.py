@@ -3262,6 +3262,11 @@ class ApiAutomationService:
         language = normalize_language(language_override or op.get("language") or "python")
         if not str(code).strip():
             return {"status": 0, "message": f"{phase}操作-自定义脚本：代码为空", "type": op.get("type")}
+        # 语言自动检测：声明为 JS 但代码为 Python 特征时按 Python 执行（防继承脚本语言配错）
+        code_l = str(code).lstrip()
+        if language == "javascript" and code_l.startswith(("import ", "from ", "def ", "# ")) \
+                and not code_l.startswith(("const ", "let ", "var ", "function ", "require(", "module.")):
+            language = "python"
 
         session_vars, env_vars = await ApiAutomationService._load_script_env_maps(db, env_id, user_id)
         req_snap = dict(request_ctx) if isinstance(request_ctx, dict) else None
