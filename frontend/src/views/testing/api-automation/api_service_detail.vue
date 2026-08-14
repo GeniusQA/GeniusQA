@@ -115,15 +115,8 @@
 							<el-input v-model="item.value" placeholder="变量值" style="flex: 1" />
 							<el-button type="danger" size="small" @click="envForm.variable.splice(item._i, 1)">删除</el-button>
 						</div>
-						<div style="font-size: 11px; color: #94a3b8; margin: 4px 0 6px">手动配置的变量在此编辑；脚本自动生成的运行期变量见下方黄色区块</div>
+						<div style="font-size: 11px; color: #94a3b8; margin: 4px 0 6px">环境变量：脚本 ntest.set 的变量会自动写入此处，可被 {{变量名}} 引用</div>
 						<el-button size="small" @click="envForm.variable.push({ name: '', value: '' })">添加变量</el-button>
-					</div>
-					<div v-if="envForm.runtime_vars && envForm.runtime_vars.length" style="margin-top:10px;padding:8px 10px;background:#fffbe6;border:1px solid #ffe58f;border-radius:6px">
-						<div style="font-size:12px;font-weight:600;color:#d48806;margin-bottom:6px">运行期变量（脚本自动生成，动态更新）</div>
-						<div style="display:flex;flex-wrap:wrap;gap:6px">
-							<el-tag v-for="(v, i) in envForm.runtime_vars" :key="i" size="small" type="warning" effect="plain">{{ v.name }} = {{ v.value }}</el-tag>
-						</div>
-						<div style="font-size:11px;color:#8c6d1f;margin-top:6px">请求执行时由脚本 ntest.set 自动生成/更新（如 X_SIGN、out_trade_no），不可手动编辑；仍可在 Header/Body 中用 {{变量名}} 引用</div>
 					</div>
 				</el-form-item>
 			</el-form>
@@ -257,13 +250,11 @@ const filteredEnvList = computed(() =>
 const envFormVisible = ref(false);
 const envSaving = ref(false);
 const envVisibleVars = computed(() => {
-	return (envForm.value.variable || []).map((v: any, i: number) => ({ ...v, _i: i })).filter(
-		(v: any) => !String(v.name || '').toUpperCase().startsWith('X_')
-	)
+	return (envForm.value.variable || []).map((v: any, i: number) => ({ ...v, _i: i }))
 })
 
-const envForm = ref<{ id?: number; name: string; config: any[]; variable: any[]; runtime_vars: any[] }>({
-	name: '', config: [], variable: [], runtime_vars: [],
+const envForm = ref<{ id?: number; name: string; config: any[]; variable: any[] }>({
+	name: '', config: [], variable: [],
 });
 
 const loadEnvList = async () => {
@@ -296,7 +287,6 @@ const openEnvFormDialog = (row: any | null) => {
 			name: row.name || '',
 			config: Array.isArray(row.config) ? row.config.map((c: any) => ({ ...c })) : [],
 			variable: Array.isArray(row.variable) ? row.variable.map((v: any) => ({ ...v })) : [],
-	runtime_vars: Array.isArray(row.runtime_vars) ? row.runtime_vars.map((v: any) => ({ ...v })) : [],
 		};
 	} else {
 		envForm.value = { name: '', config: [{ name: '', value: '' }], variable: [] };
@@ -318,7 +308,7 @@ const submitEnvForm = async () => {
 		const payload = {
 			name: envForm.value.name.trim(),
 			config: envForm.value.config.filter((c) => String(c.name || '').trim()),
-			variable: envForm.value.variable.filter((v) => { const n = String(v.name || '').trim(); return n && !n.toUpperCase().startsWith('X_') }),
+			variable: envForm.value.variable.filter((v) => String(v.name || '').trim()),
 		};
 		if (envForm.value.id) {
 			await save_env({ env_list: [{ id: envForm.value.id, ...payload }] });
