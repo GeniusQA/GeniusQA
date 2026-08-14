@@ -307,7 +307,7 @@
 									<template #label>
 										<el-badge :show-zero="false" :value="beforeCount" :offset="[10, 2]" type="danger">前置操作</el-badge>
 									</template>
-									<div v-if="inheritBefore.length" class="inherit-bar">
+									<div v-if="inheritBefore.length && req.inherit_before_first !== false" class="inherit-bar inherit-drop" @dragover.prevent @drop.prevent="req.inherit_before_first = false">
 										<div class="inherit-info inherit-click" @click="showInheritBefore = !showInheritBefore">
 											<span class="inherit-label">继承父级</span>
 											<el-tag v-for="(op, i) in inheritBefore" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
@@ -318,6 +318,7 @@
 											<span class="inherit-muted">执行父级前置操作</span>
 											<el-switch v-model="req.inherit_before" />
 										</div>
+										<div class="inherit-drop-hint">拖动手动操作到此处 = 手动先执行</div>
 									</div>
 									<div v-if="showInheritBefore && inheritBefore.length" class="inherit-detail">
 										<div v-for="(op, i) in inheritBefore" :key="i" class="inherit-op">
@@ -342,6 +343,20 @@
 										/>
 									</div>
 								</el-tab-pane>
+
+								<div v-if="inheritBefore.length && req.inherit_before_first === false" class="inherit-bar inherit-drop" style="margin-top:8px" @dragover.prevent @drop.prevent="req.inherit_before_first = true">
+									<div class="inherit-info inherit-click" @click="showInheritBefore = !showInheritBefore">
+										<span class="inherit-label">继承父级（后执行）</span>
+										<el-tag v-for="(op, i) in inheritBefore" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
+										<span class="inherit-muted">（{{ inheritBefore.length }} 个操作）</span>
+										<el-icon class="inherit-arrow" :style="{ transform: showInheritBefore ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s' }"><ArrowRight /></el-icon>
+									</div>
+									<div class="inherit-switch">
+										<span class="inherit-muted">执行父级前置操作</span>
+										<el-switch v-model="req.inherit_before" />
+									</div>
+									<div class="inherit-drop-hint">拖动手动操作到此处 = 继承先执行（恢复默认）</div>
+								</div>
 
 <!-- 后置操作 -->
 <el-tab-pane name="after">
@@ -1159,6 +1174,7 @@ const langLabel = (l: any) => (l === 'python' ? 'Python' : l === 'javascript' ? 
 const req = ref({
 	method: 1, url: '', params: [], header: [], body: '', body_type: 2,
 	inherit_before: true, inherit_after: true,
+	inherit_before_first: true, inherit_after_first: true,
 	form_data: [], form_urlencoded: [], file_path: [],
 	before: [], after: [], assert: [],
 	config: { retry: 0, req_timeout: 30, res_timeout: 30, ssl_verify: true, allow_redirects: true, url_encode: false },
@@ -1275,6 +1291,8 @@ watch(
 			after: Array.isArray(reqSrc.after) ? reqSrc.after : [],
 			inherit_before: reqSrc.inherit_before !== false,
 			inherit_after: reqSrc.inherit_after !== false,
+			inherit_before_first: reqSrc.inherit_before_first !== false,
+			inherit_after_first: reqSrc.inherit_after_first !== false,
 			assert: Array.isArray(reqSrc.assert) ? reqSrc.assert : [],
 			config: { retry: reqSrc.config?.retry ?? 0, req_timeout: reqSrc.config?.req_timeout ?? 30, res_timeout: reqSrc.config?.res_timeout ?? 30, ssl_verify: reqSrc.config?.ssl_verify ?? true, allow_redirects: reqSrc.config?.allow_redirects ?? true, url_encode: reqSrc.config?.url_encode ?? false },
 			xml_body: reqSrc.xml_body ?? '', text_body: reqSrc.text_body ?? '',
@@ -1587,6 +1605,8 @@ const confirmSaveAsCase = async () => {
 	color: #c9d1d9; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
 }
 .inherit-op-meta { font-size: 12px; color: #606266; }
+.inherit-drop { cursor: crosshair; }
+.inherit-drop-hint { font-size: 11px; color: #b3b8bf; }
 .inherit-bar {
 	display: flex; align-items: center; justify-content: space-between; gap: 8px;
 	padding: 8px 10px; margin-bottom: 8px;

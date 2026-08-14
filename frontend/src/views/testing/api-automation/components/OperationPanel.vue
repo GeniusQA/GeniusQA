@@ -519,6 +519,7 @@ import {
   CircleCheck,
   DocumentAdd,
   ArrowDown,
+  Rank,
 } from '@element-plus/icons-vue'
 import AssertEditor from './AssertEditor.vue'
 import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation'
@@ -700,6 +701,25 @@ const defaultItem = (type: number): any => {
   return base
 }
 
+// ---- 拖拽排序 ----
+const dragIndex = ref(-1)
+const onDragStart = (i: number, e: any) => {
+	dragIndex.value = i
+	if (e?.dataTransfer) {
+		e.dataTransfer.effectAllowed = 'move'
+		try { e.dataTransfer.setData('text/plain', String(i)) } catch {}
+	}
+}
+const onDragOver = () => {}
+const onDrop = (i: number) => {
+	const from = dragIndex.value
+	if (from >= 0 && from !== i) {
+		const it = props.items.splice(from, 1)[0]
+		props.items.splice(i, 0, it)
+	}
+	dragIndex.value = -1
+}
+
 // ---- Add item ----
 const addItem = (type: number) => {
   props.items.push(defaultItem(type))
@@ -812,6 +832,9 @@ const addItem = (type: number) => {
   flex-shrink: 0;
 }
 
+.op-card--disabled { opacity: 0.55; }
+.op-card__drag { cursor: grab; font-size: 14px; color: #909399; margin-right: 4px; }
+.op-card__drag:active { cursor: grabbing; }
 .op-card__actions {
   display: flex;
   align-items: center;

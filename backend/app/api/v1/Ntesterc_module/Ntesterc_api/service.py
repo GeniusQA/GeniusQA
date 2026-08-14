@@ -975,12 +975,18 @@ class ApiAutomationService:
         req["params"] = ApiAutomationService._merge_kv_lists(common.get("query"), req.get("params"))
         req["cookies"] = ApiAutomationService._merge_kv_lists(common.get("cookie"), req.get("cookies"), cookie=True)
 
-        # 前置/后置操作继承：公共在前 + 接口在后（父级配置默认被所有子级接口继承执行）
+        # 前置/后置操作继承：默认父级在前 + 接口在后（req.inherit_before_first=false 时接口在前）
         # 接口可单独关闭继承：req.inherit_before / req.inherit_after = false 时跳过父级
         if common.get("before") and req.get("inherit_before", True) is not False:
-            req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
+            if req.get("inherit_before_first", True) is False:
+                req["before"] = list(req.get("before") or []) + list(common.get("before") or [])
+            else:
+                req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
         if common.get("after") and req.get("inherit_after", True) is not False:
-            req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
+            if req.get("inherit_after_first", True) is False:
+                req["after"] = list(req.get("after") or []) + list(common.get("after") or [])
+            else:
+                req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
         # 鉴权继承：接口未配置鉴权时继承公共鉴权（平铺字段）
         if not req.get("auth_type") and isinstance(common.get("auth"), dict) and common["auth"].get("auth_type"):
             for k, v in common["auth"].items():
@@ -3695,7 +3701,13 @@ class ApiAutomationService:
         """
         results: List[Dict[str, Any]] = []
         for op in ops or []:
+            if op.get("enabled") is False:
+                results.append({"status": 1, "message": "操作已停用，跳过", "type": op.get("type")})
+                continue
             try:
+                if op.get("enabled") is False:
+                    results.append({"status": 1, "message": "操作已停用，跳过", "type": op.get("type")})
+                    continue
                 t = int(op.get("type") or 0)
                 if t == 1:
                     results.append(
@@ -3934,6 +3946,9 @@ class ApiAutomationService:
             "res_time": res.get("res_time"),
         }
         for op in ops or []:
+            if op.get("enabled") is False:
+                results.append({"status": 1, "message": "操作已停用，跳过", "type": op.get("type")})
+                continue
             try:
                 t = int(op.get("type") or 0)
                 if t == 1:
@@ -4422,6 +4437,9 @@ class ApiAutomationService:
             "res_time": res.get("res_time") or 0,
         }
         for op in ops or []:
+            if op.get("enabled") is False:
+                results.append({"status": 1, "message": "操作已停用，跳过", "type": op.get("type")})
+                continue
             try:
                 t = int(op.get("type") or 0)
                 if t == 1:
