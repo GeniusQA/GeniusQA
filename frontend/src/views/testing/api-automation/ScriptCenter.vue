@@ -219,7 +219,7 @@
             <span class="fl-ext-name">{{ f.name }}</span>
             <el-button type="primary" link size="small" :loading="extRunning === i" @click="execExternalFile(f, i)">执行</el-button>
           </div>
-          <div v-if="extOutput" class="fl-ext-output"><pre>{{ extOutput }}</pre></div>
+          <div v-if="extOutput" class="fl-ext-output"><pre v-html="extHighlight(extOutput)"></pre></div>
         </div>
         <el-table :data="filteredFuncs" border stripe empty-text="未解析到函数定义">
           <el-table-column prop="name" label="函数名称" width="200">
@@ -701,6 +701,19 @@ function openDebugFunc(func: any) {
 const extRunning = ref(-1)
 const extOutput = ref('')
 
+const extHighlight = (t: string) => {
+	const esc = String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+	return esc.replace(
+		/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+		(m) => {
+			let cls = 'jv-num'
+			if (m.startsWith('"')) cls = /:$/.test(m) ? 'jv-key' : 'jv-str'
+			else if (/true|false|null/.test(m)) cls = 'jv-bool'
+			return `<span class="${cls}">${m}</span>`
+		}
+	)
+}
+
 async function execExternalFile(f: any, i: number) {
 	if (!funcListScript.value) return
 	extRunning.value = i
@@ -764,8 +777,12 @@ async function execExternalFile(f: any, i: number) {
 		const vars: Record<string, any> = resBody.vars || {}
 		const error: string = step.res?.error || step.error || resBody.exception || resBody.msg || ''
 		const lines: string[] = []
-		if (vars._result !== undefined) lines.push('返回值:\n' + JSON.stringify(vars._result, null, 2))
-		if (output.trim()) lines.push('输出:\n' + output.trim())
+		const pretty = (t: string) => {
+			const s = String(t ?? '').trim()
+			try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
+		}
+		if (vars._result !== undefined) lines.push('返回值:\n' + pretty(String(vars._result)))
+		if (output.trim()) lines.push('输出:\n' + pretty(output))
 		if (error) lines.push('错误:\n' + error)
 		if (!step.status && !error) lines.push('错误:\n执行失败')
 		if (!lines.length) lines.push(JSON.stringify(step.res, null, 2) || '执行完成（无输出）')
@@ -1027,6 +1044,10 @@ onMounted(loadScripts)
 .fl-ext-title { font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; }
 .fl-ext-item { display: flex; align-items: center; gap: 4px; font-size: 13px; padding: 3px 0; }
 .fl-ext-name { font-family: 'JetBrains Mono', Consolas, monospace; color: #475569; }
+.fl-ext-output pre :deep(.jv-key) { color: #9cdcfe; }
+.fl-ext-output pre :deep(.jv-str) { color: #ce9178; }
+.fl-ext-output pre :deep(.jv-num) { color: #b5cea8; }
+.fl-ext-output pre :deep(.jv-bool) { color: #569cd6; }
 .fl-ext-output { margin-top: 8px; }
 .fl-ext-output pre {
 	margin: 0; padding: 8px 10px; background: #0f1115; border-radius: 6px;
