@@ -209,11 +209,10 @@ def stop_backend() -> None:
 
 
 def stop_all() -> None:
-    log(f"idle timeout, stopping services...")
+    # 方案 B：MySQL/Redis 常驻（开机自启），空闲只停后端
+    log("idle timeout, stopping backend only (MySQL/Redis keep running)...")
     stop_backend()
-    run_cmd(["sc.exe", "stop", REDIS_SERVICE])
-    run_cmd(["sc.exe", "stop", MYSQL_SERVICE])
-    log("all services stopped")
+    log("backend stopped")
 
 
 _last_activity = time.time()
