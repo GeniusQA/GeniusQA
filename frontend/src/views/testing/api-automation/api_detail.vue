@@ -305,17 +305,25 @@
 								</el-tab-pane>
 								<el-tab-pane name="before">
 									<template #label>
-										<el-badge :show-zero="false" :value="req.before.length" :offset="[10, 2]" type="danger">前置操作</el-badge>
+										<el-badge :show-zero="false" :value="beforeCount" :offset="[10, 2]" type="danger">前置操作</el-badge>
 									</template>
 									<div v-if="inheritBefore.length" class="inherit-bar">
-										<div class="inherit-info">
+										<div class="inherit-info inherit-click" @click="showInheritBefore = !showInheritBefore">
 											<span class="inherit-label">继承父级</span>
 											<el-tag v-for="(op, i) in inheritBefore" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
 											<span class="inherit-muted">（{{ inheritBefore.length }} 个操作，来自根目录/父级目录）</span>
+											<el-icon class="inherit-arrow" :style="{ transform: showInheritBefore ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s' }"><ArrowRight /></el-icon>
 										</div>
 										<div class="inherit-switch">
 											<span class="inherit-muted">执行父级前置操作</span>
 											<el-switch v-model="req.inherit_before" />
+										</div>
+									</div>
+									<div v-if="showInheritBefore && inheritBefore.length" class="inherit-detail">
+										<div v-for="(op, i) in inheritBefore" :key="i" class="inherit-op">
+											<div class="inherit-op-title">{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span></div>
+											<pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
+											<div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
 										</div>
 									</div>
 									<div class="op-scroll-wrap">
@@ -338,17 +346,25 @@
 <!-- 后置操作 -->
 <el-tab-pane name="after">
 <template #label>
-<el-badge :show-zero="false" :value="req.after.length" :offset="[10, 2]" type="danger">后置操作</el-badge>
+<el-badge :show-zero="false" :value="afterCount" :offset="[10, 2]" type="danger">后置操作</el-badge>
 </template>
 <div v-if="inheritAfter.length" class="inherit-bar">
-<div class="inherit-info">
+<div class="inherit-info inherit-click" @click="showInheritAfter = !showInheritAfter">
 <span class="inherit-label">继承父级</span>
 <el-tag v-for="(op, i) in inheritAfter" :key="i" size="small" type="info" effect="plain" style="margin-right:4px">{{ opLabel(op) }}</el-tag>
 <span class="inherit-muted">（{{ inheritAfter.length }} 个操作，来自根目录/父级目录）</span>
+<el-icon class="inherit-arrow" :style="{ transform: showInheritAfter ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s' }"><ArrowRight /></el-icon>
 </div>
 <div class="inherit-switch">
 <span class="inherit-muted">执行父级后置操作</span>
 <el-switch v-model="req.inherit_after" />
+</div>
+</div>
+<div v-if="showInheritAfter && inheritAfter.length" class="inherit-detail">
+<div v-for="(op, i) in inheritAfter" :key="i" class="inherit-op">
+<div class="inherit-op-title">{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span></div>
+<pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
+<div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
 </div>
 </div>
 <div class="op-scroll-wrap">
@@ -1125,6 +1141,21 @@ const opLabel = (op: any) => {
 	return '操作'
 }
 
+const beforeCount = computed(() => {
+	let n = (req.value.before || []).length
+	if (req.value.inherit_before !== false && inheritBefore.value.length) n += inheritBefore.value.length
+	return n
+})
+const afterCount = computed(() => {
+	let n = (req.value.after || []).length
+	if (req.value.inherit_after !== false && inheritAfter.value.length) n += inheritAfter.value.length
+	return n
+})
+
+const showInheritBefore = ref(false)
+const showInheritAfter = ref(false)
+const langLabel = (l: any) => (l === 'python' ? 'Python' : l === 'javascript' ? 'JavaScript' : l || '')
+
 const req = ref({
 	method: 1, url: '', params: [], header: [], body: '', body_type: 2,
 	inherit_before: true, inherit_after: true,
@@ -1544,6 +1575,18 @@ const confirmSaveAsCase = async () => {
 .apifox-tabs :deep(.el-tab-pane[id*="pane-after"]),
 .apifox-tabs :deep(.el-tab-pane[id*="pane-assert"]) { height: auto; min-height: 0; }
 /* 操作面板滚动容器：撑开内容，让父级 el-tabs__content 滚动 */
+.inherit-click { cursor: pointer; }
+.inherit-arrow { margin-left: 4px; font-size: 12px; color: #909399; }
+.inherit-detail { margin: 0 0 8px; padding: 8px 10px; background: #fafbfc; border: 1px solid #e4e7ed; border-radius: 6px; }
+.inherit-op { margin-bottom: 8px; }
+.inherit-op:last-child { margin-bottom: 0; }
+.inherit-op-title { font-size: 12px; font-weight: 600; color: #303133; margin-bottom: 4px; }
+.inherit-op-code {
+	margin: 0; padding: 8px 10px; background: #0f1115; border-radius: 6px;
+	font-family: 'JetBrains Mono', Consolas, Menlo, monospace; font-size: 12px; line-height: 1.55;
+	color: #c9d1d9; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
+}
+.inherit-op-meta { font-size: 12px; color: #606266; }
 .inherit-bar {
 	display: flex; align-items: center; justify-content: space-between; gap: 8px;
 	padding: 8px 10px; margin-bottom: 8px;
