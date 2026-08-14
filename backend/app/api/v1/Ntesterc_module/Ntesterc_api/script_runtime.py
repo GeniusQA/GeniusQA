@@ -321,6 +321,20 @@ class _Pm:
             fn()
         except Exception as e:
             raise AssertionError("pm.test(%r) failed: %s" % (name, e)) from e
+    def executeAsync(self, cmd, args=None):
+        import subprocess
+        try:
+            r = subprocess.run(
+                [cmd] + list(args or []),
+                capture_output=True, text=True, timeout=30,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+            )
+            out = (r.stdout or '')
+            if r.stderr and r.stderr.strip():
+                out = out + ('\n' if out else '') + r.stderr
+            return out or ('（退出码 %s）' % r.returncode)
+        except Exception as e:
+            return '执行失败: %s' % e
 
 pm = _Pm()
 
