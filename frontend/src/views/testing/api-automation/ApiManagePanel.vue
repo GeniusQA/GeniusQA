@@ -274,6 +274,22 @@ const loadTree = async () => {
 const apiTabs = ref<any[]>([]);
 const activeTab = ref('');
 
+// ---- 刷新保持：接口 tabs 状态持久化（按服务隔离）----
+const tabsStorageKey = () => `apiCenter_tabs_${props.serviceId}`
+watch(
+	[apiTabs, activeTab],
+	() => {
+		try {
+			const saved = {
+				tabs: apiTabs.value.map((t) => ({ id: t.id, name: t.name, apiId: t.data?.api_id || t.apiId, innerTab: t.innerTab || 'debug' })),
+				active: activeTab.value,
+			}
+			localStorage.setItem(tabsStorageKey(), JSON.stringify(saved))
+		} catch {}
+	},
+	{ deep: true }
+)
+
 // ---- 拖拽排序 / 跨目录移动 ----
 const allowDrop = (draggingNode: any, dropNode: any, type: string) => {
 	if (type === 'inner') {
@@ -655,7 +671,30 @@ const deleteNode = async (data: any) => {
 	}
 };
 
-onMounted(() => { loadTree(); });
+onMounted(() => {
+	loadTree().then(async () => {
+		// 刷新恢复：重新打开上次的接口 tabs（重新拉详情）
+		try {
+			const raw = localStorage.getItem(tabsStorageKey())
+			if (!raw) return
+			const saved = JSON.parse(raw)
+			if (!saved?.tabs?.length) return
+			for (const t of saved.tabs) {
+				try {
+					const r: any = await api_info({ api_id: Number(t.apiId) })
+					const info = r?.data || {}
+					const data = { id: t.id, name: t.name, api_id: Number(t.apiId), api_info: { ...info, id: info.id ?? Number(t.apiId) } }
+					apiTabs.value.push({ id: t.id, name: t.name, title: t.name, data, innerTab: t.innerTab || 'debug' })
+				} catch {}
+			}
+			if (saved.active && apiTabs.value.some((x) => x.name === saved.active)) {
+				activeTab.value = saved.active
+			} else if (apiTabs.value.length) {
+				activeTab.value = apiTabs.value[0].name
+			}
+		} catch {}
+	});
+});
 </script>
 
 <style scoped>
