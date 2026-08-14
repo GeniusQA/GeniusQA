@@ -143,7 +143,18 @@
                 </template>
                 <el-icon style="cursor:pointer;color:#94a3b8"><ele-QuestionFilled /></el-icon>
               </el-tooltip>
-              <el-button type="primary" link size="small" style="margin-left:auto" :loading="validating" @click="runValidate">
+              <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1" style="margin-left:auto">
+                <el-button link size="small" type="primary">
+                  <el-icon style="margin-right:2px"><ele-Upload /></el-icon>外部程序
+                </el-button>
+              </el-upload>
+              <el-tooltip placement="top" :show-after="200">
+                <template #content>
+                  <div style="font-size:12px;line-height:1.8">上传 .py/.js/.jar/.sh 等外部程序文件到平台目录<br/>脚本中调用：pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名'])<br/>仅原生模式可用</div>
+                </template>
+                <el-icon style="cursor:help;color:#94a3b8;margin:0 4px"><ele-QuestionFilled /></el-icon>
+              </el-tooltip>
+              <el-button type="primary" link size="small" :loading="validating" @click="runValidate">
                 <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
               </el-button>
             </div>
@@ -153,18 +164,13 @@
               :placeholder="codePlaceholder"
               spellcheck="false"
             />
-            <div class="sc-ext-files">
-              <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1">
-                <el-button size="small" type="primary" plain>上传外部程序文件</el-button>
-              </el-upload>
-              <div class="sc-ext-tip">支持 .py/.js/.jar/.sh 等；脚本中调用：pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名'])（原生模式）</div>
-              <div v-for="(f, i) in form.external_files" :key="i" class="sc-ext-file">
-                <el-icon style="margin-right:4px"><Document /></el-icon>
-                <span class="sc-ext-name">{{ f.name }}</span>
-                <code class="sc-ext-path">{{ f.rel_path }}</code>
-                <el-button type="danger" link size="small" @click="removeExtFile(i)">删除</el-button>
-              </div>
+            <div v-if="form.external_files.length" class="sc-ext-chips">
+              <span class="sc-ext-chips-label">外部程序：</span>
+              <el-tag v-for="(f, i) in form.external_files" :key="i" size="small" type="info" effect="plain" closable @close="removeExtFile(i)" style="margin-right:4px">
+                {{ f.name }}
+              </el-tag>
             </div>
+
             <!-- AI 校验结果 -->
             <div v-if="validateResult" class="sc-validate" :class="validateResult.passed ? 'ok' : 'fail'">
               <div class="vr-head">
@@ -906,11 +912,8 @@ onMounted(loadScripts)
 .vr-title { font-weight: 600; margin-top: 4px; }
 .vr-line { margin-left: 4px; }
 .vr-line.suggest { color: #b45309; }
-.sc-ext-files { margin-top: 8px; }
-.sc-ext-tip { font-size: 11px; color: #94a3b8; line-height: 1.6; margin: 6px 0; }
-.sc-ext-file { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; }
-.sc-ext-name { color: #334155; font-weight: 500; }
-.sc-ext-path { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px; color: #64748b; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+.sc-ext-chips { margin-top: 6px; display: flex; align-items: center; flex-wrap: wrap; }
+.sc-ext-chips-label { font-size: 12px; color: #64748b; margin-right: 4px; }
 .sc-code-editor {
   width: 100%;
   min-height: 280px;
