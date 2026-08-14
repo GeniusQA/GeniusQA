@@ -107,14 +107,15 @@
 				<el-form-item label="环境变量">
 					<div style="width: 100%">
 						<div
-							v-for="(item, idx) in envForm.variable"
-							:key="idx"
+							v-for="(item, idx) in envVisibleVars"
+							:key="item._i"
 							style="display: flex; gap: 8px; margin-bottom: 6px"
 						>
 							<el-input v-model="item.name" placeholder="变量名（如 token）" style="flex: 1" />
 							<el-input v-model="item.value" placeholder="变量值" style="flex: 1" />
-							<el-button type="danger" size="small" @click="envForm.variable.splice(idx, 1)">删除</el-button>
+							<el-button type="danger" size="small" @click="envForm.variable.splice(item._i, 1)">删除</el-button>
 						</div>
+						<div style="font-size: 11px; color: #94a3b8; margin: 4px 0 6px">X_ 开头的运行期变量（脚本自动生成，如 X_SIGN/X_TIMESTAMP）不在此显示，仍可被请求引用</div>
 						<el-button size="small" @click="envForm.variable.push({ name: '', value: '' })">添加变量</el-button>
 					</div>
 				</el-form-item>
@@ -248,6 +249,12 @@ const filteredEnvList = computed(() =>
 // 新增/编辑环境表单
 const envFormVisible = ref(false);
 const envSaving = ref(false);
+const envVisibleVars = computed(() => {
+	return (envForm.value.variable || []).map((v: any, i: number) => ({ ...v, _i: i })).filter(
+		(v: any) => !String(v.name || '').toUpperCase().startsWith('X_')
+	)
+})
+
 const envForm = ref<{ id?: number; name: string; config: any[]; variable: any[] }>({
 	name: '', config: [], variable: [],
 });
