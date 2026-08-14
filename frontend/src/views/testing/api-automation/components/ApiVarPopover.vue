@@ -1,5 +1,10 @@
 <template>
 	<div class="api-var-popover">
+		<el-radio-group v-model="scope" size="small" style="margin-bottom:8px" @change="get_var">
+			<el-radio-button value="user">我的变量</el-radio-button>
+			<el-radio-button value="project">项目内共享</el-radio-button>
+			<el-radio-button value="team">团队内共享</el-radio-button>
+		</el-radio-group>
 		<el-form :inline="true">
 			<el-form-item label="名称">
 				<el-input v-model="searchParams.search.name__contains" placeholder="请输入名称" clearable style="width: 160px" />
@@ -36,6 +41,7 @@
 			<el-form :model="add_form" label-width="80px">
 				<el-form-item label="变量名"><el-input v-model="add_form.name" placeholder="请输入变量名" /></el-form-item>
 				<el-form-item label="变量值"><el-input v-model="add_form.value" type="textarea" :rows="3" placeholder="请输入变量值" /></el-form-item>
+				<el-form-item label="作用域"><el-tag size="small">{{ scope === 'project' ? '项目内共享' : scope === 'team' ? '团队内共享' : '我的变量' }}</el-tag></el-form-item>
 			</el-form>
 			<template #footer>
 				<el-button @click="addDialog = false">取消</el-button>
@@ -60,6 +66,9 @@ import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api_var_list, add_var, edit_var, del_var } from '/@/api/v1/testing/apiAutomation';
 
+const props = defineProps<{ serviceId?: number | string }>();
+const scope = ref<'user' | 'project' | 'team'>('user');
+
 const searchParams = ref({ currentPage: 1, pageSize: 10, search: { name__contains: '' } });
 const var_list = ref<any[]>([]);
 const total = ref(0);
@@ -69,7 +78,7 @@ const editDialog = ref(false);
 const title = ref('');
 
 const get_var = async () => {
-	const res: any = await api_var_list(searchParams.value);
+	const res: any = await api_var_list({ ...searchParams.value, scope: scope.value, api_service_id: props.serviceId || undefined });
 	const raw = res?.data;
 	const list = Array.isArray(raw?.content) ? raw.content : (Array.isArray(raw) ? raw : []);
 	var_list.value = list;
@@ -96,7 +105,7 @@ const openAdd = () => {
 };
 
 const add_confirm = async () => {
-	await add_var(add_form.value);
+	await add_var({ ...add_form.value, scope: scope.value, api_service_id: props.serviceId || undefined });
 	ElMessage.success('添加成功');
 	addDialog.value = false;
 	await get_var();
@@ -109,7 +118,7 @@ const openEdit = (row: any) => {
 };
 
 const edit_confirm = async () => {
-	await edit_var(add_form.value);
+	await edit_var({ ...add_form.value, scope: scope.value, api_service_id: props.serviceId || undefined });
 	ElMessage.success('保存成功');
 	editDialog.value = false;
 	await get_var();

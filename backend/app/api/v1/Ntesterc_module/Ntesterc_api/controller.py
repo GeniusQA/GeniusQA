@@ -531,11 +531,20 @@ async def api_var_list(
 ):
     """全局变量列表"""
     try:
-        data = await ApiAutomationService.get_vars(db, current_user_id)
+        try:
+            body = await body_to_json(request)
+        except Exception:
+            body = {}
+        data = await ApiAutomationService.get_vars(
+            db, current_user_id,
+            scope=body.get("scope"),
+            api_project_id=int(body["api_project_id"]) if body.get("api_project_id") else None,
+            department_id=int(body["department_id"]) if body.get("department_id") else None,
+            api_service_id=int(body["api_service_id"]) if body.get("api_service_id") else None,
+        )
         return success_response(data, message="请求成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
-
 
 @router.post("/add_var")
 async def add_var(
@@ -546,11 +555,16 @@ async def add_var(
     """新增全局变量"""
     try:
         body = await body_to_json(request)
-        await ApiAutomationService.add_var(db, body["name"], body["value"], current_user_id)
+        await ApiAutomationService.add_var(
+            db, body["name"], body["value"], current_user_id,
+            scope=body.get("scope"),
+            api_project_id=int(body["api_project_id"]) if body.get("api_project_id") else None,
+            department_id=int(body["department_id"]) if body.get("department_id") else None,
+            api_service_id=int(body["api_service_id"]) if body.get("api_service_id") else None,
+        )
         return success_response({}, message="添加成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
-
 
 @router.post("/edit_var")
 async def edit_var(
@@ -561,7 +575,12 @@ async def edit_var(
     """编辑全局变量"""
     try:
         body = await body_to_json(request)
-        await ApiAutomationService.edit_var(db, int(body["id"]), body["name"], body["value"], current_user_id)
+        await ApiAutomationService.edit_var(
+        db, int(body["id"]), body["name"], body["value"], current_user_id,
+        scope=body.get("scope"),
+        api_project_id=int(body["api_project_id"]) if body.get("api_project_id") else None,
+        department_id=int(body["department_id"]) if body.get("department_id") else None,
+    )
         return success_response({}, message="编辑成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")

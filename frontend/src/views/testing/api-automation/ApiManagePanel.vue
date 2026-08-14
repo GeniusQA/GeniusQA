@@ -15,7 +15,7 @@
 						<template #reference>
 							<el-button size="small" type="primary">全局变量</el-button>
 						</template>
-						<ApiVarPopover />
+						<ApiVarPopover :service-id="props.serviceId" />
 					</el-popover>
 					<el-button size="small" type="warning" @click="commonParamsRef?.open()">全局参数</el-button>
 				</div>

@@ -93,7 +93,7 @@ class ApiAutomationService:
         return n
 
     @staticmethod
-    async def _complete_var(db: AsyncSession, env_id: int, key: str) -> Any:
+    async def _complete_var(db: AsyncSession, env_id: int, key: str, api_service_id: Optional[int] = None) -> Any:
         lookup = ApiAutomationService._normalize_var_name(key)
         if not lookup:
             return ""
@@ -113,17 +113,34 @@ class ApiAutomationService:
 
 
         g = await db.execute(select(ApiVariableModel).where(ApiVariableModel.enabled_flag == 1))
+        svc_project_id: Optional[int] = None
+        svc_dept_id: Optional[int] = None
         for row in g.scalars().all():
-            if ApiAutomationService._normalize_var_name(row.name) == lookup:
+            scope = str(getattr(row, "scope", None) or "user")
+            if scope == "project":
+                if svc_project_id is None and api_service_id:
+                    svc = (await db.execute(select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id)))).scalar_one_or_none()
+                    svc_project_id = int(svc.api_project_id) if svc else None
+                if row.api_project_id and svc_project_id and int(row.api_project_id) == svc_project_id \
+                        and ApiAutomationService._normalize_var_name(row.name) == lookup:
+                    return row.value
+            elif scope == "team":
+                if svc_dept_id is None and api_service_id:
+                    svc = (await db.execute(select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id)))).scalar_one_or_none()
+                    svc_dept_id = getattr(svc, "department_id", None)
+                if row.department_id and svc_dept_id and int(row.department_id) == int(svc_dept_id) \
+                        and ApiAutomationService._normalize_var_name(row.name) == lookup:
+                    return row.value
+            elif ApiAutomationService._normalize_var_name(row.name) == lookup:
                 return row.value
         return ""
 
     @staticmethod
-    async def _find_var(db: AsyncSession, env_id: int, s: str) -> str:
+    async def _find_var(db: AsyncSession, env_id: int, s: str, api_service_id: Optional[int] = None) -> str:
         keys = re.findall(r"\{\{(.+?)\}\}", s) if ("{{" in s and "}}" in s) else []
         for k in keys:
             var = "{{" + k + "}}"
-            val = await ApiAutomationService._complete_var(db, env_id, k)
+            val = await ApiAutomationService._complete_var(db, env_id, k, api_service_id=api_service_id)
             
             if val is None or val == "":
                 continue
@@ -168,10 +185,10 @@ class ApiAutomationService:
         return u
 
     @staticmethod
-    async def handle_var(db: AsyncSession, env_id: int, data: Any) -> Any:
+    async def handle_var(db: AsyncSession, env_id: int, data: Any, api_service_id: Optional[int] = None) -> Any:
         if isinstance(data, str):
             if "{{" in data and "}}" in data:
-                return await ApiAutomationService._find_var(db, env_id, data)
+                return await ApiAutomationService._find_var(db, env_id, data, api_service_id=api_service_id)
             return data
         if isinstance(data, dict):
             out = {}
@@ -810,6 +827,21 @@ class ApiAutomationService:
         return out
 
     @staticmethod
+    async def _ensure_var_scope_columns(db: AsyncSession) -> None:
+        """兼容旧库：全局变量 scope/api_project_id/department_id 列 + 服务 department_id 列。"""
+        for sql in (
+            "ALTER TABLE api_automation_variables ADD COLUMN scope VARCHAR(20) DEFAULT 'user'",
+            "ALTER TABLE api_automation_variables ADD COLUMN api_project_id BIGINT NULL",
+            "ALTER TABLE api_automation_variables ADD COLUMN department_id BIGINT NULL",
+            "ALTER TABLE api_automation_services ADD COLUMN department_id BIGINT NULL",
+        ):
+            try:
+                await db.execute(text(sql))
+                await db.commit()
+            except Exception:
+                await db.rollback()
+
+    @staticmethod
     async def _ensure_ntest_script_external_files_column(db: AsyncSession) -> None:
         """兼容旧库：缺少 external_files 列时自动补齐。"""
         try:
@@ -1215,10 +1247,29 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
-    async def get_vars(db: AsyncSession, user_id: int) -> Dict[str, Any]:
+    async def get_vars(db: AsyncSession, user_id: int, scope: Optional[str] = None,
+                        api_project_id: Optional[int] = None, department_id: Optional[int] = None,
+                        api_service_id: Optional[int] = None) -> Dict[str, Any]:
+        await ApiAutomationService._ensure_var_scope_columns(db)
+        if api_service_id and not api_project_id and not department_id:
+            svc = (await db.execute(select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id)))).scalar_one_or_none()
+            if svc:
+                api_project_id = int(svc.api_project_id) if svc.api_project_id else None
+                department_id = int(svc.department_id) if getattr(svc, "department_id", None) else None
+        conds = [ApiVariableModel.enabled_flag == 1, ApiVariableModel.created_by == user_id]
+        if scope == 'project':
+            conds.append(ApiVariableModel.scope == 'project')
+            if api_project_id:
+                conds.append(ApiVariableModel.api_project_id == int(api_project_id))
+        elif scope == 'team':
+            conds.append(ApiVariableModel.scope == 'team')
+            if department_id:
+                conds.append(ApiVariableModel.department_id == int(department_id))
+        else:
+            conds.append((ApiVariableModel.scope.is_(None)) | (ApiVariableModel.scope == 'user'))
         stmt = (
             select(ApiVariableModel)
-            .where(ApiVariableModel.enabled_flag == 1, ApiVariableModel.created_by == user_id)
+            .where(*conds)
             .order_by(ApiVariableModel.id.desc())
         )
         rows = (await db.execute(stmt)).scalars().all()
@@ -1230,13 +1281,33 @@ class ApiAutomationService:
         return {"content": data, "total": len(data)}
 
     @staticmethod
-    async def add_var(db: AsyncSession, name: str, value: str, user_id: int) -> None:
-        var = ApiVariableModel(name=name, value=value, created_by=user_id, updated_by=user_id)
+    async def add_var(db: AsyncSession, name: str, value: str, user_id: int,
+                      scope: Optional[str] = None, api_project_id: Optional[int] = None,
+                      department_id: Optional[int] = None, api_service_id: Optional[int] = None) -> None:
+        await ApiAutomationService._ensure_var_scope_columns(db)
+        if api_service_id and not api_project_id and not department_id:
+            svc = (await db.execute(select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id)))).scalar_one_or_none()
+            if svc:
+                api_project_id = int(svc.api_project_id) if svc.api_project_id else None
+                department_id = int(svc.department_id) if getattr(svc, "department_id", None) else None
+        var = ApiVariableModel(name=name, value=value,
+                               scope=scope or 'user',
+                               api_project_id=int(api_project_id) if api_project_id else None,
+                               department_id=int(department_id) if department_id else None,
+                               created_by=user_id, updated_by=user_id)
         db.add(var)
         await db.commit()
 
     @staticmethod
-    async def edit_var(db: AsyncSession, var_id: int, name: str, value: str, user_id: int) -> None:
+    async def edit_var(db: AsyncSession, var_id: int, name: str, value: str, user_id: int,
+                       scope: Optional[str] = None, api_project_id: Optional[int] = None,
+                       department_id: Optional[int] = None) -> None:
+        await ApiAutomationService._ensure_var_scope_columns(db)
+        values: Dict[str, Any] = {"name": name, "value": value, "updated_by": user_id}
+        if scope:
+            values["scope"] = scope
+            values["api_project_id"] = int(api_project_id) if api_project_id else None
+            values["department_id"] = int(department_id) if department_id else None
         await db.execute(
             update(ApiVariableModel)
             .where(
@@ -1244,7 +1315,7 @@ class ApiAutomationService:
                 ApiVariableModel.enabled_flag == 1,
                 ApiVariableModel.created_by == user_id,
             )
-            .values(name=name, value=value, updated_by=user_id)
+            .values(**values)
         )
         await db.commit()
 
@@ -4718,7 +4789,7 @@ class ApiAutomationService:
                 req[k] = request_ctx.get(k)
 
         raw_url = request_ctx.get("url") or body.get("url") or req.get("url") or ""
-        url = await ApiAutomationService.handle_var(db, env_id, raw_url)
+        url = await ApiAutomationService.handle_var(db, env_id, raw_url, api_service_id=api_service_id)
         url = str(url or "").strip()
         url = await ApiAutomationService._resolve_base_url(db, env_id, url)
         if "{{" in url and "}}" in url:
@@ -4732,12 +4803,12 @@ class ApiAutomationService:
                 "请确认环境配置中的接口前缀（如 https://uapis.cn）已正确替换到 URL。"
             )
 
-        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body") or {})
+        body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body", api_service_id=api_service_id) or {})
         method = int(req.get("method") or 2)
         body_type = int(req.get("body_type") or 2)
-        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header")))
-        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params")))
-        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data")))
+        headers = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("header", api_service_id=api_service_id)))
+        params = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("params", api_service_id=api_service_id)))
+        form_data = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_data", api_service_id=api_service_id)))
         form_urlencoded = await ApiAutomationService.handle_var(db, env_id, ApiAutomationService.params_header(req.get("form_urlencoded")))
         file_paths = req.get("file_path") or []
         config = req.get("config") if isinstance(req.get("config"), dict) else None

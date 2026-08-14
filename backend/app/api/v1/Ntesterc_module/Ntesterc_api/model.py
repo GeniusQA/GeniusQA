@@ -29,6 +29,7 @@ class ApiServiceModel(Base):
     last_pull_status = Column(Integer, default=0, comment='拉取状态：0=未拉取，1=成功，2=失败')
     manager = Column(BigInteger, comment='负责人用户ID')
     business_id = Column(BigInteger, comment='业务线ID')
+    department_id = Column(BigInteger, comment='所属部门ID（团队共享变量用）')
     sort = Column(Integer, default=0, comment='排序权重')
     common_params = Column(JSON, comment='全局参数：header/cookie/query/body')
 
@@ -45,12 +46,15 @@ class ApiEnvironmentModel(Base):
 
 
 class ApiVariableModel(Base):
-    """API全局变量模型"""
+    """API全局变量模型（user=用户级 / project=项目内共享 / team=团队内共享）"""
     __tablename__ = 'api_automation_variables'
     
     name = Column(String(255), nullable=False, comment='变量名')
     value = Column(String(255), nullable=False, comment='变量值')
     description = Column(Text, comment='变量描述')
+    scope = Column(String(20), default='user', comment='作用域：user/project/team')
+    api_project_id = Column(BigInteger, comment='项目内共享：所属项目ID')
+    department_id = Column(BigInteger, comment='团队内共享：所属部门ID')
 
 
 class ApiModel(Base):
