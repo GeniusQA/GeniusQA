@@ -128,6 +128,21 @@
         <el-form-item label="备注">
           <el-input v-model="form.description" placeholder="可选描述" />
         </el-form-item>
+        <el-form-item label="外部程序">
+          <div class="sc-ext-field">
+            <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1">
+              <el-button size="small" type="primary" plain>
+                <el-icon style="margin-right:3px"><ele-Upload /></el-icon>上传文件
+              </el-button>
+            </el-upload>
+            <span class="sc-ext-hint">支持 .py/.js/.jar/.sh 等；脚本内用 pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名']) 调用（原生模式）</span>
+            <div v-if="form.external_files.length" class="sc-ext-tags">
+              <el-tag v-for="(f, i) in form.external_files" :key="i" size="small" type="info" effect="plain" closable @close="removeExtFile(i)" style="margin-right:6px">
+                {{ f.name }}
+              </el-tag>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="代码">
           <div class="sc-editor-wrap">
             <div class="sc-editor-toolbar">
@@ -143,18 +158,7 @@
                 </template>
                 <el-icon style="cursor:pointer;color:#94a3b8"><ele-QuestionFilled /></el-icon>
               </el-tooltip>
-              <el-upload :show-file-list="false" :http-request="doUploadFile" accept=".py,.js,.jar,.sh,.go,.java,.php,.rb,.bat,.exe,.ts,.c,.cpp,.ps1" style="margin-left:auto">
-                <el-button link size="small" type="primary">
-                  <el-icon style="margin-right:2px"><ele-Upload /></el-icon>外部程序
-                </el-button>
-              </el-upload>
-              <el-tooltip placement="top" :show-after="200">
-                <template #content>
-                  <div style="font-size:12px;line-height:1.8">上传 .py/.js/.jar/.sh 等外部程序文件到平台目录<br/>脚本中调用：pm.executeAsync('python', ['D:/GeniusQA/backend/scripts_ext/文件名'])<br/>仅原生模式可用</div>
-                </template>
-                <el-icon style="cursor:help;color:#94a3b8;margin:0 4px"><ele-QuestionFilled /></el-icon>
-              </el-tooltip>
-              <el-button type="primary" link size="small" :loading="validating" @click="runValidate">
+              <el-button type="primary" link size="small" style="margin-left:auto" :loading="validating" @click="runValidate">
                 <el-icon style="margin-right:2px"><ele-CircleCheck /></el-icon>AI 校验
               </el-button>
             </div>
@@ -164,12 +168,7 @@
               :placeholder="codePlaceholder"
               spellcheck="false"
             />
-            <div v-if="form.external_files.length" class="sc-ext-chips">
-              <span class="sc-ext-chips-label">外部程序：</span>
-              <el-tag v-for="(f, i) in form.external_files" :key="i" size="small" type="info" effect="plain" closable @close="removeExtFile(i)" style="margin-right:4px">
-                {{ f.name }}
-              </el-tag>
-            </div>
+
 
             <!-- AI 校验结果 -->
             <div v-if="validateResult" class="sc-validate" :class="validateResult.passed ? 'ok' : 'fail'">
@@ -929,8 +928,9 @@ onMounted(loadScripts)
 .vr-title { font-weight: 600; margin-top: 4px; }
 .vr-line { margin-left: 4px; }
 .vr-line.suggest { color: #b45309; }
-.sc-ext-chips { margin-top: 6px; display: flex; align-items: center; flex-wrap: wrap; }
-.sc-ext-chips-label { font-size: 12px; color: #64748b; margin-right: 4px; }
+.sc-ext-field { width: 100%; }
+.sc-ext-hint { font-size: 11px; color: #94a3b8; line-height: 1.6; margin: 6px 0 0; display: block; }
+.sc-ext-tags { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; }
 .sc-code-editor {
   width: 100%;
   min-height: 280px;
