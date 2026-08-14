@@ -67,51 +67,51 @@ def run_cmd(args, timeout=30):
         return None
 
 
+def _try_service_start(service: str, port: int, wait: int) -> bool:
+    """启动 Windows 服务并等待端口就绪（单次尝试，快速失败）。"""
+    if port_listening(port):
+        return True
+    run_cmd(["sc.exe", "start", service])
+    for _ in range(wait):
+        if port_listening(port):
+            return True
+        time.sleep(1)
+    return port_listening(port)
+
+
 def start_mysql() -> bool:
-    # 先清理残留 mysqld（服务已停但进程残留会导致新实例绑定失败）
-    run_cmd(["taskkill", "/F", "/IM", "mysqld.exe"])
-    time.sleep(2)
+    if port_listening(MYSQL_PORT):
+        log("MySQL already running")
+        return True
     log("starting MySQL service...")
-    run_cmd(["sc.exe", "start", MYSQL_SERVICE])
-    for _ in range(90):
-        if port_listening(MYSQL_PORT):
-            log("MySQL ready")
-            return True
-        time.sleep(1)
+    if _try_service_start(MYSQL_SERVICE, MYSQL_PORT, 45):
+        log("MySQL ready")
+        return True
     # 超时：重置服务再试一次（可能处于异常状态）
-    log("WARN: MySQL not ready in 90s, retry once...")
+    log("WARN: MySQL not ready in 45s, retry once...")
     run_cmd(["sc.exe", "stop", MYSQL_SERVICE])
-    time.sleep(3)
-    run_cmd(["taskkill", "/F", "/IM", "mysqld.exe"])
-    run_cmd(["sc.exe", "start", MYSQL_SERVICE])
-    for _ in range(90):
-        if port_listening(MYSQL_PORT):
-            log("MySQL ready (retry)")
-            return True
-        time.sleep(1)
+    time.sleep(2)
+    if _try_service_start(MYSQL_SERVICE, MYSQL_PORT, 45):
+        log("MySQL ready (retry)")
+        return True
     log("WARN: MySQL not ready after retry")
     return False
 
 
 def start_redis() -> bool:
-    run_cmd(["taskkill", "/F", "/IM", "redis-server.exe"])
-    time.sleep(1)
+    if port_listening(REDIS_PORT):
+        log("Redis already running")
+        return True
     log("starting Redis service...")
-    run_cmd(["sc.exe", "start", REDIS_SERVICE])
-    for _ in range(30):
-        if port_listening(REDIS_PORT):
-            log("Redis ready")
-            return True
-        time.sleep(1)
-    log("WARN: Redis not ready in 30s, retry once...")
+    if _try_service_start(REDIS_SERVICE, REDIS_PORT, 20):
+        log("Redis ready")
+        return True
+    log("WARN: Redis not ready in 20s, retry once...")
     run_cmd(["sc.exe", "stop", REDIS_SERVICE])
-    time.sleep(2)
-    run_cmd(["sc.exe", "start", REDIS_SERVICE])
-    for _ in range(30):
-        if port_listening(REDIS_PORT):
-            log("Redis ready (retry)")
-            return True
-        time.sleep(1)
+    time.sleep(1)
+    if _try_service_start(REDIS_SERVICE, REDIS_PORT, 20):
+        log("Redis ready (retry)")
+        return True
     log("WARN: Redis not ready after retry")
     return False
 
@@ -176,10 +176,20 @@ def ensure_services() -> bool:
             return True
         need_mysql = not port_listening(MYSQL_PORT)
         need_redis = not port_listening(REDIS_PORT)
-        if need_mysql:
-            start_mysql()
-        if need_redis:
-            start_redis()
+        # MySQL/Redis 并行拉起（原串行：最坏 3+1 分钟；并行后最快路径 45 秒内）
+        if need_mysql or need_redis:
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=2) as _ex:
+                _futs = []
+                if need_mysql:
+                    _futs.append(_ex.submit(start_mysql))
+                if need_redis:
+                    _futs.append(_ex.submit(start_redis))
+                for _f in _futs:
+                    try:
+                        _f.result()
+                    except Exception as _e:
+                        log(f"startup task error: {_e}")
         if not port_listening(BACKEND_PORT):
             start_backend()
         return port_listening(BACKEND_PORT) and port_listening(MYSQL_PORT) and port_listening(REDIS_PORT)
