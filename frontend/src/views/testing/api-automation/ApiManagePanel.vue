@@ -124,6 +124,17 @@
 						<el-form-item label="文档 URL" required>
 							<el-input v-model="doc_source_url" placeholder="输入文档 URL" clearable />
 						</el-form-item>
+						<el-form-item v-if="doc_source_type === 'swagger'" label="Basic Auth">
+							<el-switch v-model="urlAuthEnabled" />
+						</el-form-item>
+						<template v-if="doc_source_type === 'swagger' && urlAuthEnabled">
+							<el-form-item label="账号">
+								<el-input v-model="urlAuthUsername" placeholder="账号" clearable />
+							</el-form-item>
+							<el-form-item label="密码">
+								<el-input v-model="urlAuthPassword" type="password" placeholder="密码" show-password />
+							</el-form-item>
+						</template>
 						<el-form-item v-if="doc_source_type === 'apifox'" label="Cookies" required>
 							<el-input v-model="doc_source_cookies" placeholder="Apifox Cookies（必填）" clearable />
 						</el-form-item>
@@ -376,6 +387,9 @@ const curlText = ref('');
 const curlIgnoreCommon = ref(true);
 const doc_source_type = ref('swagger');
 const doc_source_url = ref('');
+const urlAuthEnabled = ref(false);
+const urlAuthUsername = ref('');
+const urlAuthPassword = ref('');
 const doc_source_cookies = ref('');
 const file_source_type = ref('swagger');
 const importFileContent = ref<Record<string, any> | null>(null);
@@ -392,6 +406,9 @@ watch(
 const openImportDialog = () => {
 	applySourceFromProps();
 	importTab.value = 'url';
+	urlAuthEnabled.value = false;
+	urlAuthUsername.value = '';
+	urlAuthPassword.value = '';
 	doc_source_cookies.value = '';
 	importFileContent.value = null;
 	uploadRef.value?.clearFiles();
@@ -540,6 +557,38 @@ const importByCurl = async () => {
 		await loadTree();
 	} catch (e: any) {
 		ElMessage.error(e?.message || 'cURL 导入失败');
+	} finally {
+		pulling.value = false;
+	}
+};
+
+const importByUrl = async () => {
+	const docUrl = doc_source_url.value.trim();
+	if (!docUrl) { ElMessage.warning('请输入文档 URL'); return; }
+	if (doc_source_type.value === 'apifox' && !doc_source_cookies.value.trim()) {
+		ElMessage.warning('Apifox 导入需要 Cookies'); return;
+	}
+	pulling.value = true;
+	try {
+		const source_type = normalizeSourceType(doc_source_type.value);
+		try {
+			await edit_api_service({ id: props.serviceId, source_type } as any);
+			emit('update-source', { source_type });
+		} catch { /* 保存失败不阻断导入 */ }
+		await pull_api_doc({
+			api_service_id: props.serviceId,
+			source_type: source_type as 'swagger' | 'apifox',
+			doc_url: docUrl,
+			cookies: doc_source_cookies.value.trim(),
+			basic_auth: urlAuthEnabled.value && doc_source_type.value === 'swagger'
+				? { username: urlAuthUsername.value.trim(), password: urlAuthPassword.value }
+				: undefined,
+		});
+		ElMessage.success('导入成功');
+		importDialogVisible.value = false;
+		await loadTree();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '导入失败');
 	} finally {
 		pulling.value = false;
 	}

@@ -2639,6 +2639,10 @@ class ApiAutomationService:
         source_type = str(body.get("source_type") or "swagger").strip().lower()
         doc_content = body.get("doc_content")
         cookies = str(body.get("cookies") or "").strip()
+        basic_auth = body.get("basic_auth") if isinstance(body.get("basic_auth"), dict) else None
+        auth_tuple = None
+        if basic_auth and basic_auth.get("username"):
+            auth_tuple = (str(basic_auth.get("username")), str(basic_auth.get("password") or ""))
 
         if not api_service_id:
             raise ValueError("api_service_id 不能为空")
@@ -2755,7 +2759,7 @@ class ApiAutomationService:
                     except Exception:
                         return None
 
-                resp = requests.get(doc_url, headers=headers, timeout=20)
+                resp = requests.get(doc_url, headers=headers, timeout=20, auth=auth_tuple)
                 resp.raise_for_status()
                 parsed_json = try_parse_json_response(resp)
                 if parsed_json is not None:
