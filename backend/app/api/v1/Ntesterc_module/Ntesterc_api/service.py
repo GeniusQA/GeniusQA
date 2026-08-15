@@ -1732,6 +1732,7 @@ class ApiAutomationService:
 
         
         method_map: Dict[int, int] = {}
+        protocol_map: Dict[int, str] = {}
         if api_ids:
             api_rows = (
                 await db.execute(
@@ -1749,11 +1750,13 @@ class ApiAutomationService:
                 except Exception:
                     method_val = 2
                 method_map[int(a.id)] = method_val
+                protocol_map[int(a.id)] = str(req_cfg.get("protocol") or "http").lower()
 
         for it in items:
             api_id = it.get("api_id")
             if api_id and int(api_id) in method_map:
                 it["method"] = method_map[int(api_id)]
+                it["protocol"] = protocol_map.get(int(api_id), "http")
 
         menu_tree = _build_tree(items)
         # 模块层：每个服务（模块）包一层节点（id 加 svc_ 前缀避免与菜单 id 冲突）
@@ -3250,7 +3253,20 @@ class ApiAutomationService:
 
     @staticmethod
     async def add_menu(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
-     
+        # 防御：pid 指向接口节点（type=2）时，改为挂到该接口的父级目录（避免接口下挂接口）
+        _pid = int(body.get("pid") or 0)
+        if _pid:
+            _parent = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.id == _pid,
+                        ApiMenuModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+            if _parent and int(_parent.type) == 2:
+                _pid = int(_parent.pid or 0)
+                body["pid"] = _pid
         api_id = None
         if int(body.get("type")) != 1:
             default_req = {

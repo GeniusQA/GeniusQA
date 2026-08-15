@@ -37,6 +37,8 @@
 								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
 								<span v-if="data.type===2||data.type===3" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
+								<span v-if="data.type===2 && data.protocol==='websocket'" class="proto-badge proto-ws">WS</span>
+								<span v-else-if="data.type===2 && data.protocol==='webhook'" class="proto-badge proto-wh">WH</span>
 								<span class="node-name">{{ data.name }}</span>
 							</div>
 							<el-dropdown trigger="click" @command="(cmd) => handleNodeCommand(cmd, data)" @click.stop>
@@ -672,7 +674,7 @@ const handleAddCommand = (cmd: string) => {
 		menuDialogVisible.value = true;
 		return;
 	}
-	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: 0, editId: 0, mode: 'add' };
+	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: 0, editId: 0, mode: 'add', protocol: 'http' };
 	menuDialogTitle.value = cmd === 'add_folder' ? '添加目录' : '添加接口';
 	menuDialogVisible.value = true;
 };
@@ -684,11 +686,11 @@ const handleNodeCommand = (cmd: string, data: any) => {
 	}
 	if (cmd === 'add_folder') {
 		const isModule = data.type === 0;
-		menuForm.value = { name: '', type: 1, pid: isModule ? 0 : data.id, editId: 0, mode: 'add' };
+		menuForm.value = { name: '', type: 1, pid: isModule ? 0 : data.id, editId: 0, mode: 'add', protocol: 'http' };
 		menuDialogTitle.value = isModule ? '添加目录' : '添加子目录';
 		menuDialogVisible.value = true;
 	} else if (cmd === 'add_api') {
-		menuForm.value = { name: '', type: 2, pid: data.id, editId: 0, mode: 'add' };
+		menuForm.value = { name: '', type: 2, pid: data.id, editId: 0, mode: 'add', protocol: 'http' };
 		menuDialogTitle.value = '添加接口';
 		menuDialogVisible.value = true;
 	} else if (cmd === 'rename') {
@@ -857,4 +859,18 @@ onMounted(() => {
 	color: var(--el-text-color-secondary);
 	line-height: 1.6;
 }
+.proto-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	line-height: 1;
+	padding: 2px 5px;
+	border-radius: 4px;
+	color: #fff;
+	margin-left: 6px;
+	flex: 0 0 auto;
+}
+.proto-ws { background: #7c4dff; }
+.proto-wh { background: #e6a23c; }
 </style>
