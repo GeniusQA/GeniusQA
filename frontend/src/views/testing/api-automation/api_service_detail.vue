@@ -369,12 +369,19 @@ onMounted(() => {
 .env-manage-entry {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: 6px;
-	padding: 8px 12px;
+	padding: 9px 12px;
 	border-top: 1px solid #e5e7eb;
 	color: #7c3aed;
 	font-size: 13px;
+	line-height: 1;
 	cursor: pointer;
+}
+.env-manage-entry .el-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 .env-manage-entry:hover {
 	background: #f3f4f6;
