@@ -226,6 +226,33 @@ class ApiAutomationService:
                     continue
         if not front_urls:
             return ""
+        # 接口协议：websocket -> websocket 行；http/webhook -> http 行；socketio -> socketio 行
+        _proto = "http"
+        try:
+            _api_row = (
+                await db.execute(
+                    select(ApiModel).where(ApiModel.id == int(api_id), ApiModel.enabled_flag == 1)
+                )
+            ).scalar_one_or_none()
+            if _api_row and isinstance(_api_row.req, dict):
+                _p = str(_api_row.req.get("protocol") or "http").lower()
+                _proto = _p if _p in ("websocket", "socketio") else "http"
+        except Exception:
+            pass
+
+        def _proto_ok(f: Dict[str, Any]) -> bool:
+            fp = str(f.get("protocol") or "http").lower()
+            return fp == _proto
+
+        def _url_ok(f: Dict[str, Any]) -> bool:
+            val = str(f.get("url") or "").strip()
+            if not val:
+                return False
+            fp = str(f.get("protocol") or "http").lower()
+            if fp in ("websocket", "socketio"):
+                return val.startswith(("ws://", "wss://", "http://", "https://"))
+            return val.startswith(("http://", "https://"))
+
         # 服务级匹配：front_urls 中 menu_id 为 svc_{id}（模块=服务），接口所属服务一致即命中
         _m0 = (
             await db.execute(
@@ -241,10 +268,10 @@ class ApiAutomationService:
                 try:
                     _mid = f.get("menu_id")
                     if isinstance(_mid, str) and _mid.startswith("svc_"):
-                        if int(_mid[4:]) == _svc_id:
-                            val = str(f.get("url") or "").strip()
-                            if val.startswith(("http://", "https://")):
-                                return val
+                        if int(_mid[4:]) == _svc_id and _proto_ok(f):
+                            
+                            if _url_ok(f):
+                                return str(f.get("url") or "").strip()
                 except Exception:
                     continue
         chain_ids: list = []
@@ -274,10 +301,10 @@ class ApiAutomationService:
         for mid in chain_ids:
             for f in front_urls or []:
                 try:
-                    if int(f.get("menu_id") or 0) == mid:
-                        val = str(f.get("url") or "").strip()
-                        if val.startswith(("http://", "https://")):
-                            return val
+                    if int(f.get("menu_id") or 0) == mid and _proto_ok(f):
+                        
+                        if _url_ok(f):
+                            return str(f.get("url") or "").strip()
                 except Exception:
                     continue
         return ""
@@ -3201,6 +3228,54 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    async def _sync_env_front_urls_for_protocol(db: AsyncSession, svc_id: int, protocol: str) -> None:
+        """新建接口时联动：确保所有环境的 __front_urls__ 中存在该模块对应协议的前置 URL 行（url 空）。"""
+        import json as _json
+        protocol = str(protocol or "http").lower()
+        if protocol not in ("http", "websocket", "socketio"):
+            protocol = "http"
+        mid = f"svc_{int(svc_id)}"
+        envs = (
+            await db.execute(
+                select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
+            )
+        ).scalars().all()
+        updates: List[tuple] = []
+        for env in envs:
+            cfg = list(env.config or [])
+            fu_item = None
+            for i in cfg:
+                if isinstance(i, dict) and str(i.get("name") or "").strip() == "__front_urls__":
+                    fu_item = i
+                    break
+            if fu_item is None:
+                fu_item = {"name": "__front_urls__", "value": "[]"}
+                cfg.append(fu_item)
+            try:
+                fu = _json.loads(fu_item.get("value") or "[]")
+                if not isinstance(fu, list):
+                    fu = []
+            except Exception:
+                fu = []
+            exists = any(
+                str(f.get("menu_id") or "") == mid
+                and str(f.get("protocol") or "http").lower() == protocol
+                for f in fu
+            )
+            if not exists:
+                fu.append({"menu_id": mid, "url": "", "protocol": protocol})
+                fu_item["value"] = _json.dumps(fu)
+                updates.append((int(env.id), cfg))
+        if updates:
+            for eid, cfg in updates:
+                await db.execute(
+                    update(ApiEnvironmentModel)
+                    .where(ApiEnvironmentModel.id == eid)
+                    .values(config=cfg, updated_by=0)
+                )
+            await db.commit()
+
+    @staticmethod
     async def _sync_env_front_urls(db: AsyncSession, module_ids: List[int], remove: bool = False) -> None:
         """模块创建/删除联动所有环境的 __front_urls__：创建补行（url 空）、删除移除行。"""
         import json as _json
@@ -3237,7 +3312,7 @@ class ApiAutomationService:
                 existing = set(str(f.get("menu_id") or "") for f in fu)
                 for mid in module_ids:
                     if str(mid) not in existing:
-                        fu.append({"menu_id": mid, "url": ""})
+                        fu.append({"menu_id": mid, "url": "", "protocol": "http"})
                         existing.add(str(mid))
                 new_fu = fu
             fu_item["value"] = _json.dumps(new_fu)
@@ -3311,6 +3386,13 @@ class ApiAutomationService:
         await db.flush()
         if int(menu.type) == 0:
             await ApiAutomationService._sync_env_front_urls(db, [int(menu.id)])
+        elif int(menu.type) == 2 and api_id:
+            # 新建接口：按协议自动补齐环境前置 URL 行（webhook 复用 http 行）
+            _p = str(body.get("protocol") or "http").lower()
+            _p = _p if _p in ("websocket", "socketio") else "http"
+            await ApiAutomationService._sync_env_front_urls_for_protocol(
+                db, int(body["api_service_id"]), _p
+            )
         await db.commit()
 
     @staticmethod

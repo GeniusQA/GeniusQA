@@ -60,7 +60,12 @@
 <div class="env-block-title">前置 URL</div>
 						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
 							<span class="env-front-module">{{ moduleName(f.menu_id) }}</span>
-							<el-input v-model="f.url" placeholder="https:// 起始的前置 URL" size="small" style="flex:1.4" />
+							<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1.4" />
+							<el-select v-model="f.protocol" size="small" style="width: 112px; flex: 0 0 112px">
+								<el-option label="HTTP" value="http" />
+								<el-option label="WebSocket" value="websocket" />
+								<el-option label="Socket.IO" value="socketio" />
+							</el-select>
 						</div>
 						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
 
@@ -150,7 +155,7 @@ const loadFrontUrls = () => {
 	const item = cfg.find((c: any) => String(c.name || '').trim() === FRONT_KEY);
 	try {
 		const arr = item ? JSON.parse(item.value || '[]') : [];
-		envFrontUrls.value = Array.isArray(arr) ? arr.map((x: any) => ({ ...x })) : [];
+		envFrontUrls.value = Array.isArray(arr) ? arr.map((x: any) => ({ ...x, protocol: x.protocol || 'http' })) : [];
 	} catch {
 		envFrontUrls.value = [];
 	}
@@ -164,11 +169,11 @@ const syncFrontUrls = () => {
 };
 const addFrontUrl = () => {
 	const cur = 'svc_' + String(props.serviceId ?? '');
-	if (envFrontUrls.value.some((f: any) => String(f.menu_id || '') === cur)) {
-		ElMessage.info('该模块已存在，直接填写前置 URL 即可');
+	if (envFrontUrls.value.some((f: any) => String(f.menu_id || '') === cur && (f.protocol || 'http') === 'http')) {
+		ElMessage.info('该模块的 HTTP 前置 URL 已存在，直接填写即可；如需其他协议请新建对应协议接口自动生成');
 		return;
 	}
-	envFrontUrls.value.push({ menu_id: cur, menu_name: '', url: '' });
+	envFrontUrls.value.push({ menu_id: cur, menu_name: '', url: '', protocol: 'http' });
 	syncFrontUrls();
 };
 const moduleName = (menuId: any): string => {
