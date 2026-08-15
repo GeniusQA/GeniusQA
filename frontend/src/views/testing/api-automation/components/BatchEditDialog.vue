@@ -16,7 +16,7 @@
 		<div class="batch-foot-hint">
 			<template v-if="batchMode === 'comma'">
 				数据格式遵循
-				<el-popover placement="top" trigger="click" width="440">
+				<el-popover placement="top" trigger="click" width="560">
 					<template #reference>
 						<a class="csv-link">《标准 CSV 规范》</a>
 					</template>
@@ -24,6 +24,12 @@
 						<div class="csv-rule-title">CSV 六列格式</div>
 						<div v-for="r in csvRules" :key="r[0]" class="csv-rule-row">
 							<b>{{ r[0] }}</b><span>{{ r[1] }}</span>
+						</div>
+						<div class="csv-spec-divider"></div>
+						<div class="csv-rule-title">CSV 格式规范（RFC 4180）</div>
+						<div v-for="(s, i) in csvSpecs" :key="i" class="csv-spec-item">
+							<div class="csv-spec-desc"><b>{{ i + 1 }}.</b> {{ s.desc }}</div>
+							<code class="csv-spec-code">{{ s.code }}</code>
 						</div>
 					</div>
 				</el-popover>
@@ -84,6 +90,15 @@ const csvRules: [string, string][] = [
 	['默认值', '参数默认值（object 类型不可填）'],
 	['默认启用', 'true / false'],
 	['说明', '参数说明（可选）'],
+];
+const csvSpecs: { desc: string; code: string }[] = [
+	{ desc: '字段之间以半角逗号(,)分隔', code: 'aaa,bbb,ccc' },
+	{ desc: '记录之间以 CRLF（\r\n）分隔', code: 'aaa,bbb,ccc\r\nddd,eee,fff' },
+	{ desc: '每条记录应包含相同数量的字段', code: 'aaa,bbb,ccc' },
+	{ desc: '使用半角双引号包裹含逗号、换行或双引号的字段', code: '"aaa","b,bb","ccc"' },
+	{ desc: '字段内的双引号用双引号转义', code: '"aaa","b""bb","ccc"' },
+	{ desc: '字段内的空格保留（不修剪）', code: 'aaa, bbb,ccc' },
+	{ desc: '最后一条记录末尾的换行符可省略', code: 'aaa,bbb,ccc 或 aaa,bbb,ccc\r\n' },
 ];
 watch(() => props.initialText, (v) => { batchText.value = v || ''; });
 
@@ -157,5 +172,32 @@ const apply = () => {
 }
 .csv-rule-row span {
 	color: #4b5563;
+}
+.csv-spec-divider {
+	border-top: 1px dashed #e5e7eb;
+	margin: 10px 0;
+}
+.csv-spec-item {
+	margin-bottom: 10px;
+}
+.csv-spec-desc {
+	font-size: 13px;
+	color: #1f2937;
+	line-height: 1.5;
+}
+.csv-spec-desc b {
+	margin-right: 4px;
+}
+.csv-spec-code {
+	display: block;
+	background: #1e2129;
+	color: #e6edf3;
+	border-radius: 4px;
+	padding: 6px 10px;
+	margin-top: 4px;
+	font-family: Consolas, Menlo, Monaco, monospace;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-all;
 }
 </style>
