@@ -2642,8 +2642,20 @@ class ApiAutomationService:
 
         if not api_service_id:
             raise ValueError("api_service_id 不能为空")
-        if not doc_url and not isinstance(doc_content, dict):
+        if not doc_url and not doc_content:
             raise ValueError("文档地址或文档内容至少提供一个")
+        # 文件导入支持 YAML 文本：字符串内容统一 yaml 解析（YAML 为 JSON 超集）
+        if isinstance(doc_content, str) and doc_content.strip():
+            try:
+                parsed = yaml.safe_load(doc_content)
+                if isinstance(parsed, dict):
+                    doc_content = parsed
+                else:
+                    raise ValueError("文档内容根节点必须是对象")
+            except ValueError:
+                raise
+            except Exception:
+                raise ValueError("文档内容解析失败（支持 OpenAPI/Swagger 的 JSON 或 YAML）")
         if source_type not in ("swagger", "apifox"):
             raise ValueError("source_type 仅支持 swagger 或 apifox")
 

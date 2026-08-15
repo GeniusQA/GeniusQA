@@ -117,7 +117,7 @@
 					<el-form label-width="100px">
 						<el-form-item label="文档类型" required>
 							<el-select v-model="doc_source_type" style="width:100%">
-								<el-option label="Swagger" value="swagger" />
+								<el-option label="OpenAPI/Swagger" value="swagger" />
 								<el-option label="Apifox" value="apifox" />
 							</el-select>
 						</el-form-item>
@@ -133,7 +133,7 @@
 					<el-form label-width="100px">
 						<el-form-item label="文档类型" required>
 							<el-select v-model="file_source_type" style="width:100%">
-								<el-option label="Swagger" value="swagger" />
+								<el-option label="OpenAPI/Swagger" value="swagger" />
 								<el-option label="Apifox" value="apifox" />
 							</el-select>
 						</el-form-item>
@@ -142,14 +142,14 @@
 								ref="uploadRef"
 								:auto-upload="false"
 								:limit="1"
-								accept=".json"
+								accept=".json,.yaml,.yml"
 								:on-change="onImportFileChange"
 								:on-remove="onImportFileRemove"
 								:on-exceed="onImportFileExceed"
 							>
 								<el-button size="small">选择 JSON 文件</el-button>
 								<template #tip>
-									<div class="el-upload__tip">支持 OpenAPI / Swagger JSON，以及 Apifox「导出项目」JSON；YAML 请先转为 JSON</div>
+									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML，以及 Apifox「导出项目」JSON</div>
 								</template>
 							</el-upload>
 						</el-form-item>
@@ -408,25 +408,14 @@ const onImportFileChange: UploadProps['onChange'] = async (uploadFile: UploadFil
 	importFileContent.value = null;
 	const raw = uploadFile.raw;
 	if (!raw) return;
-
-	const lower = (raw.name || '').toLowerCase();
-	if (lower.endsWith('.yaml') || lower.endsWith('.yml')) {
-		ElMessage.warning('暂不支持 YAML，请先转为 JSON 再导入');
-		uploadRef.value?.clearFiles();
-		return;
-	}
-
 	try {
 		const text = await readFileAsText(raw);
-		const parsed = JSON.parse(text);
-		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-			throw new Error('文档内容必须是 JSON 对象');
-		}
-		importFileContent.value = parsed as Record<string, any>;
+		if (!text.trim()) throw new Error('文件内容为空');
+		importFileContent.value = text;
 	} catch (e: any) {
 		importFileContent.value = null;
 		uploadRef.value?.clearFiles();
-		ElMessage.error(e?.message?.includes('JSON') || e instanceof SyntaxError ? 'JSON 解析失败，请检查文件格式' : (e?.message || '文件解析失败'));
+		ElMessage.error(e?.message || '文件读取失败');
 	}
 };
 
@@ -551,7 +540,7 @@ const importByCurl = async () => {
 
 const importByFile = async () => {
 	if (!importFileContent.value) {
-		ElMessage.warning('请选择要导入的 JSON 文件');
+		ElMessage.warning('请选择要导入的 JSON 或 YAML 文件');
 		return;
 	}
 	pulling.value = true;
@@ -567,7 +556,7 @@ const importByFile = async () => {
 		await pull_api_doc({
 			api_service_id: props.serviceId,
 			source_type: source_type as 'swagger' | 'apifox',
-			doc_content: importFileContent.value,
+			doc_content: String(importFileContent.value || ''),
 		});
 		ElMessage.success('导入成功');
 		importDialogVisible.value = false;
