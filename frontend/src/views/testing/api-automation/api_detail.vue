@@ -24,7 +24,7 @@
 						<el-tooltip v-if="req.protocol === 'webhook'" placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper">
 							<template #content>
 								<div class="webhook-tip-box">
-									<div class="webhook-tip-text">Webhook 接口的 URL 应由接口使用者提供。此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
+									<div class="webhook-tip-text">此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
 									<img src="/webhook-tip.png" alt="Webhook 说明" class="webhook-tip-img" />
 								</div>
 							</template>
