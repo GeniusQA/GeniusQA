@@ -25,8 +25,12 @@
 							<el-tooltip placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper" style="flex: 1">
 								<template #content>
 									<div class="webhook-tip-box">
-										<div class="webhook-tip-text">此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
-										<img src="/webhook-tip.png" alt="Webhook 说明" class="webhook-tip-img" />
+										<div class="webhook-tip-text">该值会显示在接口文档中，并在导出 OpenAPI 文件时用作接口的 Key。示例：</div>
+										<pre class="webhook-tip-code">openapi: 3.1.0
+webhooks:
+  newPetCreated:
+    post:
+      summary: Created a new Pet</pre>
 									</div>
 								</template>
 								<el-input v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
@@ -2149,6 +2153,18 @@ const confirmSaveAsCase = async () => {
 .bulk-csv-code { display: block; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; padding: 6px 10px; font-size: 12px; white-space: pre-wrap; }
 </style>
 
+.webhook-tip-code {
+	background: #1e1e1e;
+	color: #d4d4d4;
+	border-radius: 6px;
+	padding: 10px 12px;
+	font-size: 12px;
+	line-height: 1.7;
+	font-family: Consolas, Monaco, 'Courier New', monospace;
+	white-space: pre;
+	overflow-x: auto;
+	margin: 0;
+}
 <style lang="scss">
 /* Webhook tooltip：白底黑字（popper 挂载到 body，需全局样式） */
 .webhook-tip-popper {
