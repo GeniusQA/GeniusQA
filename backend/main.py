@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.core.logger import init_logger, logger
@@ -102,6 +102,52 @@ def create_app() -> FastAPI:
             _sub_dir = _frontend_dist / _sub
             if _sub_dir.is_dir():
                 app.mount(f"/{_sub}", StaticFiles(directory=str(_sub_dir)), name=f"frontend_{_sub}")
+
+    # ===== 平台自建测试服务 =====
+    # ① WebSocket Echo：连接后任何消息原样回显（文本/二进制），用于验证 WS 收发链路
+    @app.websocket("/ws_test_echo")
+    async def ws_test_echo(websocket: WebSocket):
+        """平台自建 WebSocket 测试服务：连接后发消息原样回显"""
+        await websocket.accept()
+        try:
+            while True:
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                if msg.get("type") == "websocket.receive":
+                    if msg.get("text") is not None:
+                        await websocket.send_text(str(msg.get("text") or ""))
+                    elif msg.get("bytes") is not None:
+                        await websocket.send_bytes(msg.get("bytes") or b"")
+        except WebSocketDisconnect:
+            pass
+
+    # ② Webhook 接收回显：接收任意请求，回显 method/url/headers/body/时间
+    @app.post("/webhook_test")
+    async def webhook_test(request: Request):
+        """平台自建 Webhook 测试服务：接收请求并回显请求详情"""
+        import json as _json
+        from datetime import datetime as _dt
+        try:
+            raw = await request.body()
+            body_text = raw.decode("utf-8", errors="replace") if raw else ""
+            try:
+                body_json = _json.loads(body_text) if body_text.strip() else {}
+            except Exception:
+                body_json = None
+            return {
+                "code": 200,
+                "message": "平台 Webhook 测试服务：收到请求并回显",
+                "data": {
+                    "method": request.method,
+                    "url": str(request.url),
+                    "headers": {k: v for k, v in request.headers.items() if k.lower() not in ("cookie",)},
+                    "body": body_json if body_json is not None else body_text,
+                    "time": _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+                },
+            }
+        except Exception as e:  # noqa: BLE001
+            return {"code": 500, "data": None, "message": f"处理失败: {e}"}
 
     # 自定义 API 文档路由（必须在 catch-all 前面注册，否则被拦截）
     _swagger_dir = Path(__file__).resolve().parent / "static" / "swagger"
