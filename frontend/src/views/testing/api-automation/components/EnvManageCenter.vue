@@ -55,14 +55,7 @@
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
 <div class="env-block-title">前置 URL</div>
 						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
-							<el-select
-								v-model="f.menu_id"
-								:options="frontUrlMenuOptions"
-								placeholder="选择模块"
-								size="small"
-								style="flex:1.2"
-								clearable
-							/>
+							<span class="env-front-module">{{ moduleName(f.menu_id) }}</span>
 							<el-input v-model="f.url" placeholder="https:// 起始的前置 URL" size="small" style="flex:1.4" />
 							<el-button type="danger" link size="small" @click="removeFrontUrl(idx)" class="env-del-icon"><el-icon><Delete /></el-icon></el-button>
 						</div>
@@ -177,8 +170,20 @@ const syncFrontUrls = () => {
 	cfg.push({ name: FRONT_KEY, value: JSON.stringify(envFrontUrls.value) });
 };
 const addFrontUrl = () => {
-	envFrontUrls.value.push({ menu_id: null as any, menu_name: '', url: '' });
+	const cur = 'svc_' + String(props.serviceId ?? '');
+	if (envFrontUrls.value.some((f: any) => String(f.menu_id || '') === cur)) {
+		ElMessage.info('该模块已存在，直接填写前置 URL 即可');
+		return;
+	}
+	envFrontUrls.value.push({ menu_id: cur, menu_name: '', url: '' });
 	syncFrontUrls();
+};
+const moduleName = (menuId: any): string => {
+	const m = frontUrlMenuOptions.value.find((o: any) => String(o.id) === String(menuId));
+	if (m) return m.name;
+	const s = String(menuId ?? '');
+	if (s.startsWith('svc_')) return '模块 ' + s.replace('svc_', '');
+	return s;
 };
 const removeFrontUrl = (idx: number) => {
 	envFrontUrls.value.splice(idx, 1);
@@ -347,6 +352,22 @@ defineExpose({ open });
 	margin-bottom: 14px;
 }
 .env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
+.env-front-module {
+	flex: 1.2;
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
+	padding: 0 10px;
+	height: 24px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #4c1d95;
+	background: #f3e8ff;
+	border-radius: 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 .env-del-icon {
 	padding: 4px 2px;
 	font-size: 14px;
