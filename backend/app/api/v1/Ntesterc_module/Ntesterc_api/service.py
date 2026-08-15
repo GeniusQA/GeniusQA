@@ -477,6 +477,7 @@ class ApiAutomationService:
         headers: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         temp_vars: Optional[Dict[str, Any]] = None,
+        common_auth: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Any]:
         """
         将 Auth / Cookies 应用到请求。
@@ -507,7 +508,13 @@ class ApiAutomationService:
 
         auth_type = str(req.get("auth_type") or "none").strip().lower()
         if auth_type in ("", "none", "noauth"):
-            return headers, params, None
+            # 目录级 Auth 继承：接口未配置认证时使用目录 Auth（对齐「复用所属子接口」）
+            if common_auth and isinstance(common_auth, dict) and common_auth.get("auth_type"):
+                for _k, _v in common_auth.items():
+                    req[_k] = _v
+                auth_type = str(common_auth.get("auth_type") or "none").strip().lower()
+            else:
+                return headers, params, None
 
         prefix = str(
             await ApiAutomationService.handle_var(
@@ -4826,7 +4833,8 @@ class ApiAutomationService:
         config = api_req.get("config") or {"retry": 0, "req_timeout": 5, "res_timeout": 5}
 
         headers, params, req_auth = await ApiAutomationService.apply_request_auth(
-            db, env_id, api_req, headers=headers, params=params
+            db, env_id, api_req, headers=headers, params=params,
+            common_auth=(common or {}).get("auth") if isinstance(common, dict) else None,
         )
 
         res = await ApiAutomationService._send_request(
@@ -5904,6 +5912,7 @@ class ApiAutomationService:
         headers, params, req_auth = await ApiAutomationService.apply_request_auth(
             db, env_id, req, headers=headers, params=params,
             temp_vars=request_ctx.get("__temp_vars__") if isinstance(request_ctx, dict) else None,
+            common_auth=(common or {}).get("auth") if isinstance(common, dict) else None,
         )
 
         res = await ApiAutomationService._send_request(
