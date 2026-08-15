@@ -52,13 +52,13 @@
 							<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
 						</div>
 
-						<div class="env-block-title">前置 URL（按模块/目录匹配）</div>
+						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
+<div class="env-block-title">前置 URL（按模块匹配）</div>
 						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
-							<el-cascader
+							<el-select
 								v-model="f.menu_id"
 								:options="frontUrlMenuOptions"
-								:props="{ value: 'id', label: 'name', children: 'children' }"
-								placeholder="选择模块/目录"
+								placeholder="选择模块"
 								size="small"
 								style="flex:1.2"
 								clearable
@@ -160,14 +160,9 @@ const frontUrlMenuOptions = ref<any[]>([]);
 const loadMenuTree = async () => {
 	try {
 		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
-		const walk = (nodes: any[]): any[] =>
-			(nodes || []).map((n: any) => ({
-				id: n.id,
-				name: n.name,
-				type: n.type,
-				children: n.type !== 2 ? walk(n.children) : undefined,
-			}));
-		frontUrlMenuOptions.value = walk(r?.data || []);
+		frontUrlMenuOptions.value = (r?.data || [])
+			.filter((n: any) => n.type === 0)
+			.map((n: any) => ({ id: n.id, name: n.name }));
 	} catch {
 		frontUrlMenuOptions.value = [];
 	}
@@ -354,6 +349,12 @@ defineExpose({ open });
 	margin-bottom: 14px;
 }
 .env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
+.env-block-tip {
+	font-size: 12px;
+	color: #909399;
+	line-height: 1.5;
+	margin-bottom: 6px;
+}
 .env-block-title {
 	font-size: 13px;
 	font-weight: 600;
