@@ -137,6 +137,7 @@ const selectEnv = (e: any) => {
 		variable: Array.isArray(e.variable) ? e.variable.map((v: any) => ({ ...v })) : [],
 	};
 	section.value = 'env';
+	loadFrontUrls();
 	loadMenuTree();
 };
 
@@ -152,16 +153,17 @@ const loadMenuTree = async () => {
 		frontUrlMenuOptions.value = [];
 	}
 };
-const envFrontUrls = computed<any[]>(() => {
+const envFrontUrls = ref<any[]>([]);
+const loadFrontUrls = () => {
 	const cfg = curEnv.value?.config || [];
 	const item = cfg.find((c: any) => String(c.name || '').trim() === FRONT_KEY);
 	try {
 		const arr = item ? JSON.parse(item.value || '[]') : [];
-		return Array.isArray(arr) ? arr : [];
+		envFrontUrls.value = Array.isArray(arr) ? arr.map((x: any) => ({ ...x })) : [];
 	} catch {
-		return [];
+		envFrontUrls.value = [];
 	}
-});
+};
 
 const syncFrontUrls = () => {
 	const cfg = curEnv.value.config;
@@ -288,6 +290,7 @@ const open = async () => {
 	section.value = 'global-var';
 	curEnv.value = null;
 	await loadEnvList();
+	loadFrontUrls();
 };
 
 const onClosed = () => {
