@@ -81,7 +81,7 @@
 					<el-badge :show-zero="false" :value="countEnabled(form.body)" :offset="[10, 2]" type="danger">Body</el-badge>
 				</template>
 				<div class="common-params-tip" style="margin-bottom:8px">
-					以键值形式合并到 JSON / form-data / x-www-form-urlencoded（接口同名键覆盖）。
+					Body 类型的全局参数仅对 form-data 和 x-www-form-urlencoded 形式请求有效
 				</div>
 				<div class="kv-toolbar">
 					<el-button type="primary" link size="small" @click="openBatchEdit('body')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
@@ -181,7 +181,7 @@
 					<el-badge :show-zero="false" :value="countEnabled(form.body)" :offset="[10, 2]" type="danger">Body</el-badge>
 				</template>
 				<div class="common-params-tip" style="margin-bottom:8px">
-					以键值形式合并到 JSON / form-data / x-www-form-urlencoded（接口同名键覆盖）。
+					Body 类型的全局参数仅对 form-data 和 x-www-form-urlencoded 形式请求有效
 				</div>
 				<div class="kv-toolbar">
 					<el-button type="primary" link size="small" @click="openBatchEdit('body')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
