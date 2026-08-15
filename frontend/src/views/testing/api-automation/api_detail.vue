@@ -14,18 +14,16 @@
 				<!-- URL bar -->
 				<div class="api-detail-header">
 					<div class="req-url-bar">
-						<el-select v-model="req.protocol" class="protocol-select" style="width: 112px; flex: 0 0 112px" @change="onProtocolChange">
-							<el-option label="HTTP" value="http" />
-							<el-option label="WebSocket" value="websocket" />
-							<el-option label="Webhook" value="webhook" />
-						</el-select>
+						<el-tag v-if="req.protocol === 'websocket'" effect="dark" color="#7c4dff" class="ws-badge">WebSocket</el-tag>
+						<el-tag v-else-if="req.protocol === 'webhook'" effect="plain" type="warning" class="ws-badge">Webhook</el-tag>
 						<el-select v-if="req.protocol !== 'websocket'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
 							<el-option v-for="(m, i) in method_list" :key="i" :label="m.name" :value="m.value">
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
 							</el-option>
 						</el-select>
-						<el-input v-model="req.url" placeholder="请输入请求地址" clearable class="url-input" />
-						<el-button type="primary" @click="sendRequest" class="send-btn">发送</el-button>
+						<el-input v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
+						<el-button v-if="req.protocol === 'websocket'" type="primary" @click="wsConnect" class="send-btn">连接</el-button>
+						<el-button v-else type="primary" @click="sendRequest" class="send-btn">发送</el-button>
 						<el-dropdown @command="handleSaveCommand">
 							<el-button type="success" class="save-btn">保存项 <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
 							<template #dropdown>
@@ -43,24 +41,63 @@
 				</div>
 
 				<div class="api-detail-body">
-					<!-- WebSocket 调试面板 -->
+					<!-- WebSocket 调试面板（对齐 Apifox：Message/Params/设置） -->
 					<div v-if="req.protocol === 'websocket'" class="ws-panel">
-						<div class="ws-toolbar">
-							<el-button type="primary" size="small" @click="wsConnect">测试连接</el-button>
-							<span class="ws-status" :style="{ color: wsLastOk ? '#67c23a' : '#909399' }">{{ wsLastOk ? '上次连接正常' : '未连接' }}</span>
-							<span class="ws-muted">每次发送为「连接→发送→接收→断开」完整往返</span>
-						</div>
-						<div class="ws-message-box">
-							<el-input v-model="wsMessage" type="textarea" :rows="4" placeholder="输入要发送的消息（文本或 JSON）" />
-							<el-button type="primary" @click="wsSend">发送</el-button>
-						</div>
-						<div class="ws-history">
-							<div v-for="(m, i) in wsMessages" :key="i" class="ws-msg" :class="m.dir">
-								<span class="ws-msg-time">{{ m.time }}</span>
-								<span class="ws-msg-tag" :class="m.dir">{{ m.dir === 'sent' ? '发送' : '接收' }}</span>
-								<pre class="ws-msg-content">{{ m.content }}</pre>
+						<el-tabs v-model="wsTab" class="apifox-tabs" style="height: 100%">
+							<el-tab-pane label="Message" name="message">
+								<div class="ws-msg-editor">
+									<div class="ws-format-row">
+										<el-select v-model="wsFormat" style="width: 120px" size="small">
+											<el-option v-for="ft in ['Text', 'JSON', 'XML', 'HTML', 'Binary']" :key="ft" :label="ft" :value="ft" />
+										</el-select>
+										<span class="ws-muted">每次发送为「连接→发送→接收→断开」完整往返</span>
+										<el-button type="primary" size="small" @click="wsSend">发送</el-button>
+									</div>
+									<el-input v-model="wsMessage" type="textarea" :rows="7" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : '输入消息内容'" />
+									<div class="ws-send-options">
+										<el-checkbox v-model="wsClearAfterSend">发送后清空输入</el-checkbox>
+										<span class="ws-status" :style="{ color: wsLastOk ? '#67c23a' : '#909399' }">{{ wsLastOk ? '连接正常' : '未连接' }}</span>
+									</div>
+								</div>
+							</el-tab-pane>
+							<el-tab-pane label="Params" name="params">
+								<div style="overflow: auto; height: 100%">
+									<div v-for="(p, i) in req.params" :key="i" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+										<el-checkbox v-model="p.status" />
+										<el-input v-model="p.key" placeholder="参数名" style="flex:1" size="small" />
+										<el-input v-model="p.value" placeholder="参数值" style="flex:1" size="small" />
+										<el-button type="danger" link size="small" @click="removeParam(i)">删除</el-button>
+									</div>
+									<div class="kv-actions">
+										<el-button type="primary" link size="small" @click="addParam">+ 添加参数</el-button>
+									</div>
+								</div>
+							</el-tab-pane>
+							<el-tab-pane label="设置" name="settings">
+								<div style="overflow: auto; height: 100%">
+									<div v-for="(h, i) in req.header" :key="i" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+										<el-checkbox v-model="h.status" />
+										<el-input v-model="h.key" placeholder="Header 名" style="flex:1" size="small" />
+										<el-input v-model="h.value" placeholder="Header 值" style="flex:1" size="small" />
+										<el-button type="danger" link size="small" @click="removeHeader(i)">删除</el-button>
+									</div>
+									<div class="kv-actions">
+										<el-button type="primary" link size="small" @click="addHeader">+ 添加 Header</el-button>
+									</div>
+								</div>
+							</el-tab-pane>
+						</el-tabs>
+						<!-- 返回响应 -->
+						<div class="ws-response">
+							<div class="ws-response-title">返回响应</div>
+							<div class="ws-history">
+								<div v-for="(m, i) in wsMessages" :key="i" class="ws-msg" :class="m.dir">
+									<span class="ws-msg-time">{{ m.time }}</span>
+									<span class="ws-msg-tag" :class="m.dir">{{ m.dir === 'sent' ? '发送' : '接收' }}</span>
+									<pre class="ws-msg-content">{{ m.content }}</pre>
+								</div>
+								<el-empty v-if="!wsMessages.length" description="暂无消息：输入消息点「发送」调试" :image-size="50" />
 							</div>
-							<el-empty v-if="!wsMessages.length" description="暂无消息：先「测试连接」，再输入消息点「发送」" :image-size="60" />
 						</div>
 					</div>
 					<!-- 请求区 -->
@@ -1525,12 +1562,10 @@ const uploadBinaryFile = async (options: any) => {
 	} catch { ElMessage.error('上传失败'); }
 };
 
-const onProtocolChange = () => {
-	wsMessages.value = [];
-	if (req.value.protocol === 'webhook') req.value.method = 2;
-};
-
 // ---- WebSocket 调试（代理往返：连接->发送->接收->断开）----
+const wsTab = ref('message');
+const wsFormat = ref('Text');
+const wsClearAfterSend = ref(true);
 const wsMessages = ref<{ dir: 'sent' | 'recv'; time: string; content: string }[]>([]);
 const wsMessage = ref('');
 const wsLastOk = ref(false);
@@ -1562,7 +1597,7 @@ const wsSend = async () => {
 	const url = String(req.value.url || '').trim();
 	if (!url) { ElMessage.warning('请先填写 WebSocket 地址'); return; }
 	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
-	wsMessage.value = '';
+	if (wsClearAfterSend.value) wsMessage.value = '';
 	try {
 		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [] });
 		if (r?.code === 200) {
@@ -1993,12 +2028,15 @@ const confirmSaveAsCase = async () => {
 .res-copy-btn:hover { background: #3c3c3c; color: #e0e0e0; border-color: #666; }
 .res-copy-btn.copied { color: #4ec9b0; border-color: #4ec9b0; }
 .ws-panel { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.ws-toolbar { display: flex; align-items: center; gap: 10px; }
+.ws-badge { margin-right: 8px; border: none; }
+.ws-msg-editor { display: flex; flex-direction: column; gap: 8px; }
+.ws-format-row { display: flex; align-items: center; gap: 10px; }
+.ws-send-options { display: flex; align-items: center; gap: 16px; }
 .ws-status { font-size: 13px; }
 .ws-muted { font-size: 12px; color: #909399; }
-.ws-message-box { display: flex; gap: 8px; align-items: flex-start; }
-.ws-message-box .el-textarea { flex: 1; }
-.ws-history { flex: 1 1 auto; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+.ws-response { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.ws-response-title { font-size: 13px; color: var(--el-text-color-secondary); }
+.ws-history { flex: 1 1 auto; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 140px; }
 .ws-msg { display: flex; align-items: flex-start; gap: 8px; }
 .ws-msg.sent { flex-direction: row; }
 .ws-msg-time { font-size: 12px; color: #909399; white-space: nowrap; margin-top: 2px; }
