@@ -109,14 +109,14 @@
 				</div>
 				<div v-else-if="selectedDir && !apiTabs.length" class="dir-detail">
 					<div class="dir-detail-head">
-						<h3 class="dir-detail-title">{{ selectedDir.name }}</h3>
+						<h3 class="dir-detail-title">{{ dirTitleText }}</h3>
 						<el-button type="primary" size="small" @click="saveDirConfig">保存</el-button>
 					</div>
 					<el-tabs v-model="dirDetailTab" class="dir-detail-tabs">
 						<el-tab-pane label="目录设置" name="settings">
 							<div class="dd-section">
 								<div class="dd-section-title">功能说明</div>
-								<div class="dd-desc">「{{ selectedDir.name }}」主要用来对目录内的所有接口进行设置：目录级前置/后置操作、Auth 鉴权，以及接口唯一标识（导入数据时用于匹配对应接口），目录下的接口默认继承这些设置。</div>
+								<div class="dd-desc">「根目录」主要用来对模块内的所有接口进行设置：目录级前置/后置操作、Auth 鉴权，以及接口唯一标识（导入数据时用于匹配对应接口），目录下的接口默认继承这些设置。</div>
 							</div>
 							<div class="dd-section">
 								<div class="dd-section-title">可见性</div>
@@ -678,6 +678,10 @@ const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string
 }
 
 const selectedDir = ref<any>(null);
+const dirTitleText = computed(() => {
+	const svc = (treeData.value || []).find((n: any) => n.type === 0);
+	return `根目录 (${svc?.name || ''})`;
+});
 const dirDetailTab = ref('settings');
 const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
 const dirChecked = ref<number[]>([]);
