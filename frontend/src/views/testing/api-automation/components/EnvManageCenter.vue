@@ -192,7 +192,7 @@ const saveCurEnv = async () => {
 	envSaving.value = true;
 	try {
 		const fu = envFrontUrls.value
-			.filter((f: any) => f.menu_id && String(f.url || '').trim())
+			.filter((f: any) => f.menu_id)
 			.map((f: any) => ({ menu_id: f.menu_id, url: String(f.url).trim() }));
 		syncFrontUrls();
 		await save_env({

@@ -2921,6 +2921,58 @@ class ApiAutomationService:
         }
 
     @staticmethod
+    @staticmethod
+    async def _sync_env_front_urls(db: AsyncSession, module_ids: List[int], remove: bool = False) -> None:
+        """模块创建/删除联动所有环境的 __front_urls__：创建补行（url 空）、删除移除行。"""
+        import json as _json
+        if not module_ids:
+            return
+        envs = (
+            await db.execute(
+                select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
+            )
+        ).scalars().all()
+        ids = set(int(x) for x in module_ids)
+        updates: List[tuple] = []
+        for env in envs:
+            cfg = list(env.config or [])
+            fu_item = None
+            for i in cfg:
+                if isinstance(i, dict) and str(i.get("name") or "").strip() == "__front_urls__":
+                    fu_item = i
+                    break
+            if fu_item is None:
+                if remove:
+                    continue
+                fu_item = {"name": "__front_urls__", "value": "[]"}
+                cfg.append(fu_item)
+            try:
+                fu = _json.loads(fu_item.get("value") or "[]")
+                if not isinstance(fu, list):
+                    fu = []
+            except Exception:
+                fu = []
+            if remove:
+                new_fu = [f for f in fu if int(f.get("menu_id") or 0) not in ids]
+            else:
+                existing = set(int(f.get("menu_id") or 0) for f in fu)
+                for mid in module_ids:
+                    if mid not in existing:
+                        fu.append({"menu_id": mid, "url": ""})
+                        existing.add(mid)
+                new_fu = fu
+            fu_item["value"] = _json.dumps(new_fu)
+            updates.append((int(env.id), cfg))
+        if updates:
+            for eid, cfg in updates:
+                await db.execute(
+                    update(ApiEnvironmentModel)
+                    .where(ApiEnvironmentModel.id == eid)
+                    .values(config=cfg)
+                )
+            await db.commit()
+
+    @staticmethod
     async def add_menu(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
      
         api_id = None
@@ -2963,6 +3015,9 @@ class ApiAutomationService:
             updated_by=user_id,
         )
         db.add(menu)
+        await db.flush()
+        if int(menu.type) == 0:
+            await ApiAutomationService._sync_env_front_urls(db, [int(menu.id)])
         await db.commit()
 
     @staticmethod
@@ -3016,6 +3071,9 @@ class ApiAutomationService:
             await db.execute(
                 update(ApiModel).where(ApiModel.id.in_(api_ids)).values(enabled_flag=0)
             )
+        mod_ids = [int(m.id) for m in mrows if int(m.type) == 0] if to_del else []
+        if mod_ids:
+            await ApiAutomationService._sync_env_front_urls(db, mod_ids, remove=True)
         await db.commit()
 
     @staticmethod
