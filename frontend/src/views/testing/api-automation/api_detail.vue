@@ -101,18 +101,6 @@
 										<el-button type="primary" link size="small" @click="addParam">+ 添加参数</el-button>
 										<el-button type="primary" link size="small" @click="openBulkEdit('params')">批量编辑</el-button>
 									</div>
-									<div class="ws-sub-title">握手 Headers</div>
-									<div v-for="(h, i) in req.header" :key="'h' + i" class="ws-params-row">
-										<el-checkbox v-model="h.status" />
-										<el-input v-model="h.key" placeholder="Header 名" size="small" />
-										<el-input v-model="h.value" placeholder="Header 值" size="small" />
-										<span style="width: 110px"></span>
-										<el-input :model-value="h.desc || ''" placeholder="说明" size="small" disabled />
-										<el-button type="danger" link size="small" @click="removeHeader(i)">删除</el-button>
-									</div>
-									<div class="kv-actions">
-										<el-button type="primary" link size="small" @click="addHeader">+ 添加 Header</el-button>
-									</div>
 								</div>
 							</el-tab-pane>
 							<el-tab-pane label="设置" name="settings">
@@ -581,7 +569,42 @@ mode="assert"
 					</div>
 
 				
-				<BatchEditDialog v-model="bulkEditVisible" :target="bulkEditTarget" :initial-text="bulkEditInitialText" @apply="applyBulkRows" />
+				<el-dialog v-model="bulkEditVisible" title="批量编辑" width="560px" destroy-on-close append-to-body>
+					<div class="bulk-mode">
+						<el-radio-group v-model="bulkEditMode" size="small">
+							<el-radio-button value="comma">逗号模式</el-radio-button>
+							<el-radio-button value="colon">冒号模式</el-radio-button>
+						</el-radio-group>
+						<span class="bulk-hint">{{ bulkEditMode === 'comma' ? '格式：参数名,类型,必需,默认值,默认启用,说明' : '格式：参数名:默认值' }}</span>
+					</div>
+					<el-input v-model="bulkEditText" type="textarea" :rows="9" :placeholder="bulkEditPlaceholder" spellcheck="false" />
+					<div class="bulk-foot-hint">
+						<template v-if="bulkEditMode === 'comma'">
+							数据格式遵循
+							<el-popover placement="bottom-start" trigger="click" width="560">
+								<template #reference>
+									<a class="bulk-csv-link">《标准 CSV 规范》</a>
+								</template>
+								<div class="bulk-csv-rules">
+									<div class="bulk-csv-title">CSV 六列格式</div>
+									<div v-for="r in bulkCsvRules" :key="r[0]" class="bulk-csv-row"><b>{{ r[0] }}</b><span>{{ r[1] }}</span></div>
+									<div class="bulk-csv-divider"></div>
+									<div class="bulk-csv-title">CSV 格式规范（RFC 4180）</div>
+									<div v-for="(s, i) in bulkCsvSpecs" :key="i" class="bulk-csv-spec">
+										<div class="bulk-csv-desc"><b>{{ i + 1 }}.</b> {{ s.desc }}</div>
+										<code class="bulk-csv-code">{{ s.code }}</code>
+									</div>
+								</div>
+							</el-popover>
+							，字段之间以英文逗号(,)分隔，多条记录以换行分隔
+						</template>
+						<template v-else>字段之间以英文冒号(:)分隔，多条记录以换行分隔</template>
+					</div>
+					<template #footer>
+						<el-button @click="bulkEditVisible = false">取消</el-button>
+						<el-button type="primary" @click="confirmBulkEdit">确定</el-button>
+					</template>
+				</el-dialog>
 
 				
 				<el-dialog v-model="saveCaseDialogVisible" title="保存为测试用例" width="560px" destroy-on-close>
@@ -998,7 +1021,6 @@ import { api_send, save_api, save_api_case, edit_history, apiAutomationApi } fro
 import { useFileApi } from '/@/api/v1/common/file';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
-import BatchEditDialog from './components/BatchEditDialog.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { getBaseApiUrl } from '/@/utils/config';
@@ -1461,32 +1483,70 @@ const removeCookie = (i: number) => { req.value.cookies?.splice(i, 1); };
 type BulkEditTarget = 'params' | 'header' | 'form_data' | 'form_urlencoded' | 'cookies';
 const bulkEditVisible = ref(false);
 const bulkEditTarget = ref<BulkEditTarget>('header');
-const bulkEditInitialText = ref('');
+const bulkEditMode = ref<'comma' | 'colon'>('comma');
+const bulkEditText = ref('');
 const bulkEditPlaceholder = computed(() =>
-	bulkEditMode.value === 'colon'
-		? 'name:value\nAuthorization: Bearer xxx'
-		: 'name,value\nAuthorization,Bearer xxx'
+	bulkEditMode.value === 'comma'
+		? '如：X-MERCHANT-ID,string,true,MCH007881,true,商户号'
+		: '如：X-MERCHANT-ID:MCH007881'
 );
+const bulkCsvRules: [string, string][] = [
+	['参数名', '参数名称（必填）'],
+	['类型', 'string / integer / boolean / number / array / object'],
+	['必需', 'true / false'],
+	['默认值', '参数默认值（object 类型不可填）'],
+	['默认启用', 'true / false'],
+	['说明', '参数说明（可选）'],
+];
+const bulkCsvSpecs: { desc: string; code: string }[] = [
+	{ desc: '文件中的各条记录必须位于不同行，其间以换行符 CRLF 分隔。例如：', code: 'aaa,bbb,ccc\nzzz,yyy,xxx' },
+	{ desc: '最后一条记录的末尾可以不包括换行符。例如：', code: 'aaa,bbb,ccc\nzzz,yyy,xxx' },
+	{ desc: '文件中的首条记录可以是字段名（但这不是必要的），且其所含的名称数量及存储规则须与其他记录保持一致。例如：', code: 'field_name,field_name,field_name\naaa,bbb,ccc\nzzz,yyy,xxx' },
+	{ desc: '每条记录中可以包含一个或多个字段，每个字段以半角逗号分隔。文件中的所有记录必须拥有相同数量的字段。字段中的空格属于字段取值，不可忽略。每条记录的最后一个字段之后不应再添加半角逗号。例如：', code: 'aaa,bbb,ccc' },
+	{ desc: '每个字段可以用半角双引号括起来（但这不一定是必要的）。如果字段没有被双引号括起来，那么字段中不应该出现双引号。例如：', code: '"aaa","bbb","ccc"\nzzz,yyy,xxx' },
+	{ desc: '含有换行符、半角双引号或半角逗号的字段应该用半角双引号括起来。例如：', code: '"aaa","b\nbb","ccc"\nzzz,yyy,xxx' },
+	{ desc: '如果字段被半角双引号括起来了，那么在表示字段取值中本身含有的半角双引号时，需要在其前方增加一个半角双引号。例如：', code: '"aaa","b""bb","ccc"' },
+];
+const BULK_TYPES = ['string', 'integer', 'boolean', 'number', 'array', 'object'];
+const BULK_TRUE_SET = new Set(['true', '1', '是', 'yes', 'y']);
 
-const getBulkRows = (target: BulkEditTarget): Array<{ key: string; value: string; status?: boolean; domain?: string }> => {
-	if (target === 'cookies') {
-		return (req.value.cookies || []).map((c: any) => ({
-			key: String(c.name || ''),
-			value: String(c.value || ''),
-			status: c.status !== false,
-			domain: String(c.domain || ''),
-		}));
-	}
-	const list = (req.value as any)[target];
-	return Array.isArray(list) ? list.map((r: any) => ({
-		key: String(r.key || ''),
-		value: String(r.value ?? ''),
-		status: r.status !== false,
-	})) : [];
+const openBulkEdit = (target: BulkEditTarget) => {
+	bulkEditTarget.value = target;
+	bulkEditMode.value = 'comma';
+	const rows = getBulkRows(target) as any[];
+	bulkEditText.value = rows
+		.map((r: any) => {
+			const key = String(r.key ?? r.name ?? '');
+			const val = String(r.value ?? '');
+			const type = r.type || 'string';
+			const status = r.status !== false;
+			const desc = String(r.desc ?? r.remark ?? '');
+			return `${key},${type},true,${val},${status},${desc}`;
+		})
+		.join('\n');
+	bulkEditVisible.value = true;
 };
 
+const parseBulkRow = (l: string) => {
+	if (bulkEditMode.value === 'comma') {
+		const parts = l.split(',').map((p) => p.trim());
+		const row: any = { key: parts[0] || '', value: '', status: true, type: 'string', desc: '' };
+		if (parts.length > 1 && BULK_TYPES.includes(parts[1].toLowerCase())) row.type = parts[1].toLowerCase();
+		if (parts.length > 3) row.value = parts[3];
+		if (parts.length > 4) row.status = BULK_TRUE_SET.has(parts[4].toLowerCase());
+		if (parts.length > 5) row.desc = parts[5];
+		return row;
+	}
+	const idx = l.indexOf(':');
+	if (idx > 0) {
+		return { key: l.slice(0, idx).trim(), value: l.slice(idx + 1).trim(), status: true, type: 'string', desc: '' };
+	}
+	return { key: l, value: '', status: true, type: 'string', desc: '' };
+};
 
-const applyBulkRows = (rows: Array<{ key: string; value: string; status: boolean; type: string; remark: string }>) => {
+const confirmBulkEdit = () => {
+	const lines = bulkEditText.value.split('\n').map((l) => l.trim()).filter(Boolean);
+	const rows = lines.map(parseBulkRow);
 	const target = bulkEditTarget.value;
 	if (target === 'cookies') {
 		const oldMap = new Map((req.value.cookies || []).map((c: any) => [String(c.name || ''), c]));
@@ -1497,62 +1557,18 @@ const applyBulkRows = (rows: Array<{ key: string; value: string; status: boolean
 			domain: String(oldMap.get(r.key)?.domain || ''),
 		}));
 	} else {
-		(req.value as any)[target] = rows.map((r) => ({
+		(req.value as any)[target] = rows.map((r: any) => ({
 			key: r.key,
 			value: r.value,
 			status: r.status,
 			type: r.type,
-			desc: r.remark,
+			desc: r.desc,
 		}));
-	}
-	bulkEditVisible.value = false;
-};
-
-
-const parseBulkText = (text: string, mode: 'colon' | 'comma') => {
-	const sep = mode === 'colon' ? ':' : ',';
-	const rows: Array<{ key: string; value: string; status: boolean }> = [];
-	for (const raw of String(text || '').split(/\r?\n/)) {
-		const line = raw.trim();
-		if (!line) continue;
-		const idx = line.indexOf(sep);
-		if (idx < 0) {
-			const key = line.trim();
-			if (key) rows.push({ key, value: '', status: true });
-			continue;
-		}
-		const key = line.slice(0, idx).trim();
-		const value = line.slice(idx + 1).trim();
-		if (!key) continue;
-		rows.push({ key, value, status: true });
-	}
-	return rows;
-};
-
-const openBulkEdit = (target: BulkEditTarget) => {
-	bulkEditTarget.value = target;
-	bulkEditMode.value = 'colon';
-	bulkEditText.value = serializeBulkRows(getBulkRows(target), 'colon');
-	bulkEditVisible.value = true;
-};
-
-const confirmBulkEdit = () => {
-	const rows = parseBulkText(bulkEditText.value, bulkEditMode.value);
-	const target = bulkEditTarget.value;
-	if (target === 'cookies') {
-		const oldMap = new Map((req.value.cookies || []).map((c: any) => [String(c.name || ''), c]));
-		req.value.cookies = rows.map((r) => ({
-			status: true,
-			name: r.key,
-			value: r.value,
-			domain: String(oldMap.get(r.key)?.domain || ''),
-		}));
-	} else {
-		(req.value as any)[target] = rows.map((r) => ({ key: r.key, value: r.value, status: true }));
 	}
 	bulkEditVisible.value = false;
 	ElMessage.success(`已导入 ${rows.length} 条`);
 };
+
 
 const addBefore = (type: number) => {
 	const item: any = { type };
@@ -1927,7 +1943,7 @@ const confirmSaveAsCase = async () => {
 .kv-col-check { width: 24px; flex-shrink: 0; } .kv-col-key { flex: 1; } .kv-col-val { flex: 1; } .kv-col-act { width: 40px; flex-shrink: 0; }
 .kv-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .auth-hint { margin: 4px 0 0 130px; max-width: 520px; font-size: 12px; color: var(--el-text-color-placeholder); line-height: 1.5; }
-.bulk-edit-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+
 .bulk-edit-format { font-size: 13px; color: var(--el-text-color-secondary); }
 .bulk-edit-textarea :deep(textarea) { font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 13px; line-height: 1.5; }
 .bulk-edit-tip { margin-top: 8px; font-size: 12px; color: var(--el-text-color-placeholder); }
@@ -2108,4 +2124,17 @@ const confirmSaveAsCase = async () => {
 .webhook-tip-text { font-size: 12px; color: var(--el-text-color-regular); line-height: 1.7; margin-bottom: 8px; }
 .webhook-tip-img { width: 100%; border-radius: 6px; border: 1px solid var(--el-border-color-lighter); }
 .webhook-tip-popper { max-width: 360px !important; }
+.bulk-mode { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.bulk-hint { font-size: 12px; color: #909399; }
+.bulk-foot-hint { margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.6; }
+.bulk-csv-link { color: #7c3aed; cursor: pointer; }
+.bulk-csv-rules { max-height: 420px; overflow: auto; }
+.bulk-csv-title { font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+.bulk-csv-row { display: flex; gap: 10px; margin-bottom: 4px; font-size: 12px; }
+.bulk-csv-row b { flex: 0 0 56px; }
+.bulk-csv-row span { color: #606266; }
+.bulk-csv-divider { border-top: 1px solid var(--el-border-color-lighter); margin: 10px 0; }
+.bulk-csv-spec { margin-bottom: 8px; }
+.bulk-csv-desc { font-size: 12px; color: #606266; line-height: 1.6; margin-bottom: 4px; }
+.bulk-csv-code { display: block; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; padding: 6px 10px; font-size: 12px; white-space: pre-wrap; }
 </style>
