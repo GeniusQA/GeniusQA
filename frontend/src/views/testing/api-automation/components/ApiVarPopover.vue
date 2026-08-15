@@ -1,7 +1,6 @@
 <template>
 	<div class="api-var-popover">
 		<el-radio-group v-model="scope" size="small" style="margin-bottom:8px" @change="get_var">
-			<el-radio-button value="user">我的变量</el-radio-button>
 			<el-radio-button value="project">项目内共享</el-radio-button>
 			<el-radio-button value="team">团队内共享</el-radio-button>
 		</el-radio-group>
@@ -41,7 +40,7 @@
 			<el-form :model="add_form" label-width="80px">
 				<el-form-item label="变量名"><el-input v-model="add_form.name" placeholder="请输入变量名" /></el-form-item>
 				<el-form-item label="变量值"><el-input v-model="add_form.value" type="textarea" :rows="3" placeholder="请输入变量值" /></el-form-item>
-				<el-form-item label="作用域"><el-tag size="small">{{ scope === 'project' ? '项目内共享' : scope === 'team' ? '团队内共享' : '我的变量' }}</el-tag></el-form-item>
+				<el-form-item label="作用域"><el-tag size="small">{{ scope === 'project' ? '项目内共享' : '团队内共享' }}</el-tag></el-form-item>
 			</el-form>
 			<template #footer>
 				<el-button @click="addDialog = false">取消</el-button>
@@ -67,7 +66,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { api_var_list, add_var, edit_var, del_var } from '/@/api/v1/testing/apiAutomation';
 
 const props = defineProps<{ serviceId?: number | string }>();
-const scope = ref<'user' | 'project' | 'team'>('user');
+const scope = ref<'project' | 'team'>('project');
 
 const searchParams = ref({ currentPage: 1, pageSize: 10, search: { name__contains: '' } });
 const var_list = ref<any[]>([]);
