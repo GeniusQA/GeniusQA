@@ -1694,6 +1694,13 @@ const wsSend = async () => {
 	if (!text) { ElMessage.warning('请输入要发送的消息'); return; }
 	const url = String(req.value.url || '').trim();
 	if (!url) { ElMessage.warning('请先填写 WebSocket 地址'); return; }
+	// 发送即自动持久化消息内容（刷新后仍可恢复，无需手动点保存项）
+	if (apiId.value) {
+		try {
+			req.value.ws_message = text;
+			await save_api({ id: Number(apiId.value), url: req.value.url, req: req.value });
+		} catch { /* 静默 */ }
+	}
 	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
 	if (wsClearAfterSend.value) wsMessage.value = '';
 	try {
