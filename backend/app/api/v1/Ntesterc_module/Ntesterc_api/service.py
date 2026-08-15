@@ -4863,6 +4863,27 @@ class ApiAutomationService:
             "__temp_vars__": {},
         }
 
+        # 前置脚本执行前先完成 body 变量替换：脚本拿到的 raw_body 必须与最终发送一致（签名场景必需）
+        _body_raw = request_ctx.get("body")
+        if isinstance(_body_raw, str) and "{{" in _body_raw:
+            _body_new = await ApiAutomationService.handle_var(
+                db, env_id, _body_raw,
+                api_service_id=api_service_id,
+                temp_vars=request_ctx.get("__temp_vars__"),
+            )
+            if _body_new != _body_raw:
+                request_ctx["body"] = _body_new
+                request_ctx["raw_body"] = _body_new
+        elif isinstance(_body_raw, dict):
+            _body_new = await ApiAutomationService.handle_var(
+                db, env_id, _body_raw,
+                api_service_id=api_service_id,
+                temp_vars=request_ctx.get("__temp_vars__"),
+            )
+            if _body_new != _body_raw:
+                request_ctx["body"] = _body_new
+                request_ctx["raw_body"] = json.dumps(_body_new, ensure_ascii=False, default=str)
+
         before_ops = req.get("before") or []
         after_ops = req.get("after") or []
         assert_ops = req.get("assert") or []
