@@ -5332,7 +5332,7 @@ class ApiAutomationService:
         binary_type = str(body.get("binary_type") or "").lower()
         if binary_type == "base64":
             try:
-                payload: Any = base64.b64decode(sent_text)
+                payload: Any = base64.b64decode(sent_text, validate=True)
             except Exception:
                 raise ValueError("Base64 解码失败，请检查输入内容")
         elif binary_type == "hex":
