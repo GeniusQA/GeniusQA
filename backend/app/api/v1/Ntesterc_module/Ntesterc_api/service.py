@@ -187,8 +187,10 @@ class ApiAutomationService:
         return s
 
     @staticmethod
-    async def _resolve_base_url(db: AsyncSession, env_id: int, url: str) -> str:
-        """Apifox 前置 URL 逻辑：相对路径（/ 开头）自动拼接环境配置的 base_url。"""
+    async def _resolve_base_url(db: AsyncSession, env_id: int, url: str,
+                                 api_id: Optional[int] = None) -> str:
+        """Apifox 前置 URL 逻辑：相对路径（/ 开头）自动拼接环境配置的前置 URL。
+        优先级：接口所属模块/目录匹配的前置 URL（__front_urls__）> 环境 base_url 约定键 > 首个 http 配置项。"""
         u = str(url or "").strip()
         if not u or u.startswith(("http://", "https://", "ws://", "wss://", "{{")):
             return u
@@ -204,6 +206,12 @@ class ApiAutomationService:
                 )
             ).scalar_one_or_none()
             if env_row:
+                # 1) 模块级前置 URL：按接口所属菜单链（接口→目录→模块）匹配
+                if api_id:
+                    base = await ApiAutomationService._match_front_url_by_menu(db, env_row, api_id)
+                    if base:
+                        return base.rstrip("/") + "/" + u.lstrip("/")
+                # 2) fallback：环境 base_url 约定键
                 base = ""
                 for i in (env_row.config or []):
                     if isinstance(i, dict):
@@ -222,6 +230,55 @@ class ApiAutomationService:
                 if base:
                     return base.rstrip("/") + "/" + u.lstrip("/")
         return u
+
+    @staticmethod
+    async def _match_front_url_by_menu(db: AsyncSession, env_row, api_id: int) -> str:
+        """按接口所属菜单链匹配环境 __front_urls__ 中配置的模块级前置 URL。"""
+        import json as _json
+        front_urls: list = []
+        for i in (env_row.config or []):
+            if isinstance(i, dict) and str(i.get("name") or "").strip() == "__front_urls__":
+                try:
+                    front_urls = _json.loads(i.get("value") or "[]")
+                except Exception:
+                    front_urls = []
+                break
+        if not front_urls:
+            return ""
+        chain_ids: list = []
+        cur = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_id == int(api_id),
+                    ApiMenuModel.status == 1,
+                )
+            )
+        ).scalars().first()
+        seen: set = set()
+        while cur and cur.id not in seen:
+            seen.add(cur.id)
+            chain_ids.append(cur.id)
+            pid = int(cur.pid or 0)
+            if not pid:
+                break
+            cur = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.id == pid,
+                        ApiMenuModel.status == 1,
+                    )
+                )
+            ).scalars().first()
+        for mid in chain_ids:
+            for f in front_urls or []:
+                try:
+                    if int(f.get("menu_id") or 0) == mid:
+                        val = str(f.get("url") or "").strip()
+                        if val.startswith(("http://", "https://")):
+                            return val
+                except Exception:
+                    continue
+        return ""
 
     @staticmethod
     async def handle_var(db: AsyncSession, env_id: int, data: Any,
@@ -3962,7 +4019,7 @@ class ApiAutomationService:
         - before 固定为空
         """
         url = await ApiAutomationService.handle_var(db, env_id, api.url or "")
-        url = await ApiAutomationService._resolve_base_url(db, env_id, url)
+        url = await ApiAutomationService._resolve_base_url(db, env_id, url, api_id=api.id)
         api_req = dict(api.req or {}) if isinstance(api.req, dict) else {}
         common = await ApiAutomationService._load_common_params_by_api(
             db, api_id=getattr(api, "id", None), api_service_id=getattr(api, "api_service_id", None)
@@ -4925,7 +4982,7 @@ class ApiAutomationService:
         raw_url = request_ctx.get("url") or body.get("url") or req.get("url") or ""
         url = await ApiAutomationService.handle_var(db, env_id, raw_url, api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
         url = str(url or "").strip()
-        url = await ApiAutomationService._resolve_base_url(db, env_id, url)
+        url = await ApiAutomationService._resolve_base_url(db, env_id, url, api_id=api_id)
         if "{{" in url and "}}" in url:
             hint = "请先在右上角选择环境，并确认配置项名与 URL 中占位符一致（如配置 base_url 或 {{base_url}}，URL 写 {{base_url}}/...）"
             if not env_id:

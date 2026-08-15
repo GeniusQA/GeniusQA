@@ -52,11 +52,27 @@
 							<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
 						</div>
 
-						<div class="env-block-title">配置项（如 base_url）</div>
-						<div v-for="(item, idx) in curEnv.config" :key="'c' + idx" class="env-row">
+						<div class="env-block-title">前置 URL（按模块/目录匹配）</div>
+						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
+							<el-cascader
+								v-model="f.menu_id"
+								:options="frontUrlMenuOptions"
+								:props="{ value: 'id', label: 'name', children: 'children' }"
+								placeholder="选择模块/目录"
+								size="small"
+								style="flex:1.2"
+								clearable
+							/>
+							<el-input v-model="f.url" placeholder="https:// 起始的前置 URL" size="small" style="flex:1.4" />
+							<el-button type="danger" link size="small" @click="removeFrontUrl(idx)">删除</el-button>
+						</div>
+						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
+
+						<div class="env-block-title">其他配置项（{{}} 可引用）</div>
+						<div v-for="(item, idx) in envPlainConfig" :key="'c' + idx" class="env-row">
 							<el-input v-model="item.name" placeholder="配置项名（如 base_url）" size="small" />
 							<el-input v-model="item.value" placeholder="配置项值（如 https://uapis.cn）" size="small" />
-							<el-button type="danger" link size="small" @click="curEnv.config.splice(idx, 1)">删除</el-button>
+							<el-button type="danger" link size="small" @click="removePlainConfig(idx)">删除</el-button>
 						</div>
 						<el-button size="small" @click="curEnv.config.push({ name: '', value: '' })">+ 添加配置项</el-button>
 
@@ -99,9 +115,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { api_env, save_env, add_env, del_env } from '/@/api/v1/testing/apiAutomation';
+import { api_env, save_env, add_env, del_env, api_tree } from '/@/api/v1/testing/apiAutomation';
 import ApiVarPopover from './ApiVarPopover.vue';
 import ApiCommonParamsDialog from './ApiCommonParamsDialog.vue';
 import ApiDbPopover from './ApiDbPopover.vue';
@@ -135,12 +151,70 @@ const selectEnv = (e: any) => {
 		variable: Array.isArray(e.variable) ? e.variable.map((v: any) => ({ ...v })) : [],
 	};
 	section.value = 'env';
+	loadMenuTree();
+};
+
+// ---- 模块级前置 URL（__front_urls__ 特殊配置项）----
+const FRONT_KEY = '__front_urls__';
+const frontUrlMenuOptions = ref<any[]>([]);
+const loadMenuTree = async () => {
+	try {
+		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
+		const walk = (nodes: any[]): any[] =>
+			(nodes || []).map((n: any) => ({
+				id: n.id,
+				name: n.name,
+				type: n.type,
+				children: n.type !== 2 ? walk(n.children) : undefined,
+			}));
+		frontUrlMenuOptions.value = walk(r?.data || []);
+	} catch {
+		frontUrlMenuOptions.value = [];
+	}
+};
+const envFrontUrls = computed<any[]>(() => {
+	const cfg = curEnv.value?.config || [];
+	const item = cfg.find((c: any) => String(c.name || '').trim() === FRONT_KEY);
+	try {
+		const arr = item ? JSON.parse(item.value || '[]') : [];
+		return Array.isArray(arr) ? arr : [];
+	} catch {
+		return [];
+	}
+});
+const envPlainConfig = computed<any[]>(() =>
+	(curEnv.value?.config || []).filter((c: any) => String(c.name || '').trim() !== FRONT_KEY)
+);
+const syncFrontUrls = () => {
+	const cfg = curEnv.value.config;
+	const idx = cfg.findIndex((c: any) => String(c.name || '').trim() === FRONT_KEY);
+	if (idx >= 0) cfg.splice(idx, 1);
+	cfg.push({ name: FRONT_KEY, value: JSON.stringify(envFrontUrls.value) });
+};
+const addFrontUrl = () => {
+	envFrontUrls.value.push({ menu_id: null as any, menu_name: '', url: '' });
+	syncFrontUrls();
+};
+const removeFrontUrl = (idx: number) => {
+	envFrontUrls.value.splice(idx, 1);
+	syncFrontUrls();
+};
+const removePlainConfig = (idx: number) => {
+	const cfg = curEnv.value.config;
+	const plain = envPlainConfig.value;
+	const target = plain[idx];
+	const ci = cfg.indexOf(target);
+	if (ci >= 0) cfg.splice(ci, 1);
 };
 
 const saveCurEnv = async () => {
 	if (!curEnv.value) return;
 	envSaving.value = true;
 	try {
+		const fu = envFrontUrls.value
+			.filter((f: any) => f.menu_id && String(f.url || '').trim())
+			.map((f: any) => ({ menu_id: f.menu_id, url: String(f.url).trim() }));
+		syncFrontUrls();
 		await save_env({
 			env_list: [{
 				id: curEnv.value.id,
