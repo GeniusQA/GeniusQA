@@ -58,24 +58,20 @@
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
 <div class="env-block-title">前置 URL</div>
-						<div v-for="(g, gi) in frontUrlGroups" :key="'g' + gi" class="env-front-group">
-							<div class="env-front-group-head">
-								<span class="env-front-module">{{ moduleName(g.menu_id) }}</span>
-								<el-popover placement="bottom" :width="150" trigger="click" popper-class="front-proto-popover">
-									<template #reference>
-										<el-button link size="small" class="env-front-more"><el-icon><MoreFilled /></el-icon></el-button>
-									</template>
-									<div class="proto-check-title">协议</div>
-									<el-checkbox v-model="g.checks.http" :disabled="!!g.autoFlags.http" @change="(v: any) => toggleProto(g, 'http', v)">Http</el-checkbox>
-									<el-checkbox v-model="g.checks.websocket" :disabled="!!g.autoFlags.websocket" @change="(v: any) => toggleProto(g, 'websocket', v)">WebSocket</el-checkbox>
-									<el-checkbox v-model="g.checks.socketio" :disabled="!!g.autoFlags.socketio" @change="(v: any) => toggleProto(g, 'socketio', v)">Socket.IO</el-checkbox>
-								</el-popover>
-							</div>
-							<div v-for="row in g.rows" :key="String(row.menu_id) + (row.protocol || 'http')" class="env-row">
-								<el-input v-model="row.url" :placeholder="(row.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : (row.protocol || 'http') === 'socketio' ? 'wss:// 起始的 Socket.IO 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1" />
-							</div>
+						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
+							<span class="env-front-module">{{ moduleName(f.menu_id) }}</span>
+							<el-popover placement="bottom" :width="150" trigger="click" popper-class="front-proto-popover">
+								<template #reference>
+									<el-button link size="small" class="env-front-more"><el-icon><MoreFilled /></el-icon></el-button>
+								</template>
+								<div class="proto-check-title">协议</div>
+								<el-checkbox :model-value="moduleChecks(f.menu_id).http" :disabled="!!moduleChecks(f.menu_id).autoFlags.http" @change="(v: any) => toggleProto(f.menu_id, 'http', v)">Http</el-checkbox>
+								<el-checkbox :model-value="moduleChecks(f.menu_id).websocket" :disabled="!!moduleChecks(f.menu_id).autoFlags.websocket" @change="(v: any) => toggleProto(f.menu_id, 'websocket', v)">WebSocket</el-checkbox>
+								<el-checkbox :model-value="moduleChecks(f.menu_id).socketio" :disabled="!!moduleChecks(f.menu_id).autoFlags.socketio" @change="(v: any) => toggleProto(f.menu_id, 'socketio', v)">Socket.IO</el-checkbox>
+							</el-popover>
+							<span class="proto-mini" :class="'proto-mini-' + (f.protocol || 'http')">{{ protoLabel(f.protocol) }}</span>
+							<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : (f.protocol || 'http') === 'socketio' ? 'wss:// 起始的 Socket.IO 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1" />
 						</div>
-						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
 
 
 						<div class="env-block-title">环境变量</div>
@@ -175,53 +171,35 @@ const syncFrontUrls = () => {
 	if (idx >= 0) cfg.splice(idx, 1);
 	cfg.push({ name: FRONT_KEY, value: JSON.stringify(envFrontUrls.value) });
 };
-const addFrontUrl = () => {
-	const cur = 'svc_' + String(props.serviceId ?? '');
-	if (envFrontUrls.value.some((f: any) => String(f.menu_id || '') === cur && (f.protocol || 'http') === 'http')) {
-		ElMessage.info('该模块的 HTTP 前置 URL 已存在；如需 WebSocket/Socket.IO 前置 URL，点击模块右侧「⋯」勾选对应协议');
-		return;
-	}
-	envFrontUrls.value.push({ menu_id: cur, menu_name: '', url: '', protocol: 'http' });
-	syncFrontUrls();
+// ---- 前置 URL：模块「⋯」勾选协议，自动生成/删除对应协议输入框；auto 行禁用 ----
+const moduleChecks = (menuId: any) => {
+	const key = String(menuId || '');
+	const rows = envFrontUrls.value.filter((r: any) => String(r.menu_id || '') === key);
+	return {
+		http: rows.some((r: any) => (r.protocol || 'http') === 'http'),
+		websocket: rows.some((r: any) => r.protocol === 'websocket'),
+		socketio: rows.some((r: any) => r.protocol === 'socketio'),
+		autoFlags: {
+			http: rows.some((r: any) => (r.protocol || 'http') === 'http' && !!r.auto),
+			websocket: rows.some((r: any) => r.protocol === 'websocket' && !!r.auto),
+			socketio: rows.some((r: any) => r.protocol === 'socketio' && !!r.auto),
+		},
+	};
 };
-// ---- 前置 URL 按模块分组（对齐 Apifox：模块「...」勾选协议，自动生成/删除对应协议输入框）----
-const frontUrlGroups = computed(() => {
-	const byMenu: Record<string, any[]> = {};
-	for (const f of envFrontUrls.value) {
-		const key = String(f.menu_id || '');
-		if (!byMenu[key]) byMenu[key] = [];
-		byMenu[key].push(f);
-	}
-	return Object.keys(byMenu).map((menu_id) => {
-		const rows = byMenu[menu_id];
-		return {
-			menu_id,
-			rows,
-			checks: {
-				http: rows.some((r: any) => (r.protocol || 'http') === 'http'),
-				websocket: rows.some((r: any) => r.protocol === 'websocket'),
-				socketio: rows.some((r: any) => r.protocol === 'socketio'),
-			},
-			autoFlags: {
-				http: rows.some((r: any) => (r.protocol || 'http') === 'http' && !!r.auto),
-				websocket: rows.some((r: any) => r.protocol === 'websocket' && !!r.auto),
-				socketio: rows.some((r: any) => r.protocol === 'socketio' && !!r.auto),
-			},
-		};
-	});
-});
 
-const toggleProto = (group: any, proto: string, checked: any) => {
-	const key = String(group.menu_id);
-	const has = group.rows.some((r: any) => (r.protocol || 'http') === proto);
+const toggleProto = (menuId: any, proto: string, checked: any) => {
+	const key = String(menuId || '');
+	const has = envFrontUrls.value.some((r: any) => String(r.menu_id || '') === key && (r.protocol || 'http') === proto);
 	if (checked && !has) {
 		envFrontUrls.value.push({ menu_id: key, menu_name: '', url: '', protocol: proto });
 	} else if (!checked && has) {
-		const idx = envFrontUrls.value.findIndex((r: any) => String(r.menu_id) === key && (r.protocol || 'http') === proto);
+		const idx = envFrontUrls.value.findIndex((r: any) => String(r.menu_id || '') === key && (r.protocol || 'http') === proto);
 		if (idx >= 0) envFrontUrls.value.splice(idx, 1);
 	}
 	syncFrontUrls();
 };
+
+const protoLabel = (p: any) => (p === 'websocket' ? 'WS' : p === 'socketio' ? 'Socket.IO' : 'HTTP');
 
 const moduleName = (menuId: any): string => {
 	const m = frontUrlMenuOptions.value.find((o: any) => String(o.id) === String(menuId));
@@ -454,9 +432,21 @@ defineExpose({ open });
 	color: #9ca3af;
 	font-size: 13px;
 }
-.env-front-group { border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
-.env-front-group-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
 .env-front-more { color: var(--el-text-color-secondary); }
+.proto-mini {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	line-height: 1;
+	padding: 2px 5px;
+	border-radius: 4px;
+	color: #fff;
+	flex: 0 0 auto;
+}
+.proto-mini-http { background: #409eff; }
+.proto-mini-websocket { background: #7c4dff; }
+.proto-mini-socketio { background: #e6a23c; }
 .proto-check-title { font-weight: 600; margin-bottom: 6px; font-size: 13px; }
 .front-proto-popover .el-checkbox { display: flex; margin-right: 0; margin-bottom: 6px; }
 </style>
