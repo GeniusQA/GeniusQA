@@ -156,6 +156,12 @@ def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
 
     class _Env:
         def get(self, key, default=None):
+            # 内置 BASE_URL 等临时注入优先（Apifox：环境变量含内置 BASE_URL）
+            tmp = getattr(ntest, "exported_vars", None)
+            if isinstance(tmp, dict):
+                t = tmp.get("__temp__")
+                if isinstance(t, dict) and key in t:
+                    return t[key]
             return ntest.env(key, default) if hasattr(ntest, "env") else ntest.get(key, default)
 
         def set(self, key, value):
@@ -198,6 +204,29 @@ def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
             if tmp is not None:
                 tmp.pop(key, None)
 
+    class _Req:
+        """pm.request：Apifox 兼容。getBaseUrl() 返回当前接口解析出的前置 URL。"""
+
+        def __init__(self, req):
+            self._req = req if isinstance(req, dict) else {}
+            self._base = str(self._req.get("__base_url__") or "") if isinstance(req, dict) else ""
+
+        def getBaseUrl(self):
+            return self._base
+
+        def __getitem__(self, k):
+            return self._req[k]
+
+        def get(self, k, d=None):
+            return self._req.get(k, d)
+
+        @property
+        def url(self):
+            return self._req.get("url") or self._req.get("URL") or ""
+
+        def __contains__(self, k):
+            return k in self._req
+
     class _Resp:
         def __init__(self, res):
             self._res = res if isinstance(res, dict) else {}
@@ -226,7 +255,7 @@ def build_pm_shim(ntest: Any, request: Any = None, response: Any = None) -> Any:
         def __init__(self):
             self.environment = _Env()
             self.variables = _Vars()
-            self.request = request if isinstance(request, dict) else {}
+            self.request = _Req(request)
             self.response = _Resp(response) if response is not None else None
 
         def test(self, name, fn):

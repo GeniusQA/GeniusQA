@@ -185,14 +185,16 @@ class ApiAutomationService:
 
     @staticmethod
     async def _resolve_base_url(db: AsyncSession, env_id: int, url: str,
-                                 api_id: Optional[int] = None) -> str:
+                                 api_id: Optional[int] = None,
+                                 return_base: bool = False) -> Any:
         """Apifox 前置 URL 逻辑：相对路径（/ 开头）按接口所属菜单链匹配环境配置的模块级前置 URL。
-        未匹配（未配置或接口无模块归属）则返回原样，不拼接任何默认值。"""
+        未匹配（未配置或接口无模块归属）则返回原样，不拼接任何默认值。
+        return_base=True 时返回 (完整URL, 前置URL)，供 BASE_URL 内置变量/脚本取用。"""
         u = str(url or "").strip()
         if not u or u.startswith(("http://", "https://", "ws://", "wss://", "{{")):
-            return u
+            return (u, "") if return_base else u
         if not u.startswith("/") or not env_id or not api_id:
-            return u
+            return (u, "") if return_base else u
         env_row = (
             await db.execute(
                 select(ApiEnvironmentModel).where(
@@ -202,11 +204,12 @@ class ApiAutomationService:
             )
         ).scalar_one_or_none()
         if not env_row:
-            return u
+            return (u, "") if return_base else u
         base = await ApiAutomationService._match_front_url_by_menu(db, env_row, api_id)
         if base:
-            return base.rstrip("/") + "/" + u.lstrip("/")
-        return u
+            full = base.rstrip("/") + "/" + u.lstrip("/")
+            return (full, base) if return_base else full
+        return (u, "") if return_base else u
 
     @staticmethod
     async def _match_front_url_by_menu(db: AsyncSession, env_row, api_id: int) -> str:
@@ -216,10 +219,11 @@ class ApiAutomationService:
         for i in (env_row.config or []):
             if isinstance(i, dict) and str(i.get("name") or "").strip() == "__front_urls__":
                 try:
-                    front_urls = _json.loads(i.get("value") or "[]")
+                    arr = _json.loads(i.get("value") or "[]")
+                    if isinstance(arr, list):
+                        front_urls.extend(arr)
                 except Exception:
-                    front_urls = []
-                break
+                    continue
         if not front_urls:
             return ""
         chain_ids: list = []
@@ -4963,7 +4967,8 @@ class ApiAutomationService:
             # raw_body：请求体字符串形态（签名脚本用），恒为字符串
             "raw_body": req.get("body") if isinstance(req.get("body"), str)
                         else json.dumps(req.get("body"), ensure_ascii=False, default=str) if req.get("body") is not None
-                        else "", 
+                        else "",
+            "__base_url__": "", 
             "form_data": req.get("form_data"),
             "form_urlencoded": req.get("form_urlencoded"),
             "file_path": req.get("file_path"),
@@ -4971,6 +4976,34 @@ class ApiAutomationService:
             "cookies": req.get("cookies"),
             "__temp_vars__": {},
         }
+
+        # Apifox 语义：内置 BASE_URL（当前接口解析出的前置 URL），用户手动定义环境变量 BASE_URL 时优先
+        try:
+            _raw_u = str(request_ctx.get("url") or "").strip()
+            _fu = await ApiAutomationService.handle_var(db, env_id, _raw_u, api_service_id=api_service_id,
+                                                       temp_vars=request_ctx.get("__temp_vars__"))
+            _, _base = await ApiAutomationService._resolve_base_url(db, env_id, str(_fu or "").strip(),
+                                                                   api_id=api_id, return_base=True)
+            request_ctx["__base_url__"] = _base
+            if _base:
+                _env_row2 = (
+                    await db.execute(
+                        select(ApiEnvironmentModel).where(
+                            ApiEnvironmentModel.id == int(env_id),
+                            ApiEnvironmentModel.enabled_flag == 1,
+                        )
+                    )
+                ).scalar_one_or_none()
+                _manual = False
+                if _env_row2:
+                    for _v in (_env_row2.variable or []):
+                        if isinstance(_v, dict) and str(_v.get("name") or "").upper() == "BASE_URL":
+                            _manual = True
+                            break
+                if not _manual:
+                    request_ctx.setdefault("__temp_vars__", {})["BASE_URL"] = _base
+        except Exception:
+            pass
 
         # 前置脚本执行前先完成 body 变量替换：脚本拿到的 raw_body 必须与最终发送一致（签名场景必需）
         _body_raw = request_ctx.get("body")
@@ -5017,16 +5050,16 @@ class ApiAutomationService:
         raw_url = request_ctx.get("url") or body.get("url") or req.get("url") or ""
         url = await ApiAutomationService.handle_var(db, env_id, raw_url, api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
         url = str(url or "").strip()
-        url = await ApiAutomationService._resolve_base_url(db, env_id, url, api_id=api_id)
+        url, base = await ApiAutomationService._resolve_base_url(db, env_id, url, api_id=api_id, return_base=True)
         if "{{" in url and "}}" in url:
-            hint = "请先在右上角选择环境，并确认配置项名与 URL 中占位符一致（如配置 base_url 或 {{base_url}}，URL 写 {{base_url}}/...）"
+            hint = "请先在右上角选择环境，并在环境管理为该模块配置前置 URL"
             if not env_id:
                 raise ValueError(f"URL 中的环境变量未替换（未选择环境）。{hint} 当前 URL：{url}")
-            raise ValueError(f"URL 中的环境变量未替换，请检查环境配置项。{hint} 当前 URL：{url}")
+            raise ValueError(f"URL 中的环境变量未替换。{hint} 当前 URL：{url}")
         if url and not re.match(r"^https?://", url, re.I):
             raise ValueError(
                 f"URL 缺少协议（http/https），当前为：{url}。"
-                "请确认环境配置中的接口前缀（如 https://uapis.cn）已正确替换到 URL。"
+                "请在环境管理中为该接口所属模块配置前置 URL（https:// 起始）。"
             )
 
         body_payload = await ApiAutomationService.handle_var(db, env_id, req.get("body") or {}, api_service_id=api_service_id, temp_vars=request_ctx.get("__temp_vars__"))
