@@ -16,12 +16,20 @@
 					<div class="req-url-bar">
 						<el-tag v-if="req.protocol === 'websocket'" effect="dark" color="#7c4dff" class="ws-badge">WebSocket</el-tag>
 						<el-tag v-else-if="req.protocol === 'webhook'" effect="dark" color="#7c4dff" class="ws-badge">Webhook</el-tag>
-						<el-select v-if="req.protocol !== 'websocket' && req.protocol !== 'webhook'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
+						<el-select v-if="req.protocol !== 'websocket'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
 							<el-option v-for="(m, i) in method_list" :key="i" :label="m.name" :value="m.value">
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
 							</el-option>
 						</el-select>
-						<el-input v-if="req.protocol === 'webhook'" v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
+						<el-tooltip v-if="req.protocol === 'webhook'" placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper">
+							<template #content>
+								<div class="webhook-tip-box">
+									<div class="webhook-tip-text">Webhook 接口的 URL 应由接口使用者提供。此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
+									<img src="/webhook-tip.png" alt="Webhook 说明" class="webhook-tip-img" />
+								</div>
+							</template>
+							<el-input v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
+						</el-tooltip>
 						<el-input v-else v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
 						<el-button v-if="req.protocol === 'websocket'" type="primary" @click="wsConnect" class="send-btn">连接</el-button>
 						<el-button v-else type="primary" @click="sendRequest" class="send-btn">发送</el-button>
@@ -37,7 +45,12 @@
 					</div>
 					<div v-if="req.protocol === 'webhook'" class="webhook-bar">
 						<span class="webhook-tip">调试 URL</span>
-						<el-input v-model="req.webhook_url" placeholder="调试 URL，可为空（留空使用接口路径）" size="small" />
+						<el-tooltip placement="top-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper">
+							<template #content>
+								<div class="webhook-tip-text">Webhook 接口的 URL 应由接口使用者提供。此处填写的 URL 仅用于调试，不会显示在接口文档中。</div>
+							</template>
+							<el-input v-model="req.webhook_url" placeholder="调试 URL，可为空（留空使用接口路径）" size="small" />
+						</el-tooltip>
 					</div>
 				</div>
 
@@ -2091,4 +2104,8 @@ const confirmSaveAsCase = async () => {
 .ws-config-row { display: flex; align-items: center; justify-content: space-between; max-width: 320px; padding: 10px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .ws-config-label { font-size: 13px; color: var(--el-text-color-primary); }
 .ws-config-tip { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 10px; line-height: 1.6; }
+.webhook-tip-box { max-width: 340px; }
+.webhook-tip-text { font-size: 12px; color: var(--el-text-color-regular); line-height: 1.7; margin-bottom: 8px; }
+.webhook-tip-img { width: 100%; border-radius: 6px; border: 1px solid var(--el-border-color-lighter); }
+.webhook-tip-popper { max-width: 360px !important; }
 </style>
