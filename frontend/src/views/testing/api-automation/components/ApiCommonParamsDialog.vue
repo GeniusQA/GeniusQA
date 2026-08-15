@@ -16,12 +16,19 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.header)" :offset="[10, 2]" type="danger">Header</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('header')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.header" :key="'h'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="Header 名" size="small" />
-						<el-input v-model="row.value" placeholder="Header 值" size="small" />
-						<el-button type="danger" link size="small" @click="form.header.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="Header 名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.header.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.header.push(emptyKv())">+ 添加 Header</el-button>
 				</div>
@@ -30,13 +37,20 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.cookie)" :offset="[10, 2]" type="danger">Cookie</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('cookie')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.cookie" :key="'c'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="Cookie 名" size="small" style="flex:1.2" />
-						<el-input v-model="row.value" placeholder="Cookie 值" size="small" style="flex:1.4" />
-						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:1" />
-						<el-button type="danger" link size="small" @click="form.cookie.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="Cookie 名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:0.9" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.cookie.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.cookie.push(emptyCookie())">+ 添加 Cookie</el-button>
 				</div>
@@ -45,12 +59,19 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.query)" :offset="[10, 2]" type="danger">Query</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('query')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.query" :key="'q'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="参数名" size="small" />
-						<el-input v-model="row.value" placeholder="参数值" size="small" />
-						<el-button type="danger" link size="small" @click="form.query.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="参数名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.query.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.query.push(emptyKv())">+ 添加 Query</el-button>
 				</div>
@@ -62,12 +83,19 @@
 				<div class="common-params-tip" style="margin-bottom:8px">
 					以键值形式合并到 JSON / form-data / x-www-form-urlencoded（接口同名键覆盖）。
 				</div>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('body')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.body" :key="'b'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="字段名" size="small" />
-						<el-input v-model="row.value" placeholder="字段值" size="small" />
-						<el-button type="danger" link size="small" @click="form.body.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="字段名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.body.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.body.push(emptyKv())">+ 添加 Body 字段</el-button>
 				</div>
@@ -88,12 +116,19 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.header)" :offset="[10, 2]" type="danger">Header</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('header')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.header" :key="'h'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="Header 名" size="small" />
-						<el-input v-model="row.value" placeholder="Header 值" size="small" />
-						<el-button type="danger" link size="small" @click="form.header.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="Header 名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.header.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.header.push(emptyKv())">+ 添加 Header</el-button>
 				</div>
@@ -102,13 +137,20 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.cookie)" :offset="[10, 2]" type="danger">Cookie</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('cookie')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.cookie" :key="'c'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="Cookie 名" size="small" style="flex:1.2" />
-						<el-input v-model="row.value" placeholder="Cookie 值" size="small" style="flex:1.4" />
-						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:1" />
-						<el-button type="danger" link size="small" @click="form.cookie.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="Cookie 名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:0.9" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.cookie.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.cookie.push(emptyCookie())">+ 添加 Cookie</el-button>
 				</div>
@@ -117,12 +159,19 @@
 				<template #label>
 					<el-badge :show-zero="false" :value="countEnabled(form.query)" :offset="[10, 2]" type="danger">Query</el-badge>
 				</template>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('query')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.query" :key="'q'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="参数名" size="small" />
-						<el-input v-model="row.value" placeholder="参数值" size="small" />
-						<el-button type="danger" link size="small" @click="form.query.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="参数名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.query.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.query.push(emptyKv())">+ 添加 Query</el-button>
 				</div>
@@ -134,12 +183,19 @@
 				<div class="common-params-tip" style="margin-bottom:8px">
 					以键值形式合并到 JSON / form-data / x-www-form-urlencoded（接口同名键覆盖）。
 				</div>
+				<div class="kv-toolbar">
+					<el-button type="primary" link size="small" @click="openBatchEdit('body')"><el-icon><EditPen /></el-icon> 批量编辑</el-button>
+				</div>
 				<div class="kv-list">
 					<div v-for="(row, i) in form.body" :key="'b'+i" class="kv-row">
 						<el-checkbox v-model="row.status" />
-						<el-input v-model="row.key" placeholder="字段名" size="small" />
-						<el-input v-model="row.value" placeholder="字段值" size="small" />
-						<el-button type="danger" link size="small" @click="form.body.splice(i, 1)">删除</el-button>
+						<el-input v-model="row.key" placeholder="字段名" size="small" style="flex:1.1" />
+						<el-select v-model="row.type" size="small" style="width:86px">
+							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+						</el-select>
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.body.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
 					<el-button type="primary" link size="small" @click="form.body.push(emptyKv())">+ 添加 Body 字段</el-button>
 				</div>
@@ -151,10 +207,14 @@
 	</div>
 </template>
 
+	<!-- 批量编辑弹窗（Apifox：逗号模式/冒号模式） -->
+	<BatchEditDialog v-model="batchVisible" :target="batchTarget" @apply="onBatchApply" />
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Delete, EditPen } from '@element-plus/icons-vue';
+import BatchEditDialog from './BatchEditDialog.vue';
 import { get_common_params, save_common_params } from '/@/api/v1/testing/apiAutomation';
 
 import OperationPanel from './OperationPanel.vue';
@@ -170,7 +230,8 @@ const visible = ref(false);
 const saving = ref(false);
 const activeTab = ref('header');
 
-type KvRow = { key: string; value: string; status: boolean; domain?: string };
+type KvRow = { key: string; value: string; status: boolean; type?: string; remark?: string; domain?: string };
+const paramTypes = ['String', 'Number', 'Boolean', 'File'];
 
 const form = reactive<{
 	header: KvRow[];
@@ -190,10 +251,23 @@ const form = reactive<{
 	auth: { auth_type: 'none' },
 });
 
-const emptyKv = (): KvRow => ({ key: '', value: '', status: true });
-const emptyCookie = (): KvRow => ({ key: '', value: '', status: true, domain: '' });
+const emptyKv = (): KvRow => ({ key: '', value: '', status: true, type: 'String', remark: '' });
+const emptyCookie = (): KvRow => ({ key: '', value: '', status: true, type: 'String', remark: '', domain: '' });
 
 const countEnabled = (list: KvRow[]) => list.filter((x) => x.status !== false && String(x.key || '').trim()).length;
+
+// ---- 批量编辑（Apifox 逗号/冒号模式）----
+const batchVisible = ref(false);
+const batchTarget = ref('header');
+
+const openBatchEdit = (tab: string) => {
+	batchTarget.value = tab;
+	batchVisible.value = true;
+};
+
+const onBatchApply = (rows: KvRow[]) => {
+	(form as any)[batchTarget.value] = rows;
+};
 
 const normalizeList = (list: any[], cookie = false): KvRow[] => {
 	if (!Array.isArray(list)) return [];
@@ -205,6 +279,8 @@ const normalizeList = (list: any[], cookie = false): KvRow[] => {
 				key,
 				value: x.value == null ? '' : String(x.value),
 				status: x.status === false ? false : true,
+				type: x.type || 'String',
+				remark: x.remark == null ? '' : String(x.remark),
 			};
 			if (cookie) row.domain = x.domain == null ? '' : String(x.domain);
 			return row;
@@ -291,6 +367,16 @@ defineExpose({ open });
 <style scoped>
 .cp-embedded {
 	padding: 2px;
+}
+.kv-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 6px;
+}
+.cp-del-icon {
+	padding: 4px 2px;
+	font-size: 14px;
+	color: #dc2626;
 }
 .common-params-tip {
 	font-size: 12px;
