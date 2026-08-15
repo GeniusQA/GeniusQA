@@ -1,15 +1,5 @@
 <template>
 	<div class="manage-panel">
-		<!-- 顶部工具栏 -->
-		<div class="manage-toolbar">
-			<div class="toolbar-row">
-				<div class="toolbar-tools">
-					<el-button type="primary" size="small" @click="openImportDialog">导入接口</el-button>
-					<el-button size="small" type="warning" @click="envCenterRef?.open()">环境管理</el-button>
-				</div>
-			</div>
-		</div>
-
 		<!-- 主体：左侧接口树 + 右侧详情 -->
 		<div class="manage-body">
 			<!-- 左侧接口树 -->
@@ -23,6 +13,7 @@
 								<el-dropdown-item command="add_module">添加模块</el-dropdown-item>
 								<el-dropdown-item command="add_folder">添加目录</el-dropdown-item>
 								<el-dropdown-item command="add_api">添加接口</el-dropdown-item>
+								<el-dropdown-item command="import_api">导入接口</el-dropdown-item>
 							</el-dropdown-menu>
 						</template>
 					</el-dropdown>
@@ -194,7 +185,6 @@
 				<el-button type="primary" @click="confirmMenu">确定</el-button>
 			</template>
 		</el-dialog>
-		<EnvManageCenter ref="envCenterRef" :service-id="props.serviceId" />
 	</div>
 </template>
 
@@ -205,7 +195,6 @@ import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'ele
 import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
-import EnvManageCenter from './components/EnvManageCenter.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
@@ -226,7 +215,6 @@ const emit = defineEmits<{
 	(e: 'update-source', payload: { source_type?: string; source_addr?: string }): void;
 }>();
 
-const envCenterRef = ref<InstanceType<typeof EnvManageCenter> | null>(null);
 
 function normalizeSourceType(raw?: string) {
 	const t = String(raw || '').trim().toLowerCase();
@@ -540,6 +528,10 @@ const menuDialogTitle = ref('');
 const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit' });
 
 const handleAddCommand = (cmd: string) => {
+	if (cmd === 'import_api') {
+		openImportDialog();
+		return;
+	}
 	if (cmd === 'add_module') {
 		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
