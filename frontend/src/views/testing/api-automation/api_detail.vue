@@ -66,14 +66,27 @@
 							</el-tab-pane>
 							<el-tab-pane label="Params" name="params">
 								<div style="overflow: auto; height: 100%">
-									<div v-for="(p, i) in req.params" :key="i" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+									<div class="ws-params-head">
+										<span style="width: 28px"></span>
+										<span>参数名</span>
+										<span>参数值</span>
+										<span>类型</span>
+										<span>说明</span>
+										<span style="width: 48px"></span>
+									</div>
+									<div v-for="(p, i) in req.params" :key="i" class="ws-params-row">
 										<el-checkbox v-model="p.status" />
-										<el-input v-model="p.key" placeholder="参数名" style="flex:1" size="small" />
-										<el-input v-model="p.value" placeholder="参数值" style="flex:1" size="small" />
+										<el-input v-model="p.key" placeholder="参数名" size="small" />
+										<el-input v-model="p.value" placeholder="参数值" size="small" />
+										<el-select v-model="p.type" size="small" style="width: 110px">
+											<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
+										</el-select>
+										<el-input v-model="p.desc" placeholder="说明" size="small" />
 										<el-button type="danger" link size="small" @click="removeParam(i)">删除</el-button>
 									</div>
 									<div class="kv-actions">
 										<el-button type="primary" link size="small" @click="addParam">+ 添加参数</el-button>
+										<el-button type="primary" link size="small" @click="openBulkEdit('params')">批量编辑</el-button>
 									</div>
 								</div>
 							</el-tab-pane>
@@ -1432,7 +1445,8 @@ watch(
 	{ immediate: true }
 );
 
-const addParam = () => { req.value.params.push({ key: '', value: '', status: true }); };
+const paramTypes = ['string', 'integer', 'boolean', 'number', 'array', 'object'];
+const addParam = () => { req.value.params.push({ key: '', value: '', status: true, type: 'string', desc: '' }); };
 const removeParam = (i: number) => { req.value.params.splice(i, 1); };
 const addHeader = () => { req.value.header.push({ key: '', value: '', status: true }); };
 const removeHeader = (i: number) => { req.value.header.splice(i, 1); };
@@ -2054,4 +2068,20 @@ const confirmSaveAsCase = async () => {
 .ws-msg-content { margin: 0; font-size: 13px; background: var(--el-fill-color-light); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; word-break: break-all; flex: 1; }
 .webhook-bar { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
 .webhook-tip { font-size: 13px; color: var(--el-text-color-secondary); white-space: nowrap; }
+.ws-params-head {
+	display: grid;
+	grid-template-columns: 28px 1fr 1fr 110px 1fr 48px;
+	gap: 6px;
+	align-items: center;
+	margin-bottom: 4px;
+	font-size: 12px;
+	color: var(--el-text-color-secondary);
+}
+.ws-params-row {
+	display: grid;
+	grid-template-columns: 28px 1fr 1fr 110px 1fr 48px;
+	gap: 6px;
+	align-items: center;
+	margin-bottom: 6px;
+}
 </style>
