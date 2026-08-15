@@ -1509,6 +1509,17 @@ const bulkCsvSpecs: { desc: string; code: string }[] = [
 const BULK_TYPES = ['string', 'integer', 'boolean', 'number', 'array', 'object'];
 const BULK_TRUE_SET = new Set(['true', '1', '是', 'yes', 'y']);
 
+const getBulkRows = (target: BulkEditTarget): Array<{ key: string; value: string; status?: boolean }> => {
+	const list = (req.value as any)[target];
+	return Array.isArray(list)
+		? list.map((r: any) => ({
+				key: String(r.key ?? r.name ?? ''),
+				value: String(r.value ?? ''),
+				status: r.status !== false,
+			}))
+		: [];
+};
+
 const openBulkEdit = (target: BulkEditTarget) => {
 	bulkEditTarget.value = target;
 	bulkEditMode.value = 'comma';
