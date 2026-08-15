@@ -1645,7 +1645,7 @@ const wsConnect = async () => {
 	const url = String(req.value.url || '').trim();
 	if (!url) { ElMessage.warning('请先填写 WebSocket 地址（ws:// 或 wss:// 开头）'); return; }
 	try {
-		const r: any = await useApiAutomationApi().wsTest({ url, message: '', connect_only: true, headers: req.value.header || [], ssl_verify: req.value.config?.ssl_verify !== false });
+		const r: any = await apiAutomationApi.wsTest({ url, message: '', connect_only: true, headers: req.value.header || [], ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200 && r?.data?.ok) {
 			wsLastOk.value = true;
 			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}` });
@@ -1667,7 +1667,7 @@ const wsSend = async () => {
 	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
 	if (wsClearAfterSend.value) wsMessage.value = '';
 	try {
-		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [], binary_type: wsFormat.value === 'Binary' ? wsBinaryType.value : undefined, ssl_verify: req.value.config?.ssl_verify !== false });
+		const r: any = await apiAutomationApi.wsTest({ url, message: text, headers: req.value.header || [], binary_type: wsFormat.value === 'Binary' ? wsBinaryType.value : undefined, ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200) {
 			const data = r.data || {};
 			if (data.ok) {
