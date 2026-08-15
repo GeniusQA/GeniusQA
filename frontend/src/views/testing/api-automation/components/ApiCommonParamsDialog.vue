@@ -4,7 +4,9 @@
 		:title="dialogTitle"
 		width="760px"
 		destroy-on-close
-		append-to-body
+		:append-to-body="!embedded"
+		:modal="!embedded"
+		:style="embedded ? 'position:relative' : ''"
 		@closed="onClosed"
 	>
 		<div class="common-params-tip">{{ curMenuId ? "目录参数：对当前目录（根目录/子目录）及其下所有接口生效，可配置 Auth、前置操作、后置操作" : "模块级全局参数：对本模块所有接口生效（Header/Cookie/Query/Body）" }}</div>
@@ -90,6 +92,7 @@ import OperationPanel from './OperationPanel.vue';
 const props = defineProps<{
 	serviceId: number | string;
 	menuId?: number | string;
+	embedded?: boolean;
 }>();
 const dialogTitle = ref(props.menuId ? '目录参数' : '全局参数');
 
@@ -148,7 +151,7 @@ const open = async (menuId?: number | string) => {
 		return;
 	}
 	activeTab.value = 'header';
-	visible.value = true;
+	if (!props.embedded) visible.value = true;
 	try {
 		const res: any = await get_common_params({ api_service_id: props.serviceId, menu_id: curMenuId.value || undefined });
 		const data = res?.data || {};
@@ -194,7 +197,7 @@ const save = async () => {
 			},
 		});
 		ElMessage.success('全局参数已保存');
-		visible.value = false;
+		if (!props.embedded) visible.value = false;
 	} catch (e: any) {
 		ElMessage.error(e?.message || '保存失败');
 	} finally {

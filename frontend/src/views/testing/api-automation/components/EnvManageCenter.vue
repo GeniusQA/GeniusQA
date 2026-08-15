@@ -1,0 +1,317 @@
+<template>
+	<el-dialog v-model="visible" title="环境管理" width="1000px" top="5vh" destroy-on-close @closed="onClosed">
+		<div class="env-center">
+			<!-- 左栏：分组菜单 -->
+			<div class="env-side">
+				<div class="env-group-title">全局</div>
+				<div class="env-menu-item" :class="{ active: section === 'global-var' }" @click="section = 'global-var'">
+					<el-icon><DataBoard /></el-icon><span>全局变量</span>
+				</div>
+				<div class="env-menu-item" :class="{ active: section === 'global-params' }" @click="switchParams">
+					<el-icon><Setting /></el-icon><span>全局参数</span>
+				</div>
+
+				<div class="env-group-title">环境</div>
+				<div
+					v-for="e in envList"
+					:key="e.id"
+					class="env-menu-item"
+					:class="{ active: section === 'env' && curEnv?.id === e.id }"
+					@click="selectEnv(e)"
+				>
+					<el-icon><Connection /></el-icon><span>{{ e.name }}</span>
+				</div>
+				<div class="env-menu-item env-add" @click="openEnvForm(null)">
+					<el-icon><ele-Plus /></el-icon><span>新建环境</span>
+				</div>
+
+				<div class="env-group-title">数据库</div>
+				<div class="env-menu-item" :class="{ active: section === 'db' }" @click="section = 'db'">
+					<el-icon><Coin /></el-icon><span>数据库连接</span>
+				</div>
+			</div>
+
+			<!-- 右栏：内容区 -->
+			<div class="env-main">
+				<!-- 全局变量 -->
+				<template v-if="section === 'global-var'">
+					<ApiVarPopover :service-id="serviceId" />
+				</template>
+
+				<!-- 全局参数 -->
+				<template v-else-if="section === 'global-params'">
+					<ApiCommonParamsDialog :service-id="serviceId" embedded ref="cpRef" />
+				</template>
+
+				<!-- 环境详情（Apifox 排版：配置项 + 环境变量表） -->
+				<template v-else-if="section === 'env' && curEnv">
+					<div class="env-detail">
+						<div class="env-detail-head">
+							<span class="env-detail-title">{{ curEnv.name }}</span>
+							<el-button size="small" type="warning" @click="openEnvForm(curEnv)">编辑环境</el-button>
+							<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
+						</div>
+
+						<div class="env-block-title">配置项（如 base_url）</div>
+						<div v-for="(item, idx) in curEnv.config" :key="'c' + idx" class="env-row">
+							<el-input v-model="item.name" placeholder="配置项名（如 base_url）" size="small" />
+							<el-input v-model="item.value" placeholder="配置项值（如 https://uapis.cn）" size="small" />
+							<el-button type="danger" link size="small" @click="curEnv.config.splice(idx, 1)">删除</el-button>
+						</div>
+						<el-button size="small" @click="curEnv.config.push({ name: '', value: '' })">+ 添加配置项</el-button>
+
+						<div class="env-block-title">环境变量</div>
+						<div v-for="(item, idx) in curEnv.variable" :key="'v' + idx" class="env-row">
+							<el-input v-model="item.name" placeholder="变量名（如 token）" size="small" />
+							<el-input v-model="item.value" placeholder="变量值" size="small" />
+							<el-button type="danger" link size="small" @click="curEnv.variable.splice(idx, 1)">删除</el-button>
+						</div>
+						<el-button size="small" @click="curEnv.variable.push({ name: '', value: '' })">+ 添加变量</el-button>
+						<div class="env-tip">环境变量：脚本 ntest.set 的变量会自动写入此处，可被 {{变量名}} 引用</div>
+
+						<div class="env-detail-foot">
+							<el-button type="primary" :loading="envSaving" @click="saveCurEnv">保存</el-button>
+						</div>
+					</div>
+				</template>
+				<div v-else-if="section === 'env'" class="env-empty">请选择左侧环境</div>
+
+				<!-- 数据库 -->
+				<template v-else-if="section === 'db'">
+					<ApiDbPopover />
+				</template>
+			</div>
+		</div>
+
+		<!-- 新增/编辑环境表单 -->
+		<el-dialog v-model="envFormVisible" :title="envForm.id ? '编辑环境' : '新建环境'" width="520px" @closed="resetEnvForm">
+			<el-form :model="envForm" label-width="80px">
+				<el-form-item label="* 环境名称">
+					<el-input v-model="envForm.name" placeholder="请输入环境名称" />
+				</el-form-item>
+			</el-form>
+			<template #footer>
+				<el-button @click="envFormVisible = false">取消</el-button>
+				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
+			</template>
+		</el-dialog>
+	</el-dialog>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { api_env, save_env, add_env, del_env } from '/@/api/v1/testing/apiAutomation';
+import ApiVarPopover from './ApiVarPopover.vue';
+import ApiCommonParamsDialog from './ApiCommonParamsDialog.vue';
+import ApiDbPopover from './ApiDbPopover.vue';
+
+const props = defineProps<{ serviceId?: number | string }>();
+
+const visible = ref(false);
+const section = ref<'global-var' | 'global-params' | 'env' | 'db'>('global-var');
+
+// ---- 环境列表 ----
+const envList = ref<any[]>([]);
+const curEnv = ref<any>(null);
+const envSaving = ref(false);
+const cpRef = ref<any>(null);
+
+const loadEnvList = async () => {
+	try {
+		const res: any = await api_env();
+		const raw = res?.data;
+		envList.value = Array.isArray(raw) ? raw : (Array.isArray(raw?.content) ? raw.content : []);
+	} catch {
+		envList.value = [];
+	}
+};
+
+const selectEnv = (e: any) => {
+	curEnv.value = {
+		id: e.id,
+		name: e.name || '',
+		config: Array.isArray(e.config) ? e.config.map((c: any) => ({ ...c })) : [],
+		variable: Array.isArray(e.variable) ? e.variable.map((v: any) => ({ ...v })) : [],
+	};
+	section.value = 'env';
+};
+
+const saveCurEnv = async () => {
+	if (!curEnv.value) return;
+	envSaving.value = true;
+	try {
+		await save_env({
+			env_list: [{
+				id: curEnv.value.id,
+				name: curEnv.value.name,
+				config: curEnv.value.config.filter((c: any) => String(c.name || '').trim()),
+				variable: curEnv.value.variable.filter((v: any) => String(v.name || '').trim()),
+			}],
+		});
+		ElMessage.success('保存成功');
+		await loadEnvList();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '保存失败');
+	} finally {
+		envSaving.value = false;
+	}
+};
+
+// ---- 环境新增/编辑/删除 ----
+const envFormVisible = ref(false);
+const envForm = ref<{ id?: number; name: string }>({ name: '' });
+
+const openEnvForm = (e: any | null) => {
+	envForm.value = e ? { id: e.id, name: e.name || '' } : { name: '' };
+	envFormVisible.value = true;
+};
+
+const resetEnvForm = () => {
+	envForm.value = { name: '' };
+};
+
+const submitEnvForm = async () => {
+	if (!envForm.value.name.trim()) {
+		ElMessage.warning('请输入环境名称');
+		return;
+	}
+	envSaving.value = true;
+	try {
+		if (envForm.value.id) {
+			await save_env({ env_list: [{ id: envForm.value.id, name: envForm.value.name.trim() }] });
+			ElMessage.success('保存成功');
+		} else {
+			await add_env({ name: envForm.value.name.trim(), config: [], variable: [] });
+			ElMessage.success('新建成功');
+		}
+		envFormVisible.value = false;
+		await loadEnvList();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '保存失败');
+	} finally {
+		envSaving.value = false;
+	}
+};
+
+const deleteEnv = async (e: any) => {
+	try {
+		await ElMessageBox.confirm(`确认删除环境「${e.name}」？`, '提示', { type: 'warning' });
+		await del_env({ id: e.id });
+		ElMessage.success('已删除');
+		curEnv.value = null;
+		section.value = 'env';
+		await loadEnvList();
+	} catch {}
+};
+
+// ---- 全局参数切换 ----
+const switchParams = () => {
+	section.value = 'global-params';
+	setTimeout(() => cpRef.value?.open(), 0);
+};
+
+// ---- 打开/关闭 ----
+const open = async () => {
+	visible.value = true;
+	section.value = 'global-var';
+	curEnv.value = null;
+	await loadEnvList();
+};
+
+const onClosed = () => {
+	curEnv.value = null;
+	section.value = 'global-var';
+};
+
+defineExpose({ open });
+</script>
+
+<style scoped>
+.env-center {
+	display: flex;
+	height: 560px;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	overflow: hidden;
+}
+.env-side {
+	width: 200px;
+	flex-shrink: 0;
+	border-right: 1px solid #e5e7eb;
+	background: #fafbfc;
+	padding: 10px 8px;
+	overflow-y: auto;
+}
+.env-group-title {
+	font-size: 12px;
+	color: #9ca3af;
+	padding: 8px 8px 4px;
+	font-weight: 600;
+}
+.env-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 7px 10px;
+	border-radius: 6px;
+	font-size: 13px;
+	color: #374151;
+	cursor: pointer;
+	margin-bottom: 2px;
+}
+.env-menu-item:hover { background: #f0f1f3; }
+.env-menu-item.active {
+	background: #f3e8ff;
+	color: #7c3aed;
+	font-weight: 600;
+}
+.env-menu-item.env-add { color: #7c3aed; }
+.env-main {
+	flex: 1;
+	padding: 14px 18px;
+	overflow-y: auto;
+	background: #fff;
+}
+.env-detail-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 14px;
+}
+.env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
+.env-block-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: #374151;
+	margin: 14px 0 8px;
+	border-left: 3px solid #7c3aed;
+	padding-left: 8px;
+}
+.env-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 6px;
+	align-items: center;
+}
+.env-row .el-input { flex: 1; }
+.env-tip {
+	font-size: 11px;
+	color: #94a3b8;
+	margin: 8px 0;
+}
+.env-detail-foot {
+	text-align: right;
+	margin-top: 16px;
+	padding-top: 12px;
+	border-top: 1px solid #f0f1f3;
+}
+.env-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: #9ca3af;
+	font-size: 13px;
+}
+</style>

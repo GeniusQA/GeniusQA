@@ -5,24 +5,10 @@
 			<div class="toolbar-row">
 				<div class="toolbar-tools">
 					<el-button type="primary" size="small" @click="openImportDialog">导入接口</el-button>
-					<el-popover placement="bottom" :width="900" trigger="click">
-						<template #reference>
-							<el-button size="small" type="info">直连数据库</el-button>
-						</template>
-						<ApiDbPopover />
-					</el-popover>
-					<el-popover placement="bottom" :width="800" trigger="click">
-						<template #reference>
-							<el-button size="small" type="primary">全局变量</el-button>
-						</template>
-						<ApiVarPopover :service-id="props.serviceId" />
-					</el-popover>
-					<el-button size="small" type="warning" @click="commonParamsRef?.open()">全局参数</el-button>
+					<el-button size="small" type="warning" @click="envCenterRef?.open()">环境管理</el-button>
 				</div>
 			</div>
 		</div>
-
-		<ApiCommonParamsDialog ref="commonParamsRef" :service-id="serviceId" />
 
 		<!-- 主体：左侧接口树 + 右侧详情 -->
 		<div class="manage-body">
@@ -208,6 +194,7 @@
 				<el-button type="primary" @click="confirmMenu">确定</el-button>
 			</template>
 		</el-dialog>
+		<EnvManageCenter ref="envCenterRef" :service-id="props.serviceId" />
 	</div>
 </template>
 
@@ -218,8 +205,7 @@ import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'ele
 import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
-import ApiVarPopover from './components/ApiVarPopover.vue';
-import ApiCommonParamsDialog from './components/ApiCommonParamsDialog.vue';
+import EnvManageCenter from './components/EnvManageCenter.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
@@ -240,7 +226,7 @@ const emit = defineEmits<{
 	(e: 'update-source', payload: { source_type?: string; source_addr?: string }): void;
 }>();
 
-const commonParamsRef = ref<InstanceType<typeof ApiCommonParamsDialog> | null>(null);
+const envCenterRef = ref<InstanceType<typeof EnvManageCenter> | null>(null);
 
 function normalizeSourceType(raw?: string) {
 	const t = String(raw || '').trim().toLowerCase();

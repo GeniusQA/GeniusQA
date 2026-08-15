@@ -23,7 +23,7 @@
 						:value="env.id"
 					/>
 				</el-select>
-				<el-button size="small" @click="openEnvDialog">环境管理</el-button>
+				<el-button size="small" @click="envCenterRef?.open()">环境管理</el-button>
 			</div>
 		</div>
 
@@ -125,6 +125,8 @@
 				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
 			</template>
 		</el-dialog>
+
+		<EnvManageCenter ref="envCenterRef" :service-id="currentServiceId" />
 	</div>
 </template>
 
@@ -134,6 +136,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation';
 import { Local } from '/@/utils/storage';
 import ApiManagePanel from './ApiManagePanel.vue';
+import EnvManageCenter from './components/EnvManageCenter.vue';
 import ApiResultList from './api_result_list.vue';
 import ApiCodegen from './api_codegen.vue';
 import ScriptCenter from './ScriptCenter.vue';
@@ -239,6 +242,7 @@ const {
 const envList = ref<any[]>([]);
 const envLoading = ref(false);
 const envDialogVisible = ref(false);
+const envCenterRef = ref<any>(null);
 const envSearchName = ref('');
 const filteredEnvList = computed(() =>
 	envSearchName.value
