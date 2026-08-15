@@ -11,11 +11,14 @@
         v-for="(item, index) in items"
         :key="index"
         class="op-card"
-        :class="`op-card--${typeColor(item.type)}`"
+        :class="[`op-card--${typeColor(item.type)}`, { 'op-card--disabled': item.enabled === false }]"
+        @dragover.prevent
+        @drop="onDrop(index)"
       >
         <!-- 卡片头部：点击标题区折叠/展开 -->
         <div class="op-card__header" @click="toggleCollapse(index)">
           <div class="op-card__title">
+            <el-icon class="op-card__drag" draggable="true" @dragstart="onDragStart(index, $event)" @click.stop><Rank /></el-icon>
             <span class="op-card__badge" :class="`badge--${typeColor(item.type)}`">
               {{ index + 1 }}
             </span>
@@ -24,6 +27,7 @@
             <span class="op-card__summary">{{ itemSummary(item) }}</span>
           </div>
           <div class="op-card__actions" @click.stop>
+            <el-switch v-model="item.enabled" size="small" style="margin-right:6px" />
             <el-icon
               class="op-card__collapse-icon"
               :class="{ 'is-collapsed': collapsed[index] }"
@@ -674,7 +678,7 @@ const availableTypes = computed(() =>
 
 // ---- Default item factory ----
 const defaultItem = (type: number): any => {
-  const base = { type }
+  const base = { type, enabled: true }
   if (props.mode === 'before') {
     if (type === 1) return { ...base, title: '', env_id: null, api_id: null }
     if (type === 2) return { ...base, name: '', env_type: null, value: '' }
