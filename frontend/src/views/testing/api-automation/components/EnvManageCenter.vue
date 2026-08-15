@@ -57,7 +57,6 @@
 						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
 							<span class="env-front-module">{{ moduleName(f.menu_id) }}</span>
 							<el-input v-model="f.url" placeholder="https:// 起始的前置 URL" size="small" style="flex:1.4" />
-							<el-button type="danger" link size="small" @click="removeFrontUrl(idx)" class="env-del-icon"><el-icon><Delete /></el-icon></el-button>
 						</div>
 						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
 
@@ -186,10 +185,6 @@ const moduleName = (menuId: any): string => {
 	const s = String(menuId ?? '');
 	if (s.startsWith('svc_')) return '模块 ' + s.replace('svc_', '');
 	return s;
-};
-const removeFrontUrl = (idx: number) => {
-	envFrontUrls.value.splice(idx, 1);
-	syncFrontUrls();
 };
 
 
