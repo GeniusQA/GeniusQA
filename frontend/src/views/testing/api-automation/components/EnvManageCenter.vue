@@ -53,7 +53,7 @@
 								class="env-name-input"
 								size="large"
 							/>
-							<el-button v-if="curEnv.id != null" size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
+							<el-button v-if="curEnv.id != null" size="small" type="danger" plain class="env-del-btn" @click="deleteEnv(curEnv)">删除</el-button>
 						</div>
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
@@ -324,6 +324,7 @@ defineExpose({ open });
 	margin-bottom: 14px;
 }
 .env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
+.env-detail-head .env-del-btn { margin-left: auto; }
 .env-front-module {
 	flex: 1.2;
 	min-width: 0;
