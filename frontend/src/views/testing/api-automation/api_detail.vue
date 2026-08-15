@@ -1648,8 +1648,8 @@ const wsConnect = async () => {
 		const r: any = await apiAutomationApi.wsTest({ url, message: '', connect_only: true, headers: req.value.header || [], ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200 && r?.data?.ok) {
 			wsLastOk.value = true;
-			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}` });
-			ElMessage.success('连接成功');
+			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}（在 Message 页签输入消息后点击底部「发送」即可收发）` });
+			ElMessage.success('连接成功，请在 Message 页签输入消息后点击「发送」');
 		} else {
 			wsLastOk.value = false;
 			ElMessage.error(`连接失败：${r?.data?.error || r?.message || '未知错误'}`);
