@@ -209,6 +209,13 @@
 						<el-option label="Webhook" value="webhook" />
 					</el-select>
 				</el-form-item>
+				<el-form-item v-if="menuForm.type === 2" label="父级目录">
+					<el-select v-model="menuForm.pid" style="width:100%" filterable clearable placeholder="选择父级目录（不选=根级）">
+						<el-option-group v-if="folderOptions.dirs.length" label="目录">
+							<el-option v-for="d in folderOptions.dirs" :key="d.id" :label="d.path" :value="d.id" />
+						</el-option-group>
+					</el-select>
+				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
 					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根级）">
 						<el-option-group v-if="folderOptions.mods.length" label="模块">
