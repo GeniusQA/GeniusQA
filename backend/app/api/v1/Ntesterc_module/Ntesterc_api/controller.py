@@ -363,6 +363,21 @@ async def save_api_case_to_suite(
         return error_response(f"保存失败：{str(e)}")
 
 
+@router.post("/ws_test")
+async def ws_test(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """WebSocket 调试代理"""
+    try:
+        body = await body_to_json(request)
+        result = await ApiAutomationService.ws_test(db, body, current_user_id)
+        return success_response(result, message="调试完成")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/api_send")
 async def api_send(
     request: Request,

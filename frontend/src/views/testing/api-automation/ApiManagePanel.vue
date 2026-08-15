@@ -184,6 +184,13 @@
 				<el-form-item label="名称" required>
 					<el-input v-model="menuForm.name" placeholder="请输入名称" />
 				</el-form-item>
+				<el-form-item v-if="menuForm.type === 2" label="协议">
+					<el-select v-model="menuForm.protocol" style="width:100%">
+						<el-option label="HTTP" value="http" />
+						<el-option label="WebSocket" value="websocket" />
+						<el-option label="Webhook" value="webhook" />
+					</el-select>
+				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
 					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根级）">
 						<el-option-group v-if="folderOptions.mods.length" label="模块">
@@ -590,7 +597,7 @@ const folderOptions = computed(() => {
 
 const menuDialogVisible = ref(false);
 const menuDialogTitle = ref('');
-const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit' });
+const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit', protocol: 'http' });
 
 const handleAddCommand = (cmd: string) => {
 	if (cmd === 'import_api') {
@@ -673,7 +680,7 @@ const confirmMenu = async () => {
 				svcId = Number(pidVal.replace('svc_', ''))
 				pidVal = 0
 			}
-			await add_menu({ name: menuForm.value.name.trim(), pid: pidVal, type: menuForm.value.type, api_service_id: svcId });
+			await add_menu({ name: menuForm.value.name.trim(), pid: pidVal, type: menuForm.value.type, api_service_id: svcId, protocol: menuForm.value.protocol || 'http' });
 		}
 		menuDialogVisible.value = false;
 		await loadTree();

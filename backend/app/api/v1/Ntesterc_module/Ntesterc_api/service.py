@@ -3101,6 +3101,7 @@ class ApiAutomationService:
                 "file_path": [],
                 "form_data": [],
                 "form_urlencoded": [],
+                "protocol": str(body.get("protocol") or "http").lower(),
             }
             api = ApiModel(
                 api_service_id=int(body["api_service_id"]),
@@ -5043,6 +5044,53 @@ class ApiAutomationService:
             }
 
     @staticmethod
+    @staticmethod
+    async def ws_test(db: AsyncSession, body: Dict[str, Any], user_id: int) -> Dict[str, Any]:
+        """WebSocket 调试代理：连接 -> 发送 -> 接收（带超时）"""
+        import asyncio
+        import json
+        import time
+
+        import websockets
+
+        url = str(body.get("url") or "").strip()
+        if not url:
+            raise ValueError("WebSocket 地址不能为空")
+        if not (url.startswith("ws://") or url.startswith("wss://")):
+            raise ValueError("地址必须以 ws:// 或 wss:// 开头")
+        headers = {}
+        for h in body.get("headers") or []:
+            if isinstance(h, dict) and h.get("status") and h.get("key"):
+                headers[str(h["key"])] = str(h.get("value") or "")
+        message = body.get("message")
+        sent_text = message if isinstance(message, str) else json.dumps(message, ensure_ascii=False)
+        t0 = time.time()
+        try:
+            async with websockets.connect(url, additional_headers=headers, open_timeout=8) as ws:
+                await ws.send(sent_text)
+                received = await asyncio.wait_for(ws.recv(), timeout=8)
+            return {
+                "ok": True,
+                "sent": sent_text,
+                "received": received if isinstance(received, str) else str(received),
+                "elapsed": round(time.time() - t0, 3),
+            }
+        except asyncio.TimeoutError:
+            return {
+                "ok": True,
+                "sent": sent_text,
+                "received": None,
+                "timeout": True,
+                "elapsed": round(time.time() - t0, 3),
+            }
+        except Exception as e:  # noqa: BLE001
+            return {
+                "ok": False,
+                "sent": sent_text,
+                "error": str(e),
+                "elapsed": round(time.time() - t0, 3),
+            }
+
     async def execute_api_send(db: AsyncSession, body: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         """
        输入 body 基本结构
@@ -5051,6 +5099,8 @@ class ApiAutomationService:
         req = body.get("req") or {}
         if not isinstance(req, dict):
             req = {}
+        if str(req.get("protocol") or "http").lower() == "websocket":
+            raise ValueError("WebSocket 接口暂不支持自动化执行，请使用调试页手动调试（对齐 Apifox：WS 不支持脚本/断言）")
 
         # 服务级全局参数（Header/Cookie/Query/Body），请求侧同名覆盖
         api_id = int(body.get("id") or req.get("id") or 0)

@@ -14,7 +14,12 @@
 				<!-- URL bar -->
 				<div class="api-detail-header">
 					<div class="req-url-bar">
-						<el-select v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
+						<el-select v-model="req.protocol" class="protocol-select" style="width: 112px; flex: 0 0 112px" @change="onProtocolChange">
+							<el-option label="HTTP" value="http" />
+							<el-option label="WebSocket" value="websocket" />
+							<el-option label="Webhook" value="webhook" />
+						</el-select>
+						<el-select v-if="req.protocol !== 'websocket'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
 							<el-option v-for="(m, i) in method_list" :key="i" :label="m.name" :value="m.value">
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
 							</el-option>
@@ -31,11 +36,35 @@
 							</template>
 						</el-dropdown>
 					</div>
+					<div v-if="req.protocol === 'webhook'" class="webhook-bar">
+						<el-input v-model="req.webhook_name" placeholder="Webhook 名称" style="width: 200px; flex: 0 0 200px" size="small" />
+						<el-input v-model="req.webhook_url" placeholder="调试 URL（模拟发送的目标地址，留空使用上方 URL）" size="small" />
+					</div>
 				</div>
 
 				<div class="api-detail-body">
+					<!-- WebSocket 调试面板 -->
+					<div v-if="req.protocol === 'websocket'" class="ws-panel">
+						<div class="ws-toolbar">
+							<el-button type="primary" size="small" @click="wsConnect">测试连接</el-button>
+							<span class="ws-status" :style="{ color: wsLastOk ? '#67c23a' : '#909399' }">{{ wsLastOk ? '上次连接正常' : '未连接' }}</span>
+							<span class="ws-muted">每次发送为「连接→发送→接收→断开」完整往返</span>
+						</div>
+						<div class="ws-message-box">
+							<el-input v-model="wsMessage" type="textarea" :rows="4" placeholder="输入要发送的消息（文本或 JSON）" />
+							<el-button type="primary" @click="wsSend">发送</el-button>
+						</div>
+						<div class="ws-history">
+							<div v-for="(m, i) in wsMessages" :key="i" class="ws-msg" :class="m.dir">
+								<span class="ws-msg-time">{{ m.time }}</span>
+								<span class="ws-msg-tag" :class="m.dir">{{ m.dir === 'sent' ? '发送' : '接收' }}</span>
+								<pre class="ws-msg-content">{{ m.content }}</pre>
+							</div>
+							<el-empty v-if="!wsMessages.length" description="暂无消息：先「测试连接」，再输入消息点「发送」" :image-size="60" />
+						</div>
+					</div>
 					<!-- 请求区 -->
-					<div class="request-section" :style="resCollapsed ? 'flex: 1 1 auto' : ''">
+					<div v-if="req.protocol !== 'websocket'" class="request-section" :style="resCollapsed ? 'flex: 1 1 auto' : ''">
 						<div class="panel-card">
 							<el-tabs v-model="req_active" class="apifox-tabs" style="height: 100%">
 								<!-- Params -->
@@ -618,7 +647,7 @@ mode="assert"
 				</el-dialog>
 
 				<!-- 响应区 -->
-				<div class="response-section" :class="{ 'response-section--collapsed': resCollapsed }">
+				<div v-if="req.protocol !== 'websocket'" class="response-section" :class="{ 'response-section--collapsed': resCollapsed }">
 					<div class="panel-card">
 						<div class="res-tab-header">
 							<el-tabs v-model="res_active" class="apifox-tabs res-tabs" style="flex:1;min-width:0">
@@ -1496,16 +1525,76 @@ const uploadBinaryFile = async (options: any) => {
 	} catch { ElMessage.error('上传失败'); }
 };
 
+const onProtocolChange = () => {
+	wsMessages.value = [];
+	if (req.value.protocol === 'webhook') req.value.method = 2;
+};
+
+// ---- WebSocket 调试（代理往返：连接->发送->接收->断开）----
+const wsMessages = ref<{ dir: 'sent' | 'recv'; time: string; content: string }[]>([]);
+const wsMessage = ref('');
+const wsLastOk = ref(false);
+const nowTime = () => {
+	const d = new Date();
+	return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+};
+const wsConnect = async () => {
+	const url = String(req.value.url || '').trim();
+	if (!url) { ElMessage.warning('请先填写 WebSocket 地址（ws:// 或 wss:// 开头）'); return; }
+	try {
+		const r: any = await useApiAutomationApi().wsTest({ url, message: '', connect_only: true, headers: req.value.header || [] });
+		if (r?.code === 200 && r?.data?.ok) {
+			wsLastOk.value = true;
+			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}` });
+			ElMessage.success('连接成功');
+		} else {
+			wsLastOk.value = false;
+			ElMessage.error(`连接失败：${r?.data?.error || r?.message || '未知错误'}`);
+		}
+	} catch (e: any) {
+		wsLastOk.value = false;
+		ElMessage.error(`连接失败：${e?.message || '未知错误'}`);
+	}
+};
+const wsSend = async () => {
+	const text = wsMessage.value.trim();
+	if (!text) { ElMessage.warning('请输入要发送的消息'); return; }
+	const url = String(req.value.url || '').trim();
+	if (!url) { ElMessage.warning('请先填写 WebSocket 地址'); return; }
+	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
+	wsMessage.value = '';
+	try {
+		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [] });
+		if (r?.code === 200) {
+			const data = r.data || {};
+			if (data.ok) {
+				wsLastOk.value = true;
+				if (data.received != null) wsMessages.value.push({ dir: 'recv', time: nowTime(), content: String(data.received) });
+				else if (data.timeout) wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `（${data.elapsed}s 内未收到响应）` });
+			} else {
+				wsLastOk.value = false;
+				wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `失败：${data.error || '未知错误'}` });
+			}
+		} else {
+			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `调试失败：${r?.message || ''}` });
+		}
+	} catch (e: any) {
+		wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `调试失败：${e?.message || ''}` });
+	}
+};
+
 const sendRequest = async () => {
 	const id = apiId.value;
 	if (!id) { ElMessage.warning('无法获取接口ID'); return; }
+	if (req.value.protocol === 'websocket') { wsSend(); return; }
 	const urlText = String(req.value.url || '');
 	if (/\{\{.+\}\}/.test(urlText) && (props.envId == null || props.envId === '' || Number(props.envId) === 0)) {
 		ElMessage.warning('URL 含环境变量，请先在右上角选择环境后再发送');
 		return;
 	}
 	try {
-		const requestData: any = { id: Number(id), env_id: props.envId, url: req.value.url, req: req.value };
+		const finalUrl = req.value.protocol === 'webhook' && req.value.webhook_url ? String(req.value.webhook_url).trim() : req.value.url;
+		const requestData: any = { id: Number(id), env_id: props.envId, url: finalUrl, req: req.value };
 		const response: any = await api_send(requestData);
 		if (response.code === 200) {
 			const data = response.data;
@@ -1903,4 +1992,19 @@ const confirmSaveAsCase = async () => {
 .res-copy-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: transparent; border: 1px solid #4a4a4a; border-radius: 3px; color: #aaa; font-size: 11px; cursor: pointer; transition: all .15s; }
 .res-copy-btn:hover { background: #3c3c3c; color: #e0e0e0; border-color: #666; }
 .res-copy-btn.copied { color: #4ec9b0; border-color: #4ec9b0; }
+.ws-panel { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.ws-toolbar { display: flex; align-items: center; gap: 10px; }
+.ws-status { font-size: 13px; }
+.ws-muted { font-size: 12px; color: #909399; }
+.ws-message-box { display: flex; gap: 8px; align-items: flex-start; }
+.ws-message-box .el-textarea { flex: 1; }
+.ws-history { flex: 1 1 auto; overflow: auto; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+.ws-msg { display: flex; align-items: flex-start; gap: 8px; }
+.ws-msg.sent { flex-direction: row; }
+.ws-msg-time { font-size: 12px; color: #909399; white-space: nowrap; margin-top: 2px; }
+.ws-msg-tag { font-size: 12px; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.ws-msg-tag.sent { background: #ecf5ff; color: #409eff; }
+.ws-msg-tag.recv { background: #f0f9eb; color: #67c23a; }
+.ws-msg-content { margin: 0; font-size: 13px; background: var(--el-fill-color-light); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; word-break: break-all; flex: 1; }
+.webhook-bar { display: flex; gap: 8px; margin-top: 8px; }
 </style>
