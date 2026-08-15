@@ -205,10 +205,9 @@
 			<el-button type="primary" :loading="saving" @click="save">保存</el-button>
 		</div>
 	</div>
-</template>
-
 	<!-- 批量编辑弹窗（Apifox：逗号模式/冒号模式） -->
 	<BatchEditDialog v-model="batchVisible" :target="batchTarget" :initial-text="batchInitText" @apply="onBatchApply" />
+</template>
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
