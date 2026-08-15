@@ -1181,13 +1181,18 @@ const opLabel = (op: any) => {
 }
 
 const beforeCount = computed(() => {
-	let n = (req.value.before || []).length
-	if (req.value.inherit_before !== false && inheritBefore.value.length) n += inheritBefore.value.length
+	// 只统计勾选启用（enabled !== false）的操作；继承操作另需未被剔除（excludes）且父级允许代入子级
+	let n = (req.value.before || []).filter((op: any) => op.enabled !== false).length
+	if (req.value.inherit_before !== false && inheritBefore.value.length) {
+		n += inheritBefore.value.filter((op: any) => op.inherit_child !== false && !isBeforeExcluded(op)).length
+	}
 	return n
 })
 const afterCount = computed(() => {
-	let n = (req.value.after || []).length
-	if (req.value.inherit_after !== false && inheritAfter.value.length) n += inheritAfter.value.length
+	let n = (req.value.after || []).filter((op: any) => op.enabled !== false).length
+	if (req.value.inherit_after !== false && inheritAfter.value.length) {
+		n += inheritAfter.value.filter((op: any) => op.inherit_child !== false && !isAfterExcluded(op)).length
+	}
 	return n
 })
 
