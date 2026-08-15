@@ -1,17 +1,13 @@
 <template>
 	<el-dialog
+		v-if="!embedded"
 		v-model="visible"
-		:title="embedded ? '' : dialogTitle"
-		:width="embedded ? '100%' : '760px'"
+		:title="dialogTitle"
+		width="760px"
 		destroy-on-close
-		:append-to-body="!embedded"
-		:modal="!embedded"
-		:show-close="!embedded"
-		:class="embedded ? 'cp-embedded-dialog' : ''"
-		:style="embedded ? 'position:relative' : ''"
 		@closed="onClosed"
 	>
-		<div class="common-params-tip">{{ curMenuId ? "目录参数：对当前目录（根目录/子目录）及其下所有接口生效，可配置 Auth、前置操作、后置操作" : "模块级全局参数：对本模块所有接口生效（Header/Cookie/Query/Body）" }}</div>
+<div class="common-params-tip">{{ curMenuId ? "目录参数：对当前目录（根目录/子目录）及其下所有接口生效，可配置 Auth、前置操作、后置操作" : "模块级全局参数：对本模块所有接口生效（Header/Cookie/Query/Body）" }}</div>
 					<div class="common-params-tip">
 			对本模块下所有接口生效。发送时自动合并；接口内同名参数优先生效。
 		</div>
@@ -78,11 +74,83 @@
 			</el-tab-pane>
 						</el-tabs>
 		<template #footer>
-			<el-button v-if="!embedded" @click="visible = false">取消</el-button>
+			<el-button @click="visible = false">取消</el-button>
 			<el-button type="primary" :loading="saving" @click="save">保存</el-button>
 		</template>
 	</el-dialog>
+	<div v-else class="cp-embedded">
+<div class="common-params-tip">{{ curMenuId ? "目录参数：对当前目录（根目录/子目录）及其下所有接口生效，可配置 Auth、前置操作、后置操作" : "模块级全局参数：对本模块所有接口生效（Header/Cookie/Query/Body）" }}</div>
+					<div class="common-params-tip">
+			对本模块下所有接口生效。发送时自动合并；接口内同名参数优先生效。
+		</div>
+		<el-tabs v-model="activeTab">
+			<el-tab-pane name="header">
+				<template #label>
+					<el-badge :show-zero="false" :value="countEnabled(form.header)" :offset="[10, 2]" type="danger">Header</el-badge>
+				</template>
+				<div class="kv-list">
+					<div v-for="(row, i) in form.header" :key="'h'+i" class="kv-row">
+						<el-checkbox v-model="row.status" />
+						<el-input v-model="row.key" placeholder="Header 名" size="small" />
+						<el-input v-model="row.value" placeholder="Header 值" size="small" />
+						<el-button type="danger" link size="small" @click="form.header.splice(i, 1)">删除</el-button>
+					</div>
+					<el-button type="primary" link size="small" @click="form.header.push(emptyKv())">+ 添加 Header</el-button>
+				</div>
+			</el-tab-pane>
+			<el-tab-pane name="cookie">
+				<template #label>
+					<el-badge :show-zero="false" :value="countEnabled(form.cookie)" :offset="[10, 2]" type="danger">Cookie</el-badge>
+				</template>
+				<div class="kv-list">
+					<div v-for="(row, i) in form.cookie" :key="'c'+i" class="kv-row">
+						<el-checkbox v-model="row.status" />
+						<el-input v-model="row.key" placeholder="Cookie 名" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="Cookie 值" size="small" style="flex:1.4" />
+						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:1" />
+						<el-button type="danger" link size="small" @click="form.cookie.splice(i, 1)">删除</el-button>
+					</div>
+					<el-button type="primary" link size="small" @click="form.cookie.push(emptyCookie())">+ 添加 Cookie</el-button>
+				</div>
+			</el-tab-pane>
+			<el-tab-pane name="query">
+				<template #label>
+					<el-badge :show-zero="false" :value="countEnabled(form.query)" :offset="[10, 2]" type="danger">Query</el-badge>
+				</template>
+				<div class="kv-list">
+					<div v-for="(row, i) in form.query" :key="'q'+i" class="kv-row">
+						<el-checkbox v-model="row.status" />
+						<el-input v-model="row.key" placeholder="参数名" size="small" />
+						<el-input v-model="row.value" placeholder="参数值" size="small" />
+						<el-button type="danger" link size="small" @click="form.query.splice(i, 1)">删除</el-button>
+					</div>
+					<el-button type="primary" link size="small" @click="form.query.push(emptyKv())">+ 添加 Query</el-button>
+				</div>
+			</el-tab-pane>
+			<el-tab-pane name="body">
+				<template #label>
+					<el-badge :show-zero="false" :value="countEnabled(form.body)" :offset="[10, 2]" type="danger">Body</el-badge>
+				</template>
+				<div class="common-params-tip" style="margin-bottom:8px">
+					以键值形式合并到 JSON / form-data / x-www-form-urlencoded（接口同名键覆盖）。
+				</div>
+				<div class="kv-list">
+					<div v-for="(row, i) in form.body" :key="'b'+i" class="kv-row">
+						<el-checkbox v-model="row.status" />
+						<el-input v-model="row.key" placeholder="字段名" size="small" />
+						<el-input v-model="row.value" placeholder="字段值" size="small" />
+						<el-button type="danger" link size="small" @click="form.body.splice(i, 1)">删除</el-button>
+					</div>
+					<el-button type="primary" link size="small" @click="form.body.push(emptyKv())">+ 添加 Body 字段</el-button>
+				</div>
+			</el-tab-pane>
+						</el-tabs>
+		<div style="text-align:right;margin-top:12px">
+			<el-button type="primary" :loading="saving" @click="save">保存</el-button>
+		</div>
+	</div>
 </template>
+
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
@@ -221,21 +289,8 @@ defineExpose({ open });
 </script>
 
 <style scoped>
-.cp-embedded-dialog {
-	box-shadow: none !important;
-	border: none !important;
-	border-radius: 0 !important;
-	background: transparent !important;
-}
-.cp-embedded-dialog :deep(.el-dialog__header) {
-	display: none;
-}
-.cp-embedded-dialog :deep(.el-dialog__body) {
-	padding: 0;
-	overflow: visible;
-}
-.cp-embedded-dialog :deep(.el-dialog__footer) {
-	padding: 12px 0 0;
+.cp-embedded {
+	padding: 2px;
 }
 .common-params-tip {
 	font-size: 12px;
