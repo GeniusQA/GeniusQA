@@ -11,6 +11,7 @@
 			</div>
 			<div class="header-right">
 				<el-select
+					ref="envSelectRef"
 					v-model="selectedEnvId"
 					placeholder="请选择环境"
 					clearable
@@ -22,8 +23,13 @@
 						:label="env.name"
 						:value="env.id"
 					/>
+					<template #footer>
+						<div class="env-manage-entry" @click.stop="openEnvCenter">
+							<el-icon><Setting /></el-icon>
+							<span>管理环境</span>
+						</div>
+					</template>
 				</el-select>
-				<el-button size="small" @click="envCenterRef?.open()">环境管理</el-button>
 			</div>
 		</div>
 
@@ -243,6 +249,11 @@ const envList = ref<any[]>([]);
 const envLoading = ref(false);
 const envDialogVisible = ref(false);
 const envCenterRef = ref<any>(null);
+const envSelectRef = ref<any>(null);
+const openEnvCenter = () => {
+	envSelectRef.value?.blur();
+	envCenterRef.value?.open();
+};
 const envSearchName = ref('');
 const filteredEnvList = computed(() =>
 	envSearchName.value
@@ -355,6 +366,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.env-manage-entry {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border-top: 1px solid #e5e7eb;
+	color: #7c3aed;
+	font-size: 13px;
+	cursor: pointer;
+}
+.env-manage-entry:hover {
+	background: #f3f4f6;
+}
+
 .service-detail-container {
 	display: flex;
 	flex-direction: column;
