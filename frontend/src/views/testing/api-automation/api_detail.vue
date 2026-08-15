@@ -2061,7 +2061,7 @@ const confirmSaveAsCase = async () => {
 .res-copy-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: transparent; border: 1px solid #4a4a4a; border-radius: 3px; color: #aaa; font-size: 11px; cursor: pointer; transition: all .15s; }
 .res-copy-btn:hover { background: #3c3c3c; color: #e0e0e0; border-color: #666; }
 .res-copy-btn.copied { color: #4ec9b0; border-color: #4ec9b0; }
-.ws-panel { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.ws-panel { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.05); padding: 10px; }
 .ws-badge { margin-right: 8px; border: none; }
 .ws-msg-editor { display: flex; flex-direction: column; gap: 8px; }
 .ws-format-row { display: flex; align-items: center; gap: 10px; }
