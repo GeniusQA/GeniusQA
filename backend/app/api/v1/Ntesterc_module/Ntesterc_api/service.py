@@ -821,6 +821,21 @@ class ApiAutomationService:
         if "common_params" in body and body["common_params"] is not None:
             await ApiAutomationService._ensure_service_common_params_column(db)
             values["common_params"] = body["common_params"]
+        if "module_vars" in body and body["module_vars"] is not None:
+            # 模块变量：合并写入 common_params.vars
+            await ApiAutomationService._ensure_service_common_params_column(db)
+            _row = (
+                await db.execute(
+                    select(ApiServiceModel).where(
+                        ApiServiceModel.id == int(service_id),
+                        ApiServiceModel.enabled_flag == 1,
+                        ApiServiceModel.created_by == user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            _cp = dict(_row.common_params) if isinstance(_row.common_params, dict) else {}
+            _cp["vars"] = body["module_vars"]
+            values["common_params"] = _cp
         await db.execute(
             update(ApiServiceModel)
             .where(ApiServiceModel.id == int(service_id), ApiServiceModel.enabled_flag == 1, ApiServiceModel.created_by == user_id)

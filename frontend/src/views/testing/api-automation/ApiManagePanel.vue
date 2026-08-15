@@ -63,7 +63,51 @@
 
 			<!-- 右侧接口详情 -->
 			<div class="detail-panel">
-				<div v-if="!apiTabs.length" class="detail-empty">
+				<div v-if="selectedModule && !apiTabs.length" class="module-detail">
+					<div class="module-detail-head">
+						<h3 class="module-detail-title">{{ selectedModule.name }}</h3>
+						<el-button type="primary" size="small" @click="saveModuleVars">保存</el-button>
+					</div>
+					<el-tabs v-model="moduleDetailTab" class="module-detail-tabs">
+						<el-tab-pane label="概览" name="overview">
+							<div class="md-stats">
+								<div class="md-stat-card"><div class="md-stat-num">{{ moduleStats.apiCount }}</div><div class="md-stat-label">接口数</div></div>
+								<div class="md-stat-card"><div class="md-stat-num">{{ moduleStats.caseCount }}</div><div class="md-stat-label">用例数</div></div>
+								<div class="md-stat-card"><div class="md-stat-num">{{ moduleStats.dirCount }}</div><div class="md-stat-label">目录数</div></div>
+							</div>
+							<div class="md-section">
+								<div class="md-section-head">
+									<span class="md-section-title">绑定数据源</span>
+									<el-button link type="primary" size="small" @click="openImportDialog">+ 添加数据源</el-button>
+								</div>
+								<div v-if="moduleSource.source_type" class="md-source-row">
+									<span class="md-source-tag">{{ sourceTypeLabel(moduleSource.source_type) }}</span>
+									<span class="md-source-addr">{{ moduleSource.source_addr || '（未配置地址）' }}</span>
+								</div>
+								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」从 OpenAPI/Swagger、Postman、cURL 等格式导入接口</div>
+							</div>
+						</el-tab-pane>
+						<el-tab-pane label="模块变量" name="vars">
+							<div class="md-vars-head">
+								<span>变量名</span>
+								<span>远程值</span>
+								<span>本地值</span>
+								<span style="width: 50px"></span>
+							</div>
+							<div v-for="(v, i) in moduleVars" :key="i" class="md-vars-row">
+								<el-input v-model="v.key" placeholder="添加变量" size="small" />
+								<el-input v-model="v.remote" placeholder="远程值" size="small" />
+								<el-input v-model="v.local" placeholder="跟随远程值" size="small" />
+								<el-button type="danger" link size="small" @click="moduleVars.splice(i, 1)">删除</el-button>
+							</div>
+							<div class="md-vars-actions">
+								<el-button type="primary" link size="small" @click="moduleVars.push({ key: '', remote: '', local: '' })">+ 添加变量</el-button>
+								<el-button type="primary" link size="small" @click="openModuleVarsBulk">批量编辑</el-button>
+							</div>
+						</el-tab-pane>
+					</el-tabs>
+				</div>
+				<div v-else-if="!apiTabs.length" class="detail-empty">
 					<el-icon style="font-size:40px;color:#dcdfe6"><Document /></el-icon>
 					<p>点击左侧接口查看详情</p>
 				</div>
@@ -240,6 +284,9 @@
 			@imported="onPreviewImported"
 		/>
 
+		<!-- 模块变量批量编辑 -->
+		<BatchEditDialog v-model="moduleVarsBulkVisible" :target="'module_vars'" :initial-text="moduleVarsBulkText" @apply="applyModuleVarsBulk" />
+
 		<!-- 新增目录/接口弹窗 -->
 		<el-dialog v-model="menuDialogVisible" :title="menuDialogTitle" width="400px" destroy-on-close>
 			<el-form label-width="80px">
@@ -288,11 +335,12 @@ import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
+import BatchEditDialog from './components/BatchEditDialog.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
 import {
-	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu, useApiAutomationApi,
+	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu, useApiAutomationApi, api_service_list,
 	pull_api_doc, edit_api_service, add_api_service, del_api_service, sort_menu,
 } from '/@/api/v1/testing/apiAutomation';
 
@@ -403,7 +451,76 @@ const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string
 	}
 }
 
+const selectedModule = ref<any>(null);
+const moduleDetailTab = ref('overview');
+const moduleVars = ref<{ key: string; remote: string; local: string }[]>([]);
+const moduleSource = ref<{ source_type: string; source_addr: string }>({ source_type: '', source_addr: '' });
+const moduleVarsBulkVisible = ref(false);
+const moduleVarsBulkText = ref('');
+
+const moduleStats = computed(() => {
+	const children = selectedModule.value?.children || [];
+	let apiCount = 0, caseCount = 0, dirCount = 0;
+	const walk = (nodes: any[]) => {
+		for (const n of nodes || []) {
+			if (n.type === 2) apiCount++;
+			else if (n.type === 3) caseCount++;
+			else if (n.type === 1) dirCount++;
+			walk(n.children || []);
+		}
+	};
+	walk(children);
+	return { apiCount, caseCount, dirCount };
+});
+
+const sourceTypeLabel = (t: string) =>
+	t === 'apifox' ? 'Apifox' : t === 'postman' ? 'Postman' : t === 'curl' ? 'cURL' : t ? 'OpenAPI/Swagger' : '';
+
+const loadModuleDetail = async (data: any) => {
+	selectedModule.value = data;
+	moduleDetailTab.value = 'overview';
+	moduleSource.value = { source_type: '', source_addr: '' };
+	moduleVars.value = [];
+	try {
+		const r: any = await api_service_list({ project_id: props.serviceId });
+		const list = r?.data || [];
+		const svc = list.find((s: any) => Number(s.id) === Number(data.api_service_id));
+		if (svc) {
+			moduleSource.value = { source_type: svc.source_type || '', source_addr: svc.source_addr || '' };
+			const cp = svc.common_params;
+			const vars = cp && typeof cp === 'object' && Array.isArray((cp as any).vars) ? (cp as any).vars : [];
+			moduleVars.value = vars.map((v: any) => ({ key: String(v.key || ''), remote: String(v.remote ?? v.value ?? ''), local: String(v.local ?? '') }));
+		}
+	} catch {}
+};
+
+const saveModuleVars = async () => {
+	if (!selectedModule.value) return;
+	try {
+		await edit_api_service({ id: Number(selectedModule.value.api_service_id), module_vars: moduleVars.value } as any);
+		ElMessage.success('模块变量已保存');
+	} catch (e: any) {
+		ElMessage.error(e?.message || '保存失败');
+	}
+};
+
+const openModuleVarsBulk = () => {
+	moduleVarsBulkText.value = moduleVars.value
+		.map((v) => `${v.key || ''},string,true,${v.remote || ''},true,`)
+		.join('\n');
+	moduleVarsBulkVisible.value = true;
+};
+
+const applyModuleVarsBulk = (rows: any[]) => {
+	moduleVars.value = rows.map((r) => ({ key: String(r.key || ''), remote: String(r.value || ''), local: '' }));
+};
+
 const onNodeClick = async (data: any) => {
+	if (data.type === 0) {
+		apiTabs.value = [];
+		await loadModuleDetail(data);
+		return;
+	}
 	if (data.type !== 2 && data.type !== 3) return;
 	const existing = apiTabs.value.find((t) => t.id === data.id);
 	if (existing) { activeTab.value = existing.name; return; }
@@ -1020,4 +1137,23 @@ onMounted(() => {
 }
 .import-dropzone { width: 100%; }
 .import-dropzone :deep(.el-upload-dragger) { width: 100%; }
+.module-detail { padding: 4px 2px; }
+.module-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.module-detail-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); }
+.module-detail-tabs { }
+.md-stats { display: flex; gap: 12px; margin-bottom: 18px; }
+.md-stat-card { flex: 1; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; text-align: center; background: var(--el-bg-color); }
+.md-stat-num { font-size: 24px; font-weight: 600; color: var(--el-text-color-primary); }
+.md-stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; }
+.md-section { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 14px; }
+.md-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.md-section-title { font-size: 14px; font-weight: 600; }
+.md-source-row { display: flex; align-items: center; gap: 10px; }
+.md-source-tag { font-size: 11px; color: #fff; background: #7c3aed; border-radius: 4px; padding: 2px 8px; }
+.md-source-addr { font-size: 13px; color: var(--el-text-color-regular); font-family: Consolas, Monaco, monospace; word-break: break-all; }
+.md-source-empty { font-size: 12px; color: var(--el-text-color-secondary); }
+.md-vars-head, .md-vars-row { display: grid; grid-template-columns: 1fr 1fr 1fr 50px; gap: 8px; align-items: center; }
+.md-vars-head { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
+.md-vars-row { margin-bottom: 6px; }
+.md-vars-actions { margin-top: 8px; display: flex; gap: 12px; }
 </style>

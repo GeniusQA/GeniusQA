@@ -196,7 +196,17 @@ async def api_service_list(
         body = await body_to_json(request)
         project_id = body.get("project_id")
         data = await ApiAutomationService.get_services(db, project_id, current_user_id)
-        rows = [{"id": i["id"], "name": i["name"]} for i in data.get("content", [])]
+        rows = [
+            {
+                "id": i["id"],
+                "name": i["name"],
+                "source_type": i.get("source_type"),
+                "source_addr": i.get("source_addr"),
+                "last_pull_status": i.get("last_pull_status"),
+                "common_params": i.get("common_params"),
+            }
+            for i in data.get("content", [])
+        ]
         return success_response(rows, message="请求成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
