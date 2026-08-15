@@ -1474,6 +1474,9 @@ watch(
 			auth_oauth_client_auth: reqSrc.auth_oauth_client_auth ?? 'basic',
 		};
 		res.value = { body: resSrc.body ?? {}, header: resSrc.header ?? {}, before: Array.isArray(resSrc.before) ? resSrc.before : [], after: Array.isArray(resSrc.after) ? resSrc.after : [], assert: Array.isArray(resSrc.assert) ? resSrc.assert : [], code: resSrc.code ?? 0, size: resSrc.size ?? 0, res_time: resSrc.res_time ?? 0, cookies: Array.isArray(resSrc.cookies) ? resSrc.cookies : [], console: Array.isArray(resSrc.console) ? resSrc.console : [], raw_request: resSrc.raw_request ?? null };
+		wsMessage.value = reqSrc.ws_message ?? '';
+		wsFormat.value = reqSrc.ws_format || 'Text';
+		wsMessages.value = [];
 		inheritBefore.value = Array.isArray(apiInfo.inherit_before) ? apiInfo.inherit_before : [];
 		inheritAfter.value = Array.isArray(apiInfo.inherit_after) ? apiInfo.inherit_after : [];
 	},
@@ -1745,6 +1748,10 @@ const handleSaveCommand = (command: string) => {
 const saveApi = async () => {
 	const id = apiId.value;
 	if (!id) { ElMessage.warning('无法获取接口ID'); return; }
+	if (req.value.protocol === 'websocket') {
+		req.value.ws_message = wsMessage.value;
+		req.value.ws_format = wsFormat.value;
+	}
 	try {
 		await save_api({ id: Number(id), url: req.value.url, req: req.value });
 		ElMessage.success('保存成功');
