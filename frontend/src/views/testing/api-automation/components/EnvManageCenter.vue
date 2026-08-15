@@ -47,8 +47,12 @@
 				<template v-else-if="section === 'env' && curEnv">
 					<div class="env-detail">
 						<div class="env-detail-head">
-							<span class="env-detail-title">{{ curEnv.id == null ? '新建环境' : '编辑环境' }}</span>
-							<el-input v-model="curEnv.name" placeholder="请输入环境名称" size="small" style="width: 240px" />
+							<el-input
+								v-model="curEnv.name"
+								:placeholder="curEnv.id == null ? '新建环境' : '编辑环境'"
+								class="env-name-input"
+								size="large"
+							/>
 							<el-button v-if="curEnv.id != null" size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
 						</div>
 
@@ -340,6 +344,22 @@ defineExpose({ open });
 	padding: 4px 2px;
 	font-size: 14px;
 	color: #dc2626;
+}
+.env-name-input {
+	width: 320px;
+}
+.env-name-input :deep(.el-input__wrapper) {
+	box-shadow: none !important;
+	background: transparent;
+	padding: 0;
+}
+.env-name-input :deep(.el-input__inner) {
+	font-size: 20px;
+	font-weight: 600;
+	color: #1f2937;
+}
+.env-name-input :deep(.el-input__inner::placeholder) {
+	color: #6b7280;
 }
 .env-block-tip {
 	font-size: 12px;
