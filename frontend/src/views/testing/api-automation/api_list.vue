@@ -117,7 +117,7 @@
 								@click.stop="pullDoc(row)"
 							>拉取</el-button>
 							<el-button type="warning" size="small" @click.stop="openEditDialog(row)">修改</el-button>
-							<el-button type="success" size="small" @click.stop="openEnvDialog(row)">环境</el-button>
+							<el-button type="success" size="small" @click.stop="openEnvCenter(row)">环境</el-button>
 							<el-button type="danger" size="small" @click.stop="deleteService(row)">删除</el-button>
 						</span>
 					</template>
@@ -185,68 +185,8 @@
 				<el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
 			</template>
 		</el-dialog>
-		<!-- 环境管理对话框 -->
-		<el-dialog v-model="envDialogVisible" title="环境管理" width="560px" @close="closeEnvDialog">
-			<div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px">
-				<el-input v-model="envSearchName" placeholder="输入环境名称" clearable style="width: 260px" />
-				<el-button type="primary" @click="openEnvFormDialog(null)">新增</el-button>
-			</div>
-			<el-table v-loading="envLoading" :data="filteredEnvList" border stripe empty-text="暂无环境">
-				<el-table-column prop="name" label="环境名称" min-width="160" show-overflow-tooltip />
-				<el-table-column label="操作" width="140" align="center">
-					<template #default="{ row }">
-						<el-button type="warning" size="small" @click="openEnvFormDialog(row)">编辑</el-button>
-						<el-button type="danger" size="small" @click="deleteEnv(row)">删除</el-button>
-					</template>
-				</el-table-column>
-			</el-table>
-		</el-dialog>
-
-		<!-- 新增/编辑环境表单对话框 -->
-		<el-dialog
-			v-model="envFormVisible"
-			:title="envForm.id ? '编辑环境' : '新增环境'"
-			width="680px"
-			@close="resetEnvForm"
-		>
-			<el-form :model="envForm" label-width="80px">
-				<el-form-item label="* 环境名称">
-					<el-input v-model="envForm.name" placeholder="请输入环境名称" />
-				</el-form-item>
-				<el-form-item label="配置项">
-					<div style="width: 100%">
-						<div
-							v-for="(item, idx) in envForm.config"
-							:key="idx"
-							style="display: flex; gap: 8px; margin-bottom: 6px"
-						>
-							<el-input v-model="item.name" placeholder="配置项名（如 base_url）" style="flex: 1" />
-							<el-input v-model="item.value" placeholder="配置项值（如 https://uapis.cn）" style="flex: 1" />
-							<el-button type="danger" size="small" @click="envForm.config.splice(idx, 1)">删除</el-button>
-						</div>
-						<el-button size="small" @click="envForm.config.push({ name: '', value: '' })">添加配置项</el-button>
-					</div>
-				</el-form-item>
-				<el-form-item label="环境变量">
-					<div style="width: 100%">
-						<div
-							v-for="(item, idx) in envForm.variable"
-							:key="idx"
-							style="display: flex; gap: 8px; margin-bottom: 6px"
-						>
-							<el-input v-model="item.name" placeholder="变量名（如 token）" style="flex: 1" />
-							<el-input v-model="item.value" placeholder="变量值" style="flex: 1" />
-							<el-button type="danger" size="small" @click="envForm.variable.splice(idx, 1)">删除</el-button>
-						</div>
-						<el-button size="small" @click="envForm.variable.push({ name: '', value: '' })">添加变量</el-button>
-					</div>
-				</el-form-item>
-			</el-form>
-			<template #footer>
-				<el-button @click="envFormVisible = false">取消</el-button>
-				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
-			</template>
-		</el-dialog>
+			<!-- 环境管理（新版 EnvManageCenter） -->
+	<EnvManageCenter ref="envCenterRef" :service-id="curEnvServiceId" />
 	</div>
 </template>
 
@@ -255,6 +195,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import Sortable from 'sortablejs';
+import EnvManageCenter from './components/EnvManageCenter.vue';
 import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation';
 import { useUserApi } from '/@/api/v1/system/user';
 import { useProjectApi } from '/@/api/v1/projects/project';
@@ -274,10 +215,6 @@ const {
 	edit_api_service,
 	del_api_service,
 	pull_api_doc,
-	api_env,
-	add_env,
-	save_env,
-	del_env,
 	api_service_sort,
 } = useApiAutomationApi();
 
@@ -543,107 +480,13 @@ const submitForm = async () => {
 	}
 };
 
-// ---- 环境管理对话框 ----
-const envDialogVisible = ref(false);
-const envLoading = ref(false);
-const envList = ref<any[]>([]);
-const envSearchName = ref('');
-const filteredEnvList = computed(() =>
-	envSearchName.value
-		? envList.value.filter((e) => e.name?.includes(envSearchName.value))
-		: envList.value
-);
+// ---- 环境管理（EnvManageCenter）----
+const envCenterRef = ref<any>(null);
+const curEnvServiceId = ref<number | undefined>(undefined);
 
-// 新增/编辑环境表单
-const envFormVisible = ref(false);
-const envSaving = ref(false);
-const envForm = ref<{ id?: number; name: string; config: any[]; variable: any[] }>({
-	name: '', config: [], variable: [],
-});
-
-const openEnvDialog = async (_row: any) => {
-	envDialogVisible.value = true;
-	await loadEnvList();
-};
-
-const closeEnvDialog = () => {
-	envSearchName.value = '';
-	envList.value = [];
-};
-
-const loadEnvList = async () => {
-	envLoading.value = true;
-	try {
-		const res: any = await api_env();
-		const raw = res?.data;
-		envList.value = Array.isArray(raw) ? raw : (Array.isArray(raw?.content) ? raw.content : []);
-	} catch {
-		envList.value = [];
-	} finally {
-		envLoading.value = false;
-	}
-};
-
-const openEnvFormDialog = (row: any | null) => {
-	if (row) {
-		envForm.value = {
-			id: row.id,
-			name: row.name || '',
-			config: Array.isArray(row.config) ? row.config.map((c: any) => ({ ...c })) : [],
-			variable: Array.isArray(row.variable) ? row.variable.map((v: any) => ({ ...v })) : [],
-		};
-	} else {
-		envForm.value = { name: '', config: [{ name: '', value: '' }], variable: [] };
-	}
-	envFormVisible.value = true;
-};
-
-const resetEnvForm = () => {
-	envForm.value = { name: '', config: [], variable: [] };
-};
-
-const submitEnvForm = async () => {
-	if (!envForm.value.name.trim()) {
-		ElMessage.warning('请输入环境名称');
-		return;
-	}
-	envSaving.value = true;
-	try {
-		const payload = {
-			name: envForm.value.name.trim(),
-			config: envForm.value.config.filter((c) => String(c.name || '').trim()),
-			variable: envForm.value.variable.filter((v) => String(v.name || '').trim()),
-		};
-		if (envForm.value.id) {
-			await save_env({ env_list: [{ id: envForm.value.id, ...payload }] });
-			ElMessage.success('保存成功');
-		} else {
-			await add_env(payload);
-			ElMessage.success('新增成功');
-		}
-		envFormVisible.value = false;
-		await loadEnvList();
-	} catch (e: any) {
-		ElMessage.error(e?.message || '保存失败');
-	} finally {
-		envSaving.value = false;
-	}
-};
-
-const deleteEnv = async (row: any) => {
-	try {
-		await ElMessageBox.confirm(`确认删除环境「${row.name}」？`, '提示', {
-			type: 'warning',
-			confirmButtonText: '确定',
-			cancelButtonText: '取消',
-		});
-		await del_env({ id: row.id });
-		ElMessage.success('删除成功');
-		await loadEnvList();
-	} catch (e: any) {
-		if (e === 'cancel' || e === 'close') return;
-		ElMessage.error(e?.message || '删除失败');
-	}
+const openEnvCenter = (row: any) => {
+	curEnvServiceId.value = row?.id || undefined;
+	setTimeout(() => envCenterRef.value?.open?.(), 30);
 };
 
 onMounted(async () => {

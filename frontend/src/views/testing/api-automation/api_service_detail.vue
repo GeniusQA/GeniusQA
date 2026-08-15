@@ -65,72 +65,7 @@
 			</el-tab-pane>
 		</el-tabs>
 
-		<!-- 环境管理对话框 -->
-		<el-dialog v-model="envDialogVisible" title="环境管理" width="560px" @close="closeEnvDialog">
-			<div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px">
-				<el-input v-model="envSearchName" placeholder="输入环境名称" clearable style="width: 220px" />
-				<el-button type="primary" @click="openEnvFormDialog(null)">
-					<el-icon><ele-Plus /></el-icon>
-					新增
-				</el-button>
-			</div>
-			<el-table v-loading="envLoading" :data="filteredEnvList" border stripe empty-text="暂无环境">
-				<el-table-column prop="name" label="环境名称" min-width="160" show-overflow-tooltip />
-				<el-table-column label="操作" width="140" align="center">
-					<template #default="{ row }">
-						<el-button type="warning" size="small" @click="openEnvFormDialog(row)">编辑</el-button>
-						<el-button type="danger" size="small" @click="deleteEnv(row)">删除</el-button>
-					</template>
-				</el-table-column>
-			</el-table>
-		</el-dialog>
-
-		<!-- 新增/编辑环境表单对话框 -->
-		<el-dialog
-			v-model="envFormVisible"
-			:title="envForm.id ? '编辑环境' : '新增环境'"
-			width="680px"
-			@close="resetEnvForm"
-		>
-			<el-form :model="envForm" label-width="80px">
-				<el-form-item label="* 环境名称">
-					<el-input v-model="envForm.name" placeholder="请输入环境名称" />
-				</el-form-item>
-				<el-form-item label="配置项">
-					<div style="width: 100%">
-						<div
-							v-for="(item, idx) in envForm.config"
-							:key="idx"
-							style="display: flex; gap: 8px; margin-bottom: 6px"
-						>
-							<el-input v-model="item.name" placeholder="配置项名（如 base_url）" style="flex: 1" />
-							<el-input v-model="item.value" placeholder="配置项值（如 https://uapis.cn）" style="flex: 1" />
-							<el-button type="danger" size="small" @click="envForm.config.splice(idx, 1)">删除</el-button>
-						</div>
-						<el-button size="small" @click="envForm.config.push({ name: '', value: '' })">添加配置项</el-button>
-					</div>
-				</el-form-item>
-				<el-form-item label="环境变量">
-					<div style="width: 100%">
-						<div
-							v-for="(item, idx) in envVisibleVars"
-							:key="item._i"
-							style="display: flex; gap: 8px; margin-bottom: 6px"
-						>
-							<el-input v-model="item.name" placeholder="变量名（如 token）" style="flex: 1" />
-							<el-input v-model="item.value" placeholder="变量值" style="flex: 1" />
-							<el-button type="danger" size="small" @click="envForm.variable.splice(item._i, 1)">删除</el-button>
-						</div>
-						<div style="font-size: 11px; color: #94a3b8; margin: 4px 0 6px">环境变量：脚本 ntest.set 的变量会自动写入此处，可被 {{变量名}} 引用</div>
-						<el-button size="small" @click="envForm.variable.push({ name: '', value: '' })">添加变量</el-button>
-					</div>
-				</el-form-item>
-			</el-form>
-			<template #footer>
-				<el-button @click="envFormVisible = false">取消</el-button>
-				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
-			</template>
-		</el-dialog>
+		
 
 		<EnvManageCenter ref="envCenterRef" :service-id="currentServiceId" />
 	</div>
@@ -237,40 +172,25 @@ watch(
 	}
 );
 
-const {
-	api_env,
-	add_env,
-	save_env,
-	del_env,
-} = useApiAutomationApi();
+const { api_env } = useApiAutomationApi();
 
 // ---- 环境列表 ----
 const envList = ref<any[]>([]);
 const envLoading = ref(false);
-const envDialogVisible = ref(false);
 const envCenterRef = ref<any>(null);
 const envSelectRef = ref<any>(null);
 const openEnvCenter = () => {
 	envSelectRef.value?.blur();
 	envCenterRef.value?.open();
 };
-const envSearchName = ref('');
+
 const filteredEnvList = computed(() =>
 	envSearchName.value
 		? envList.value.filter((e) => e.name?.includes(envSearchName.value))
 		: envList.value
 );
 
-// 新增/编辑环境表单
-const envFormVisible = ref(false);
-const envSaving = ref(false);
-const envVisibleVars = computed(() => {
-	return (envForm.value.variable || []).map((v: any, i: number) => ({ ...v, _i: i }))
-})
 
-const envForm = ref<{ id?: number; name: string; config: any[]; variable: any[] }>({
-	name: '', config: [], variable: [],
-});
 
 const loadEnvList = async () => {
 	envLoading.value = true;
@@ -283,80 +203,6 @@ const loadEnvList = async () => {
 		envList.value = [];
 	} finally {
 		envLoading.value = false;
-	}
-};
-
-const openEnvDialog = async () => {
-	envDialogVisible.value = true;
-	await loadEnvList();
-};
-
-const closeEnvDialog = () => {
-	envSearchName.value = '';
-};
-
-const openEnvFormDialog = (row: any | null) => {
-	if (row) {
-		envForm.value = {
-			id: row.id,
-			name: row.name || '',
-			config: Array.isArray(row.config) ? row.config.map((c: any) => ({ ...c })) : [],
-			variable: Array.isArray(row.variable) ? row.variable.map((v: any) => ({ ...v })) : [],
-		};
-	} else {
-		envForm.value = { name: '', config: [{ name: '', value: '' }], variable: [] };
-	}
-	envFormVisible.value = true;
-};
-
-const resetEnvForm = () => {
-	envForm.value = { name: '', config: [], variable: [] };
-};
-
-const submitEnvForm = async () => {
-	if (!envForm.value.name.trim()) {
-		ElMessage.warning('请输入环境名称');
-		return;
-	}
-	envSaving.value = true;
-	try {
-		const payload = {
-			name: envForm.value.name.trim(),
-			config: envForm.value.config.filter((c) => String(c.name || '').trim()),
-			variable: envForm.value.variable.filter((v) => String(v.name || '').trim()),
-		};
-		if (envForm.value.id) {
-			await save_env({ env_list: [{ id: envForm.value.id, ...payload }] });
-			ElMessage.success('保存成功');
-		} else {
-			await add_env(payload);
-			ElMessage.success('新增成功');
-		}
-		envFormVisible.value = false;
-		await loadEnvList();
-	} catch (e: any) {
-		ElMessage.error(e?.message || '保存失败');
-	} finally {
-		envSaving.value = false;
-	}
-};
-
-const deleteEnv = async (row: any) => {
-	try {
-		await ElMessageBox.confirm(`确认删除环境「${row.name}」？`, '提示', {
-			type: 'warning',
-			confirmButtonText: '确定',
-			cancelButtonText: '取消',
-		});
-		await del_env({ id: row.id });
-		ElMessage.success('删除成功');
-		if (Number(selectedEnvId.value) === Number(row.id)) {
-			selectedEnvId.value = null;
-		}
-		await loadEnvList();
-	} catch (e: any) {
-		if (e === 'cancel' || e === 'close') return;
-		ElMessage.error(e?.message || '删除失败');
 	}
 };
 
