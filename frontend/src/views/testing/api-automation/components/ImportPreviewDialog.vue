@@ -36,7 +36,10 @@
 						<el-input v-model="moduleName" placeholder="模块名称" size="small" class="ipv-input" />
 					</template>
 					<template v-else>
-						<div class="ipv-module-name">{{ serviceName || ('服务 #' + serviceId) }}</div>
+						<div class="ipv-label">选择模块</div>
+						<el-select v-model="selectedSvc" size="small" style="width: 100%" @change="onSvcChange">
+							<el-option v-for="s in svcList" :key="s.id" :label="s.name" :value="s.id" />
+						</el-select>
 						<div class="ipv-label" style="margin-top: 10px">目标目录</div>
 						<el-select v-model="targetPid" size="small" style="width: 100%">
 							<el-option label="根目录" :value="0" />
@@ -47,12 +50,38 @@
 						<span class="ipv-switch-label">为每个接口自动生成一个调试用例</span>
 						<el-switch v-model="genCase" />
 					</div>
+					<div class="ipv-switch-row">
+						<span class="ipv-switch-label">将 OpenAPI/Swagger 里的 Servers 导入为环境</span>
+						<el-switch v-model="serversToEnv" />
+					</div>
+					<div class="ipv-switch-row">
+						<span class="ipv-switch-label">导入 Security Scheme</span>
+						<el-switch v-model="importSecurity" />
+					</div>
+					<div class="ipv-switch-row">
+						<span class="ipv-switch-label">将目录 Auth 设置为 OpenAPI 的全局 Security</span>
+						<el-switch v-model="globalAuth" />
+					</div>
+					<template v-if="importSecurity">
+						<div class="ipv-label" style="margin-top: 10px">当导入的接口有设置 Security 时</div>
+						<el-radio-group v-model="hasSecStrategy" class="ipv-radio-col">
+							<el-radio value="inherit">继承父级</el-radio>
+							<el-radio value="none">无需鉴权</el-radio>
+							<el-radio value="scheme">对应的鉴权组件</el-radio>
+						</el-radio-group>
+						<div class="ipv-label" style="margin-top: 8px">未设置 Security 时</div>
+						<el-radio-group v-model="noSecStrategy" class="ipv-radio-col">
+							<el-radio value="inherit">继承父级</el-radio>
+							<el-radio value="none">无需鉴权</el-radio>
+							<el-radio value="scheme">对应的鉴权组件</el-radio>
+						</el-radio-group>
+					</template>
 				</div>
 			</div>
 		</div>
 		<template #footer>
 			<el-button @click="inner = false">取消</el-button>
-			<el-button type="primary" :loading="importing" @click="doImport">确定导入</el-button>
+			<el-button type="primary" :loading="importing" @click="doImport" style="flex: 1">确定导入</el-button>
 		</template>
 	</el-dialog>
 </template>
@@ -60,7 +89,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { api_tree, pull_api_doc } from '/@/api/v1/testing/apiAutomation';
+import { api_tree, api_service_list, pull_api_doc } from '/@/api/v1/testing/apiAutomation';
 
 const props = defineProps<{
 	modelValue: boolean;
@@ -86,6 +115,13 @@ watch(
 			moduleName.value = '';
 			targetPid.value = 0;
 			genCase.value = true;
+			serversToEnv.value = false;
+			importSecurity.value = true;
+			globalAuth.value = true;
+			hasSecStrategy.value = 'inherit';
+			noSecStrategy.value = 'inherit';
+			selectedSvc.value = Number(props.serviceId) || 0;
+			loadSvcList();
 			loadDirs();
 			// 等树渲染后勾选全部
 			setTimeout(() => {
@@ -103,7 +139,14 @@ const importTo = ref<'new' | 'existing'>('existing');
 const moduleName = ref('');
 const targetPid = ref(0);
 const genCase = ref(true);
+const serversToEnv = ref(false);
+const importSecurity = ref(true);
+const globalAuth = ref(true);
+const hasSecStrategy = ref('inherit');
+const noSecStrategy = ref('inherit');
 const dirList = ref<any[]>([]);
+const svcList = ref<any[]>([]);
+const selectedSvc = ref<number>(0);
 const importing = ref(false);
 
 const treeData = computed(() =>
@@ -127,9 +170,28 @@ const filterNode = (value: string, data: any) => {
 	return String(data.name || '').includes(value) || String(data.url || '').includes(value) || String(data.method || '').includes(value.toUpperCase());
 };
 
+const loadSvcList = async () => {
+	try {
+		const r: any = await api_service_list({});
+		svcList.value = Array.isArray(r?.data) ? r.data : [];
+		if (!svcList.value.some((s: any) => Number(s.id) === selectedSvc.value)) {
+			selectedSvc.value = svcList.value[0]?.id || 0;
+		}
+		loadDirs();
+	} catch {
+		svcList.value = [];
+	}
+};
+
+const onSvcChange = () => {
+	targetPid.value = 0;
+	loadDirs();
+};
+
 const loadDirs = async () => {
 	try {
-		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
+		const svcId = importTo.value === 'existing' ? selectedSvc.value : props.serviceId;
+		const r: any = await api_tree({ search: { api_service_id: svcId } });
 		const raw = r?.data;
 		const tree = Array.isArray(raw) ? raw : [];
 		const dirs: any[] = [];
@@ -164,13 +226,18 @@ const doImport = async () => {
 	importing.value = true;
 	try {
 		const r: any = await pull_api_doc({
-			api_service_id: props.serviceId,
+			api_service_id: importTo.value === 'new' ? props.serviceId : selectedSvc.value,
 			...props.importParams,
 			selected: checked,
 			create_module: importTo.value === 'new',
 			module_name: moduleName.value.trim(),
 			pid: importTo.value === 'new' ? 0 : targetPid.value,
 			gen_case: genCase.value,
+			servers_to_env: serversToEnv.value,
+			import_security: importSecurity.value,
+			global_auth: globalAuth.value,
+			has_sec_strategy: hasSecStrategy.value,
+			no_sec_strategy: noSecStrategy.value,
 		});
 		if (r?.code === 200) {
 			ElMessage.success('导入成功');
@@ -205,4 +272,5 @@ const doImport = async () => {
 .ipv-module-name { font-size: 13px; color: var(--el-text-color-primary); padding: 6px 10px; background: var(--el-fill-color-light); border-radius: 4px; }
 .ipv-switch-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); }
 .ipv-switch-label { font-size: 12px; color: var(--el-text-color-regular); }
+.ipv-radio-col { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 </style>

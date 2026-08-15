@@ -2693,6 +2693,33 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    def _apply_openapi_auth(req: Dict[str, Any], scheme: Dict[str, Any]) -> None:
+        """OpenAPI Security Scheme -> 平台 Auth 配置映射"""
+        if not isinstance(scheme, dict):
+            return
+        stype = str(scheme.get("type") or "").lower()
+        if stype == "apikey":
+            req["auth_type"] = "api_key"
+            req["auth_key"] = str(scheme.get("name") or "")
+            req["auth_in"] = str(scheme.get("in") or "header")
+            req["auth_value"] = ""
+        elif stype == "http":
+            s = str(scheme.get("scheme") or "").lower()
+            if s == "basic":
+                req["auth_type"] = "basic"
+                req["auth_username"] = ""
+                req["auth_password"] = ""
+            else:
+                req["auth_type"] = "bearer"
+                req["auth_token"] = ""
+        elif stype == "oauth2":
+            req["auth_type"] = "oauth2"
+            req["auth_oauth_access_token"] = ""
+            req["auth_oauth_token_url"] = str((scheme.get("flows") or {}).get("clientCredentials", {}).get("tokenUrl") or "")
+        else:
+            req["auth_type"] = "none"
+
+    @staticmethod
     def _preview_doc(doc: Any) -> List[Dict[str, Any]]:
         """提取文档接口清单（预览用，不写库）"""
         out: List[Dict[str, Any]] = []
@@ -3160,6 +3187,25 @@ class ApiAutomationService:
         target_pid = int(body.get("pid") or 0)
         created_api_ids: List[int] = []
         gen_case = bool(body.get("gen_case"))
+        servers_to_env = bool(body.get("servers_to_env"))
+        import_security = bool(body.get("import_security"))
+        global_auth = bool(body.get("global_auth"))
+        has_sec_strategy = str(body.get("has_sec_strategy") or "inherit")
+        no_sec_strategy = str(body.get("no_sec_strategy") or "inherit")
+        security_schemes: Dict[str, Any] = {}
+        if isinstance(doc_json, dict):
+            _comp = doc_json.get("components") or {}
+            if isinstance(_comp, dict) and isinstance(_comp.get("securitySchemes"), dict):
+                security_schemes = _comp.get("securitySchemes") or {}
+        top_security: list = []
+        if isinstance(doc_json, dict) and isinstance(doc_json.get("security"), list):
+            top_security = doc_json.get("security") or []
+        servers_url = ""
+        if isinstance(doc_json, dict) and isinstance(doc_json.get("servers"), list) and doc_json.get("servers"):
+            _s0 = doc_json.get("servers")[0]
+            if isinstance(_s0, dict):
+                servers_url = str(_s0.get("url") or "").strip()
+        api_security_map: Dict[int, list] = {}
 
         candidates = [
             doc_json.get("paths"),
@@ -3355,6 +3401,10 @@ class ApiAutomationService:
                     existing_apis.append(api_row)
                     imported_count += 1
                     created_api_ids.append(int(api_row.id))
+                    _op_sec = operation.get("security")
+                    if _op_sec is None:
+                        _op_sec = top_security
+                    api_security_map[int(api_row.id)] = _op_sec if isinstance(_op_sec, list) else []
 
                 leaf = (
                     await db.execute(
@@ -3416,6 +3466,123 @@ class ApiAutomationService:
                         )
                 except Exception:
                     pass
+
+        # ---- 导入增强：Servers -> 环境前置 URL ----
+        if servers_to_env and servers_url:
+            try:
+                envs = (
+                    await db.execute(
+                        select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
+                    )
+                ).scalars().all()
+                for env in envs:
+                    cfg = list(env.config or [])
+                    for item in cfg:
+                        if isinstance(item, dict) and str(item.get("name") or "").strip() == "__front_urls__":
+                            try:
+                                fu = json.loads(item.get("value") or "[]")
+                            except Exception:
+                                fu = []
+                            if isinstance(fu, list):
+                                for f in fu:
+                                    if (
+                                        str(f.get("menu_id") or "") == f"svc_{api_service_id}"
+                                        and str(f.get("protocol") or "http") == "http"
+                                        and not str(f.get("url") or "").strip()
+                                    ):
+                                        f["url"] = servers_url
+                                item["value"] = json.dumps(fu, ensure_ascii=False)
+                    env.config = cfg
+                await db.commit()
+            except Exception:
+                pass
+
+        # ---- 导入增强：Security Scheme -> 接口 Auth（按策略）----
+        if import_security and created_api_ids:
+            await db.flush()
+            for _aid in created_api_ids:
+                try:
+                    _src = (
+                        await db.execute(select(ApiModel).where(ApiModel.id == _aid, ApiModel.enabled_flag == 1))
+                    ).scalar_one_or_none()
+                    if not _src or not isinstance(_src.req, dict):
+                        continue
+                    req = dict(_src.req)
+                    _sec = api_security_map.get(int(_aid)) or []
+                    _strategy = has_sec_strategy if _sec else no_sec_strategy
+                    _scheme = None
+                    for _s in _sec:
+                        if isinstance(_s, dict):
+                            for _k in _s:
+                                if _k in security_schemes:
+                                    _scheme = security_schemes[_k]
+                                    break
+                        if _scheme is not None:
+                            break
+                    if _strategy == "none":
+                        req["auth_type"] = "none"
+                    elif _strategy == "scheme" and _scheme is not None:
+                        ApiAutomationService._apply_openapi_auth(req, _scheme)
+                    elif _scheme is not None:
+                        ApiAutomationService._apply_openapi_auth(req, _scheme)
+                    await db.execute(
+                        update(ApiModel).where(ApiModel.id == int(_aid), ApiModel.enabled_flag == 1).values(req=req)
+                    )
+                except Exception:
+                    pass
+            await db.commit()
+
+        # ---- 导入增强：全局 Security -> 目录 Auth ----
+        if global_auth and top_security:
+            try:
+                _dir_menu = None
+                if target_pid:
+                    _dir_menu = (
+                        await db.execute(
+                            select(ApiMenuModel).where(
+                                ApiMenuModel.id == target_pid, ApiMenuModel.enabled_flag == 1
+                            )
+                        )
+                    ).scalar_one_or_none()
+                else:
+                    _dir_menu = (
+                        await db.execute(
+                            select(ApiMenuModel).where(
+                                ApiMenuModel.api_service_id == api_service_id,
+                                ApiMenuModel.pid == 0,
+                                ApiMenuModel.enabled_flag == 1,
+                                ApiMenuModel.type == 1,
+                            )
+                        )
+                    ).scalars().first()
+                if _dir_menu is not None:
+                    _cp = {}
+                    try:
+                        _cp = json.loads(_dir_menu.common_params) if isinstance(_dir_menu.common_params, str) and _dir_menu.common_params else {}
+                    except Exception:
+                        _cp = {}
+                    if not isinstance(_cp, dict):
+                        _cp = {}
+                    _auth = {"strategy": no_sec_strategy}
+                    for _s in top_security:
+                        if isinstance(_s, dict):
+                            for _k in _s:
+                                if _k in security_schemes:
+                                    _auth["scheme_key"] = _k
+                                    _auth["scheme"] = security_schemes[_k]
+                                    break
+                        if "scheme" in _auth:
+                            break
+                    _cp["auth"] = _auth
+                    await db.execute(
+                        update(ApiMenuModel)
+                        .where(ApiMenuModel.id == int(_dir_menu.id))
+                        .values(common_params=json.dumps(_cp, ensure_ascii=False))
+                    )
+            except Exception:
+                pass
+            await db.commit()
+
         await db.commit()
         return {
             "source_type": source_type,
