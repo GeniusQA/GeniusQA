@@ -5,13 +5,13 @@
 				<el-radio-button label="comma">逗号模式</el-radio-button>
 				<el-radio-button label="colon">冒号模式</el-radio-button>
 			</el-radio-group>
-			<span class="batch-hint">格式：参数名,默认值（逗号模式）或 参数名:默认值（冒号模式）</span>
+			<span class="batch-hint">{{ fmtHint }}</span>
 		</div>
 		<el-input
 			v-model="batchText"
 			type="textarea"
 			:rows="9"
-			placeholder="字段之间以英文冒号(:)分隔，多条记录以换行分隔"
+			:placeholder="phHint"
 		/>
 		<template #footer>
 			<el-button @click="inner = false">取消</el-button>
@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
 	modelValue: boolean;
@@ -49,6 +49,14 @@ watch(inner, (v) => emit('update:modelValue', v));
 
 const batchMode = ref<'comma' | 'colon'>('comma');
 const batchText = ref('');
+const fmtHint = computed(() =>
+	batchMode.value === 'comma' ? '格式：参数名,默认值' : '格式：参数名:默认值'
+);
+const phHint = computed(() =>
+	batchMode.value === 'comma'
+		? '字段之间以英文逗号(,)分隔，多条记录以换行分隔'
+		: '字段之间以英文冒号(:)分隔，多条记录以换行分隔'
+);
 watch(() => props.initialText, (v) => { batchText.value = v || ''; });
 
 const apply = () => {
