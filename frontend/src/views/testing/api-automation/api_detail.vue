@@ -2138,3 +2138,22 @@ const confirmSaveAsCase = async () => {
 .bulk-csv-desc { font-size: 12px; color: #606266; line-height: 1.6; margin-bottom: 4px; }
 .bulk-csv-code { display: block; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; padding: 6px 10px; font-size: 12px; white-space: pre-wrap; }
 </style>
+
+<style lang="scss">
+/* Webhook tooltip：白底黑字（popper 挂载到 body，需全局样式） */
+.webhook-tip-popper {
+	background: #ffffff !important;
+	color: #333333 !important;
+	border: 1px solid var(--el-border-color-light) !important;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+	padding: 8px 10px;
+	max-width: 360px;
+}
+.webhook-tip-popper .webhook-tip-text {
+	color: #333333 !important;
+}
+.webhook-tip-popper .el-popper__arrow::before {
+	background: #ffffff !important;
+	border-color: var(--el-border-color-light) !important;
+}
+</style>
