@@ -114,7 +114,7 @@
 
 		<!-- 导入接口弹窗 -->
 		<el-dialog v-model="importDialogVisible" title="导入接口" width="560px" destroy-on-close class="import-dialog" @closed="onImportDialogClosed">
-			<el-form label-width="100px">
+			<el-form label-position="top">
 				<el-form-item label="数据源格式" required>
 					<el-select v-model="importSourceType" style="width:100%" @change="onImportSourceChange">
 						<el-option label="OpenAPI/Swagger" value="swagger" />
@@ -125,75 +125,89 @@
 				</el-form-item>
 			</el-form>
 
-			<!-- OpenAPI/Swagger：上传文件 / URL 导入 -->
-			<el-tabs v-if="importSourceType === 'swagger'" v-model="importTab">
-				<el-tab-pane label="上传文件" name="file">
-					<el-form label-width="100px">
-						<el-form-item label="文档文件" required>
-							<el-upload
-								ref="uploadRef"
-								:auto-upload="false"
-								:limit="1"
-								accept=".json,.yaml,.yml"
-								:on-change="onImportFileChange"
-								:on-remove="onImportFileRemove"
-								:on-exceed="onImportFileExceed"
-							>
-								<el-button size="small">选择 JSON 文件</el-button>
-								<template #tip>
-									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML 文件</div>
-								</template>
-							</el-upload>
-						</el-form-item>
-					</el-form>
-				</el-tab-pane>
-				<el-tab-pane label="URL 导入" name="url">
-					<el-form label-width="100px">
-						<el-form-item label="文档 URL" required>
-							<el-input v-model="doc_source_url" placeholder="输入 OpenAPI/Swagger 数据 URL" clearable />
-						</el-form-item>
-						<el-form-item label="Basic Auth">
-							<el-switch v-model="urlAuthEnabled" />
-						</el-form-item>
-						<template v-if="urlAuthEnabled">
-							<el-form-item label="账号">
-								<el-input v-model="urlAuthUsername" placeholder="账号" clearable />
-							</el-form-item>
-							<el-form-item label="密码">
-								<el-input v-model="urlAuthPassword" type="password" placeholder="密码" show-password />
-							</el-form-item>
+			<!-- OpenAPI/Swagger：提示横幅 + 上传文件 / URL 导入 -->
+			<template v-if="importSourceType === 'swagger'">
+				<div class="import-info-bar">
+					支持导入 OpenAPI 3.0、3.1 或 Swagger 2.0 数据格式的 JSON 或 YAML 文件。
+					<a class="import-info-link" @click="importInfoPopVisible = !importInfoPopVisible">查看详细说明</a>
+					<el-popover v-if="importInfoPopVisible" placement="bottom-start" trigger="click" width="420">
+						<template #reference>
+							<span style="display:none"></span>
 						</template>
-					</el-form>
-				</el-tab-pane>
-			</el-tabs>
-
-			<!-- Postman：仅文件上传 -->
-			<el-form v-else-if="importSourceType === 'postman'" label-width="100px">
-				<el-form-item label=" ">
-					<div class="import-tip-bar">
-						Postman：请在 Postman 中选择 Collection → 「...」→ Export → Collection v2.1，导出 JSON 文件后导入
-					</div>
-				</el-form-item>
-				<el-form-item label="文档文件" required>
+						<div class="import-info-pop">
+							<div><b>OpenAPI 3.0 / 3.1</b>：支持 openapi 字段 + paths 结构的 JSON / YAML 文档</div>
+							<div><b>Swagger 2.0</b>：支持 swagger: "2.0" 字段 + paths 结构的 JSON / YAML 文档</div>
+							<div>URL 导入支持 Basic Auth 认证的私有文档地址</div>
+						</div>
+					</el-popover>
+				</div>
+				<el-radio-group v-model="importTab" class="import-seg">
+					<el-radio-button value="file">上传文件</el-radio-button>
+					<el-radio-button value="url">URL 导入</el-radio-button>
+				</el-radio-group>
+				<template v-if="importTab === 'file'">
 					<el-upload
 						ref="uploadRef"
+						drag
 						:auto-upload="false"
 						:limit="1"
-						accept=".json"
+						accept=".json,.yaml,.yml"
 						:on-change="onImportFileChange"
 						:on-remove="onImportFileRemove"
 						:on-exceed="onImportFileExceed"
+						class="import-dropzone"
 					>
-						<el-button size="small">选择 JSON 文件</el-button>
+						<el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+						<div class="el-upload__text">点击或拖拽文件到本区域导入</div>
 						<template #tip>
-							<div class="el-upload__tip">支持 Postman Collection v2.1 JSON（Export 导出的文件）</div>
+							<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML 文件</div>
 						</template>
 					</el-upload>
-				</el-form-item>
-			</el-form>
+				</template>
+				<el-form v-else label-position="top">
+					<el-form-item label="文档 URL" required>
+						<el-input v-model="doc_source_url" placeholder="输入 OpenAPI/Swagger 数据 URL" clearable />
+					</el-form-item>
+					<el-form-item label="Basic Auth">
+						<el-switch v-model="urlAuthEnabled" />
+					</el-form-item>
+					<template v-if="urlAuthEnabled">
+						<el-form-item label="账号">
+							<el-input v-model="urlAuthUsername" placeholder="账号" clearable />
+						</el-form-item>
+						<el-form-item label="密码">
+							<el-input v-model="urlAuthPassword" type="password" placeholder="密码" show-password />
+						</el-form-item>
+					</template>
+				</el-form>
+			</template>
+
+			<!-- Postman：仅文件上传 -->
+			<template v-else-if="importSourceType === 'postman'">
+				<div class="import-info-bar">
+					Postman：请在 Postman 中选择 Collection → 「...」→ Export → Collection v2.1，导出 JSON 文件后导入
+				</div>
+				<el-upload
+					ref="uploadRef"
+					drag
+					:auto-upload="false"
+					:limit="1"
+					accept=".json"
+					:on-change="onImportFileChange"
+					:on-remove="onImportFileRemove"
+					:on-exceed="onImportFileExceed"
+					class="import-dropzone"
+				>
+					<el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+					<div class="el-upload__text">点击或拖拽文件到本区域导入</div>
+					<template #tip>
+						<div class="el-upload__tip">支持 Postman Collection v2.1 JSON（Export 导出的文件）</div>
+					</template>
+				</el-upload>
+			</template>
 
 			<!-- cURL -->
-			<el-form v-else-if="importSourceType === 'curl'" label-width="100px">
+			<el-form v-else-if="importSourceType === 'curl'" label-position="top">
 				<el-form-item label="粘贴 cURL 数据" required>
 					<el-input
 						v-model="curlText"
@@ -209,7 +223,7 @@
 			</el-form>
 
 			<!-- Apifox：URL + Cookies -->
-			<el-form v-else label-width="100px">
+			<el-form v-else label-position="top">
 				<el-form-item label="项目 URL" required>
 					<el-input v-model="doc_source_url" placeholder="https://app.apifox.com/project/xxx 或 s.apifox.cn 分享链接" clearable />
 				</el-form-item>
@@ -267,7 +281,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid } from '@element-plus/icons-vue';
+import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
@@ -425,6 +439,7 @@ const methodColor = (m: number) => METHOD_MAP[m]?.color || '#409EFF';
 const importDialogVisible = ref(false);
 const importTab = ref<'url' | 'file'>('file');
 const importSourceType = ref<'swagger' | 'postman' | 'curl' | 'apifox'>('swagger');
+const importInfoPopVisible = ref(false);
 const curlText = ref('');
 const curlIgnoreCommon = ref(true);
 const doc_source_type = ref('swagger');
@@ -928,4 +943,40 @@ onMounted(() => {
 .import-dialog .el-form-item { margin-bottom: 18px; }
 .import-dialog .el-form-item:last-child { margin-bottom: 4px; }
 .import-dialog .el-tabs__header { margin-bottom: 12px; }
+.import-info-bar {
+	background: var(--el-fill-color-light);
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 12px;
+	color: var(--el-text-color-secondary);
+	line-height: 1.7;
+	margin: 4px 0 14px;
+}
+.import-info-link { color: #7c3aed; cursor: pointer; margin-left: 4px; }
+.import-info-pop { font-size: 12px; color: #606266; line-height: 1.9; }
+.import-seg {
+	display: flex;
+	background: var(--el-fill-color-light);
+	border-radius: 6px;
+	padding: 3px;
+	margin-bottom: 16px;
+	width: 100%;
+}
+.import-seg :deep(.el-radio-button) { flex: 1; }
+.import-seg :deep(.el-radio-button__inner) {
+	width: 100%;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--el-text-color-regular);
+}
+.import-seg :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+	background: #fff;
+	color: var(--el-text-color-primary);
+	font-weight: 600;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.import-dropzone { width: 100%; }
+.import-dropzone :deep(.el-upload-dragger) { width: 100%; }
 </style>
