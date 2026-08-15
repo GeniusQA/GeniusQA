@@ -21,7 +21,7 @@
 				>
 					<el-icon><Connection /></el-icon><span>{{ e.name }}</span>
 				</div>
-				<div class="env-menu-item env-add" @click="openEnvForm(null)">
+				<div class="env-menu-item env-add" @click="startNewEnv()">
 					<el-icon><ele-Plus /></el-icon><span>新建环境</span>
 				</div>
 
@@ -47,9 +47,15 @@
 				<template v-else-if="section === 'env' && curEnv">
 					<div class="env-detail">
 						<div class="env-detail-head">
-							<span class="env-detail-title">{{ curEnv.name }}</span>
-							<el-button size="small" type="warning" @click="openEnvForm(curEnv)">编辑环境</el-button>
-							<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
+							<template v-if="curEnv.id == null">
+								<span class="env-detail-title">新建环境</span>
+								<el-input v-model="curEnv.name" placeholder="请输入环境名称" size="small" style="width: 240px" />
+							</template>
+							<template v-else>
+								<span class="env-detail-title">{{ curEnv.name }}</span>
+								<el-button size="small" type="warning" @click="openEnvForm(curEnv)">编辑环境</el-button>
+								<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
+							</template>
 						</div>
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
@@ -204,27 +210,44 @@ watch(
 
 const saveCurEnv = async () => {
 	if (!curEnv.value) return;
+	const envName = String(curEnv.value.name || '').trim();
+	if (!envName) {
+		ElMessage.warning('请输入环境名称');
+		return;
+	}
 	envSaving.value = true;
 	try {
-		const fu = envFrontUrls.value
-			.filter((f: any) => f.menu_id)
-			.map((f: any) => ({ menu_id: f.menu_id, url: String(f.url).trim() }));
 		syncFrontUrls();
-		await save_env({
-			env_list: [{
-				id: curEnv.value.id,
-				name: curEnv.value.name,
-				config: curEnv.value.config.filter((c: any) => String(c.name || '').trim() === FRONT_KEY),
-				variable: curEnv.value.variable.filter((v: any) => String(v.name || '').trim()),
-			}],
-		});
-		ElMessage.success('保存成功');
-		await loadEnvList();
+		const payload = {
+			name: envName,
+			config: curEnv.value.config.filter((c: any) => String(c.name || '').trim() === FRONT_KEY),
+			variable: curEnv.value.variable.filter((v: any) => String(v.name || '').trim()),
+		};
+		if (curEnv.value.id == null) {
+			await add_env(payload);
+			ElMessage.success('新建成功');
+			await loadEnvList();
+			const created = envList.value.find((e: any) => e.name === envName);
+			if (created) selectEnv(created);
+		} else {
+			await save_env({ env_list: [{ id: curEnv.value.id, ...payload }] });
+			ElMessage.success('保存成功');
+			await loadEnvList();
+		}
 	} catch (e: any) {
 		ElMessage.error(e?.message || '保存失败');
 	} finally {
 		envSaving.value = false;
 	}
+};
+
+// 新建环境：内联一页填写（名称 + 前置 URL + 环境变量），不再弹名称小窗
+const startNewEnv = async () => {
+	curEnv.value = { id: null as any, name: '', config: [], variable: [] };
+	section.value = 'env';
+	await loadMenuTree();
+	envFrontUrls.value = frontUrlMenuOptions.value.map((m: any) => ({ menu_id: m.id, menu_name: m.name, url: '' }));
+	syncFrontUrls();
 };
 
 // ---- 环境新增/编辑/删除 ----
