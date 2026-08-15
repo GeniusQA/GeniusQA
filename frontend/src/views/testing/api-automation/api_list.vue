@@ -83,9 +83,9 @@
 				<el-table-column type="index" label="序号" width="60" align="center" />
 				<el-table-column prop="name" label="服务名称" min-width="140" show-overflow-tooltip />
 				<el-table-column prop="project_name" label="所属项目" min-width="120" show-overflow-tooltip />
-				<el-table-column prop="source_type" label="文档类型" width="110" align="center">
+				<el-table-column prop="source_type" label="数据源" width="130" align="center">
 					<template #default="{ row }">
-						{{ row.source_type || '-' }}
+						{{ row.source_type === 'swagger' ? 'OpenAPI/Swagger' : row.source_type === 'apifox' ? 'Apifox' : (row.source_type || '-') }}
 					</template>
 				</el-table-column>
 				<el-table-column prop="source_addr" label="接口文档地址" min-width="160" show-overflow-tooltip>
@@ -160,14 +160,14 @@
 						/>
 					</el-select>
 				</el-form-item>
-				<el-form-item label="文档类型">
-					<el-select v-model="formData.source_type" placeholder="请选择文档类型" clearable style="width: 100%">
-						<el-option label="swagger" value="swagger" />
-						<el-option label="apifox" value="apifox" />
+				<el-form-item label="数据源">
+					<el-select v-model="formData.source_type" placeholder="请选择数据源" clearable style="width: 100%">
+						<el-option label="OpenAPI/Swagger" value="swagger" />
+						<el-option label="Apifox" value="apifox" />
 					</el-select>
 				</el-form-item>
-				<el-form-item label="文档地址">
-					<el-input v-model="formData.source_addr" placeholder="请输入文档地址 URL" />
+				<el-form-item label="文件 URL">
+					<el-input v-model="formData.source_addr" placeholder="请输入文件 URL" />
 				</el-form-item>
 				<el-form-item label="负责人">
 					<el-select v-model="formData.manager" placeholder="请选择负责人" clearable filterable style="width: 100%">
