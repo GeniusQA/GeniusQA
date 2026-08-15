@@ -1,11 +1,13 @@
 <template>
 	<el-dialog
 		v-model="visible"
-		:title="dialogTitle"
-		width="760px"
+		:title="embedded ? '' : dialogTitle"
+		:width="embedded ? '100%' : '760px'"
 		destroy-on-close
 		:append-to-body="!embedded"
 		:modal="!embedded"
+		:show-close="!embedded"
+		:class="embedded ? 'cp-embedded-dialog' : ''"
 		:style="embedded ? 'position:relative' : ''"
 		@closed="onClosed"
 	>
@@ -151,7 +153,7 @@ const open = async (menuId?: number | string) => {
 		return;
 	}
 	activeTab.value = 'header';
-	if (!props.embedded) visible.value = true;
+	visible.value = true;
 	try {
 		const res: any = await get_common_params({ api_service_id: props.serviceId, menu_id: curMenuId.value || undefined });
 		const data = res?.data || {};
@@ -219,6 +221,12 @@ defineExpose({ open });
 </script>
 
 <style scoped>
+.cp-embedded-dialog :deep(.el-dialog__header) {
+	display: none;
+}
+.cp-embedded-dialog :deep(.el-dialog__body) {
+	padding: 0 8px;
+}
 .common-params-tip {
 	font-size: 12px;
 	color: var(--el-text-color-secondary);
