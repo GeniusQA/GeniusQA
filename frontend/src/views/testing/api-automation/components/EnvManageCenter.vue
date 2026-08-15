@@ -70,8 +70,8 @@
 
 						<div class="env-block-title">其他配置项（{{}} 可引用）</div>
 						<div v-for="(item, idx) in envPlainConfig" :key="'c' + idx" class="env-row">
-							<el-input v-model="item.name" placeholder="配置项名（如 base_url）" size="small" />
-							<el-input v-model="item.value" placeholder="配置项值（如 https://uapis.cn）" size="small" />
+							<el-input v-model="item.name" placeholder="配置项名" size="small" />
+							<el-input v-model="item.value" placeholder="配置项值" size="small" />
 							<el-button type="danger" link size="small" @click="removePlainConfig(idx)">删除</el-button>
 						</div>
 						<el-button size="small" @click="curEnv.config.push({ name: '', value: '' })">+ 添加配置项</el-button>

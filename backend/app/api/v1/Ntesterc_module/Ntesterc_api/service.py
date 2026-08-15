@@ -189,46 +189,26 @@ class ApiAutomationService:
     @staticmethod
     async def _resolve_base_url(db: AsyncSession, env_id: int, url: str,
                                  api_id: Optional[int] = None) -> str:
-        """Apifox 前置 URL 逻辑：相对路径（/ 开头）自动拼接环境配置的前置 URL。
-        优先级：接口所属模块/目录匹配的前置 URL（__front_urls__）> 环境 base_url 约定键 > 首个 http 配置项。"""
+        """Apifox 前置 URL 逻辑：相对路径（/ 开头）按接口所属菜单链匹配环境配置的模块级前置 URL。
+        未匹配（未配置或接口无模块归属）则返回原样，不拼接任何默认值。"""
         u = str(url or "").strip()
         if not u or u.startswith(("http://", "https://", "ws://", "wss://", "{{")):
             return u
-        if not u.startswith("/"):
+        if not u.startswith("/") or not env_id or not api_id:
             return u
-        if env_id:
-            env_row = (
-                await db.execute(
-                    select(ApiEnvironmentModel).where(
-                        ApiEnvironmentModel.id == int(env_id),
-                        ApiEnvironmentModel.enabled_flag == 1,
-                    )
+        env_row = (
+            await db.execute(
+                select(ApiEnvironmentModel).where(
+                    ApiEnvironmentModel.id == int(env_id),
+                    ApiEnvironmentModel.enabled_flag == 1,
                 )
-            ).scalar_one_or_none()
-            if env_row:
-                # 1) 模块级前置 URL：按接口所属菜单链（接口→目录→模块）匹配
-                if api_id:
-                    base = await ApiAutomationService._match_front_url_by_menu(db, env_row, api_id)
-                    if base:
-                        return base.rstrip("/") + "/" + u.lstrip("/")
-                # 2) fallback：环境 base_url 约定键
-                base = ""
-                for i in (env_row.config or []):
-                    if isinstance(i, dict):
-                        nm = str(i.get("name") or "").strip().lower()
-                        val = str(i.get("value") or "").strip()
-                        if nm in ("base_url", "baseurl", "url", "host", "server", "api_url", "baseurl"):
-                            base = val
-                            break
-                if not base:
-                    for i in (env_row.config or []):
-                        if isinstance(i, dict):
-                            val = str(i.get("value") or "").strip()
-                            if val.startswith(("http://", "https://")):
-                                base = val
-                                break
-                if base:
-                    return base.rstrip("/") + "/" + u.lstrip("/")
+            )
+        ).scalar_one_or_none()
+        if not env_row:
+            return u
+        base = await ApiAutomationService._match_front_url_by_menu(db, env_row, api_id)
+        if base:
+            return base.rstrip("/") + "/" + u.lstrip("/")
         return u
 
     @staticmethod
