@@ -21,15 +21,23 @@
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
 							</el-option>
 						</el-select>
-						<el-tooltip v-if="req.protocol === 'webhook'" placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper">
-							<template #content>
-								<div class="webhook-tip-box">
-									<div class="webhook-tip-text">此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
-									<img src="/webhook-tip.png" alt="Webhook 说明" class="webhook-tip-img" />
-								</div>
-							</template>
-							<el-input v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
-						</el-tooltip>
+						<template v-if="req.protocol === 'webhook'">
+							<el-tooltip placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper" style="flex: 1">
+								<template #content>
+									<div class="webhook-tip-box">
+										<div class="webhook-tip-text">此处填写的 Webhook name 用于标识该回调，不会显示在接口文档中。</div>
+										<img src="/webhook-tip.png" alt="Webhook 说明" class="webhook-tip-img" />
+									</div>
+								</template>
+								<el-input v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
+							</el-tooltip>
+							<el-tooltip placement="bottom-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper" style="flex: 1.4">
+								<template #content>
+									<div class="webhook-tip-text">Webhook 接口的 URL 应由接口使用者提供。此处填写的 URL 仅用于调试，不会显示在接口文档中。</div>
+								</template>
+								<el-input v-model="req.webhook_url" placeholder="调试 URL，可空（留空使用接口路径）" clearable class="url-input" />
+							</el-tooltip>
+						</template>
 						<el-input v-else v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
 						<el-button v-if="req.protocol === 'websocket'" type="primary" @click="wsConnect" class="send-btn">连接</el-button>
 						<el-button v-else type="primary" @click="sendRequest" class="send-btn">发送</el-button>
@@ -42,15 +50,6 @@
 								</el-dropdown-menu>
 							</template>
 						</el-dropdown>
-					</div>
-					<div v-if="req.protocol === 'webhook'" class="webhook-bar">
-						<span class="webhook-tip">调试 URL</span>
-						<el-tooltip placement="top-start" trigger="focus" :visible-arrow="false" popper-class="webhook-tip-popper">
-							<template #content>
-								<div class="webhook-tip-text">Webhook 接口的 URL 应由接口使用者提供。此处填写的 URL 仅用于调试，不会显示在接口文档中。</div>
-							</template>
-							<el-input v-model="req.webhook_url" placeholder="调试 URL，可为空（留空使用接口路径）" size="small" />
-						</el-tooltip>
 					</div>
 				</div>
 
