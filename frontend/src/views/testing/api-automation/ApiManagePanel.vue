@@ -36,7 +36,7 @@
 								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
-								<span v-if="data.type===2||data.type===3" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
+								<span v-if="(data.type===2||data.type===3) && data.protocol !== 'websocket' && data.protocol !== 'webhook'" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
 								<span v-if="data.type===2 && data.protocol==='websocket'" class="proto-badge proto-ws">WS</span>
 								<span v-else-if="data.type===2 && data.protocol==='webhook'" class="proto-badge proto-wh">WH</span>
 								<span class="node-name">{{ data.name }}</span>
