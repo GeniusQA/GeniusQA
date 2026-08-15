@@ -679,8 +679,22 @@ const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string
 
 const selectedDir = ref<any>(null);
 const dirTitleText = computed(() => {
-	const svc = (treeData.value || []).find((n: any) => n.type === 0);
-	return `根目录 (${svc?.name || ''})`;
+	// 取所选目录所属「模块」节点的名字（树里模块节点显示名，非服务表名）
+	const targetId = selectedDir.value?.id;
+	let modName = '';
+	const walk = (nodes: any[], topName: string): boolean => {
+		for (const n of nodes || []) {
+			if (n.id === targetId) {
+				modName = topName || n.name || '';
+				return true;
+			}
+			const next = n.type === 0 ? n.name : topName;
+			if (walk(n.children || [], next)) return true;
+		}
+		return false;
+	};
+	walk(treeData.value || [], '');
+	return `根目录 (${modName})`;
 });
 const dirDetailTab = ref('settings');
 const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
