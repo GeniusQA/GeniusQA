@@ -51,10 +51,14 @@
 										<el-select v-model="wsFormat" style="width: 120px" size="small">
 											<el-option v-for="ft in ['Text', 'JSON', 'XML', 'HTML', 'Binary']" :key="ft" :label="ft" :value="ft" />
 										</el-select>
+										<el-select v-if="wsFormat === 'Binary'" v-model="wsBinaryType" style="width: 132px" size="small">
+											<el-option label="Base64" value="base64" />
+											<el-option label="Hexadecimal" value="hex" />
+										</el-select>
 										<span class="ws-muted">每次发送为「连接→发送→接收→断开」完整往返</span>
 										<el-button type="primary" size="small" @click="wsSend">发送</el-button>
 									</div>
-									<el-input v-model="wsMessage" type="textarea" :rows="7" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : '输入消息内容'" />
+									<el-input v-model="wsMessage" type="textarea" :rows="7" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : wsFormat === 'Binary' ? (wsBinaryType === 'base64' ? '输入 Base64 编码的二进制内容' : '输入十六进制内容（如 0A FF 01，可含空格）') : '输入消息内容'" />
 									<div class="ws-send-options">
 										<el-checkbox v-model="wsClearAfterSend">发送后清空输入</el-checkbox>
 										<span class="ws-status" :style="{ color: wsLastOk ? '#67c23a' : '#909399' }">{{ wsLastOk ? '连接正常' : '未连接' }}</span>
@@ -1569,6 +1573,7 @@ const uploadBinaryFile = async (options: any) => {
 // ---- WebSocket 调试（代理往返：连接->发送->接收->断开）----
 const wsTab = ref('message');
 const wsFormat = ref('Text');
+const wsBinaryType = ref('base64');
 const wsClearAfterSend = ref(true);
 const wsMessages = ref<{ dir: 'sent' | 'recv'; time: string; content: string }[]>([]);
 const wsMessage = ref('');
@@ -1603,7 +1608,7 @@ const wsSend = async () => {
 	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
 	if (wsClearAfterSend.value) wsMessage.value = '';
 	try {
-		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [] });
+		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [], binary_type: wsFormat.value === 'Binary' ? wsBinaryType.value : undefined });
 		if (r?.code === 200) {
 			const data = r.data || {};
 			if (data.ok) {

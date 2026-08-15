@@ -5310,8 +5310,9 @@ class ApiAutomationService:
     @staticmethod
     @staticmethod
     async def ws_test(db: AsyncSession, body: Dict[str, Any], user_id: int) -> Dict[str, Any]:
-        """WebSocket 调试代理：连接 -> 发送 -> 接收（带超时）"""
+        """WebSocket 调试代理：连接 -> 发送 -> 接收（带超时）；binary_type=base64/hex 时按编码发送二进制"""
         import asyncio
+        import base64
         import json
         import time
 
@@ -5328,15 +5329,34 @@ class ApiAutomationService:
                 headers[str(h["key"])] = str(h.get("value") or "")
         message = body.get("message")
         sent_text = message if isinstance(message, str) else json.dumps(message, ensure_ascii=False)
+        binary_type = str(body.get("binary_type") or "").lower()
+        if binary_type == "base64":
+            try:
+                payload: Any = base64.b64decode(sent_text)
+            except Exception:
+                raise ValueError("Base64 解码失败，请检查输入内容")
+        elif binary_type == "hex":
+            try:
+                payload = bytes.fromhex(sent_text)
+            except Exception:
+                raise ValueError("十六进制解析失败，请输入如 0A FF 01（可含空格）")
+        else:
+            payload = sent_text
         t0 = time.time()
         try:
             async with websockets.connect(url, additional_headers=headers, open_timeout=8) as ws:
-                await ws.send(sent_text)
+                await ws.send(payload)
                 received = await asyncio.wait_for(ws.recv(), timeout=8)
+            if isinstance(received, bytes):
+                try:
+                    received = received.decode("utf-8")
+                except Exception:
+                    received = "0x" + received.hex()
             return {
                 "ok": True,
                 "sent": sent_text,
                 "received": received if isinstance(received, str) else str(received),
+                "binary_type": binary_type or None,
                 "elapsed": round(time.time() - t0, 3),
             }
         except asyncio.TimeoutError:
