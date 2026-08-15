@@ -3475,6 +3475,7 @@ class ApiAutomationService:
                         select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
                     )
                 ).scalars().all()
+                _env_updates: List[tuple] = []
                 for env in envs:
                     cfg = list(env.config or [])
                     for item in cfg:
@@ -3492,7 +3493,13 @@ class ApiAutomationService:
                                     ):
                                         f["url"] = servers_url
                                 item["value"] = json.dumps(fu, ensure_ascii=False)
-                    env.config = cfg
+                    _env_updates.append((int(env.id), cfg))
+                for _eid, _cfg in _env_updates:
+                    await db.execute(
+                        update(ApiEnvironmentModel)
+                        .where(ApiEnvironmentModel.id == _eid)
+                        .values(config=_cfg, updated_by=0)
+                    )
                 await db.commit()
             except Exception:
                 pass
