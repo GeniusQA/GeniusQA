@@ -6,7 +6,7 @@
 				<el-tab-pane label="调试" name="debug" />
 				<el-tab-pane label="接口文档" name="doc" />
 				<el-tab-pane label="调试记录" name="history" />
-				<el-tab-pane label="Mock" name="mock" />
+				<el-tab-pane v-if="req.protocol !== 'websocket'" label="Mock" name="mock" />
 			</el-tabs>
 
 			<!-- 调试面板 -->
@@ -55,13 +55,12 @@
 											<el-option label="Base64" value="base64" />
 											<el-option label="Hexadecimal" value="hex" />
 										</el-select>
-										<span class="ws-muted">每次发送为「连接→发送→接收→断开」完整往返</span>
-										<el-button type="primary" size="small" @click="wsSend">发送</el-button>
 									</div>
 									<el-input v-model="wsMessage" type="textarea" :rows="7" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : wsFormat === 'Binary' ? (wsBinaryType === 'base64' ? '输入 Base64 编码的二进制内容' : '输入十六进制内容（如 0A FF 01，可含空格）') : '输入消息内容'" />
 									<div class="ws-send-options">
 										<el-checkbox v-model="wsClearAfterSend">发送后清空输入</el-checkbox>
-										<span class="ws-status" :style="{ color: wsLastOk ? '#67c23a' : '#909399' }">{{ wsLastOk ? '连接正常' : '未连接' }}</span>
+										<div style="flex:1"></div>
+										<el-button type="primary" size="small" @click="wsSend">发送</el-button>
 									</div>
 								</div>
 							</el-tab-pane>
