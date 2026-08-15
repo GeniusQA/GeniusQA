@@ -113,7 +113,7 @@
 		</div>
 
 		<!-- 导入接口弹窗 -->
-		<el-dialog v-model="importDialogVisible" title="导入接口" width="560px" destroy-on-close @closed="onImportDialogClosed">
+		<el-dialog v-model="importDialogVisible" title="导入接口" width="560px" destroy-on-close class="import-dialog" @closed="onImportDialogClosed">
 			<el-form label-width="100px">
 				<el-form-item label="数据源格式" required>
 					<el-select v-model="importSourceType" style="width:100%" @change="onImportSourceChange">
@@ -925,4 +925,7 @@ onMounted(() => {
 }
 .proto-ws { background: #7c4dff; }
 .proto-wh { background: #ec4899; }
+.import-dialog .el-form-item { margin-bottom: 18px; }
+.import-dialog .el-form-item:last-child { margin-bottom: 4px; }
+.import-dialog .el-tabs__header { margin-bottom: 12px; }
 </style>
