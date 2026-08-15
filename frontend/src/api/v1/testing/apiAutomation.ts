@@ -78,7 +78,7 @@ export function useApiAutomationApi() {
     wsTest: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/ws_test', data),
     pull_api_doc: (data: {
       api_service_id: number;
-      source_type: 'swagger' | 'apifox';
+      source_type: 'swagger' | 'apifox' | 'postman';
       doc_url?: string;
       cookies?: string;
       doc_content?: Record<string, any>;

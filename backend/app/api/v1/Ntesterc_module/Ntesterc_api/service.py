@@ -2633,6 +2633,153 @@ class ApiAutomationService:
         return {"imported": imported_count, "updated": updated_count, "folders": len(folder_names)}
 
     @staticmethod
+    @staticmethod
+    async def _import_postman_collection(
+        db: AsyncSession, doc: Dict[str, Any], api_service_id: int, user_id: int
+    ) -> tuple:
+        """导入 Postman Collection v2.1：item 递归，folder->目录，request->接口"""
+        imported = 0
+        folders = 0
+
+        def _status(disabled: Any) -> bool:
+            return not bool(disabled)
+
+        async def walk(items: Any, pid: int) -> None:
+            nonlocal imported, folders
+            for it in items or []:
+                if not isinstance(it, dict):
+                    continue
+                name = str(it.get("name") or "未命名")
+                request = it.get("request")
+                if isinstance(request, dict):
+                    method = ApiAutomationService._doc_method_to_int(request.get("method"))
+                    url_obj = request.get("url")
+                    raw_url = ""
+                    params: list = []
+                    if isinstance(url_obj, dict):
+                        raw_url = str(url_obj.get("raw") or "")
+                        for q in url_obj.get("query") or []:
+                            if isinstance(q, dict):
+                                params.append({
+                                    "key": str(q.get("key") or ""),
+                                    "value": str(q.get("value") or ""),
+                                    "status": _status(q.get("disabled")),
+                                })
+                        if not raw_url:
+                            host = url_obj.get("host") or []
+                            path = url_obj.get("path") or []
+                            raw_url = "/".join(str(x) for x in host) + "/" + "/".join(str(x) for x in path)
+                    elif isinstance(url_obj, str):
+                        raw_url = url_obj
+                    headers: list = []
+                    for h in request.get("header") or []:
+                        if isinstance(h, dict):
+                            headers.append({
+                                "key": str(h.get("key") or ""),
+                                "value": str(h.get("value") or ""),
+                                "status": _status(h.get("disabled")),
+                            })
+                    body = request.get("body") or {}
+                    mode = body.get("mode") if isinstance(body, dict) else None
+                    body_type = 2
+                    body_val: Any = {}
+                    form_data: list = []
+                    form_urlencoded: list = []
+                    if mode == "raw":
+                        raw_text = str(body.get("raw") or "")
+                        ct = ""
+                        for h in headers:
+                            if str(h.get("key") or "").lower() == "content-type":
+                                ct = str(h.get("value") or "").lower()
+                        if "json" in ct:
+                            body_type = 2
+                            try:
+                                body_val = json.loads(raw_text)
+                            except Exception:
+                                body_val = raw_text
+                        elif "xml" in ct:
+                            body_type = 4
+                            body_val = raw_text
+                        elif raw_text:
+                            try:
+                                body_val = json.loads(raw_text)
+                            except Exception:
+                                body_val = raw_text
+                    elif mode == "formdata":
+                        body_type = 3
+                        for fd in body.get("formdata") or []:
+                            if isinstance(fd, dict):
+                                form_data.append({
+                                    "key": str(fd.get("key") or ""),
+                                    "value": str(fd.get("value") or ""),
+                                    "status": _status(fd.get("disabled")),
+                                    "type": "file" if fd.get("type") == "file" else "text",
+                                })
+                    elif mode == "urlencoded":
+                        body_type = 4
+                        for fd in body.get("urlencoded") or []:
+                            if isinstance(fd, dict):
+                                form_urlencoded.append({
+                                    "key": str(fd.get("key") or ""),
+                                    "value": str(fd.get("value") or ""),
+                                    "status": _status(fd.get("disabled")),
+                                })
+                    req: Dict[str, Any] = {
+                        "params_id": None,
+                        "body": body_val,
+                        "after": [],
+                        "assert": [],
+                        "before": [],
+                        "config": {"retry": 0, "req_timeout": 5, "res_timeout": 5},
+                        "header": headers or [{"key": "Content-Type", "value": "application/json", "status": True}],
+                        "method": method,
+                        "params": params,
+                        "body_type": body_type,
+                        "file_path": [],
+                        "form_data": form_data,
+                        "form_urlencoded": form_urlencoded,
+                        "protocol": "http",
+                    }
+                    api = ApiModel(
+                        api_service_id=api_service_id,
+                        url=raw_url or "/",
+                        document={},
+                        req=req,
+                        name=name,
+                        created_by=user_id,
+                        updated_by=user_id,
+                    )
+                    db.add(api)
+                    await db.flush()
+                    db.add(ApiMenuModel(
+                        name=name, pid=pid, type=2, api_service_id=api_service_id,
+                        status=1, api_id=api.id, created_by=user_id, updated_by=user_id,
+                    ))
+                    imported += 1
+                else:
+                    menu = ApiMenuModel(
+                        name=name, pid=pid, type=1, api_service_id=api_service_id,
+                        status=1, api_id=None, created_by=user_id, updated_by=user_id,
+                    )
+                    db.add(menu)
+                    await db.flush()
+                    folders += 1
+                    await walk(it.get("item") or [], int(menu.id))
+
+        root = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_service_id == api_service_id,
+                    ApiMenuModel.pid == 0,
+                    ApiMenuModel.enabled_flag == 1,
+                )
+            )
+        ).scalars().first()
+        root_pid = int(root.id) if root else 0
+        await walk(doc.get("item") or [], root_pid)
+        await db.commit()
+        return imported, folders
+
     async def pull_api_doc(db: AsyncSession, body: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         api_service_id = int(body.get("api_service_id") or 0)
         doc_url = str(body.get("doc_url") or "").strip()
@@ -2660,8 +2807,8 @@ class ApiAutomationService:
                 raise
             except Exception:
                 raise ValueError("文档内容解析失败（支持 OpenAPI/Swagger 的 JSON 或 YAML）")
-        if source_type not in ("swagger", "apifox"):
-            raise ValueError("source_type 仅支持 swagger 或 apifox")
+        if source_type not in ("swagger", "apifox", "postman"):
+            raise ValueError("source_type 仅支持 swagger / apifox / postman")
 
         service = (
             await db.execute(
@@ -2846,6 +2993,19 @@ class ApiAutomationService:
                 break
 
         if not paths:
+            if source_type == "postman" or (
+                isinstance(doc_json, dict) and doc_json.get("info") and isinstance(doc_json.get("item"), list)
+            ):
+                imported, folders = await ApiAutomationService._import_postman_collection(
+                    db, doc_json, api_service_id, user_id
+                )
+                return {
+                    "source_type": source_type,
+                    "imported": imported,
+                    "updated": 0,
+                    "folders": folders,
+                    "mode": "postman",
+                }
             apis = doc_json.get("apis")
             if not isinstance(apis, list):
                 data = doc_json.get("data") or {}

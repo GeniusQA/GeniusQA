@@ -119,6 +119,7 @@
 							<el-select v-model="doc_source_type" style="width:100%">
 								<el-option label="OpenAPI/Swagger" value="swagger" />
 								<el-option label="Apifox" value="apifox" />
+								<el-option label="Postman" value="postman" />
 							</el-select>
 						</el-form-item>
 						<el-form-item label="文档 URL" required>
@@ -146,7 +147,13 @@
 							<el-select v-model="file_source_type" style="width:100%">
 								<el-option label="OpenAPI/Swagger" value="swagger" />
 								<el-option label="Apifox" value="apifox" />
+								<el-option label="Postman" value="postman" />
 							</el-select>
+						</el-form-item>
+						<el-form-item v-if="file_source_type === 'postman'" label=" ">
+							<div class="import-tip-bar">
+								Postman：请在 Postman 中选择 Collection → 「...」→ Export → Collection v2.1，导出 JSON 文件后导入
+							</div>
 						</el-form-item>
 						<el-form-item label="文档文件" required>
 							<el-upload
@@ -160,7 +167,7 @@
 							>
 								<el-button size="small">选择 JSON 文件</el-button>
 								<template #tip>
-									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML，以及 Apifox「导出项目」JSON</div>
+									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON/YAML、Apifox「导出项目」JSON、Postman Collection v2.1 JSON</div>
 								</template>
 							</el-upload>
 						</el-form-item>
@@ -835,5 +842,13 @@ onMounted(() => {
 	margin-left: 8px;
 	font-size: 12px;
 	color: #909399;
+}
+.import-tip-bar {
+	background: var(--el-fill-color-light);
+	border-radius: 4px;
+	padding: 6px 10px;
+	font-size: 12px;
+	color: var(--el-text-color-secondary);
+	line-height: 1.6;
 }
 </style>
