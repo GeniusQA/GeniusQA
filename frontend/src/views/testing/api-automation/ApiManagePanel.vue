@@ -170,9 +170,166 @@
 								<div v-if="!dirApis.length" class="dd-empty">该目录下暂无接口</div>
 							</div>
 						</el-tab-pane>
-						<el-tab-pane label="前置操作" name="before"><div class="dd-empty">目录级前置操作配置开发中</div></el-tab-pane>
-						<el-tab-pane label="后置操作" name="after"><div class="dd-empty">目录级后置操作配置开发中</div></el-tab-pane>
-						<el-tab-pane label="Auth" name="auth"><div class="dd-empty">目录级 Auth 配置开发中</div></el-tab-pane>
+						<el-tab-pane label="前置操作" name="before">
+							<div class="dd-op-wrap">
+								<OperationPanel
+									:items="dirBefore"
+									mode="before"
+									:env-list="envList"
+									:tree-list="treeData"
+									:db-list="dirDbList"
+									:script-list="dirScriptList"
+								/>
+							</div>
+						</el-tab-pane>
+						<el-tab-pane label="后置操作" name="after">
+							<div class="dd-op-wrap">
+								<OperationPanel
+									:items="dirAfter"
+									mode="after"
+									:env-list="envList"
+									:tree-list="treeData"
+									:db-list="dirDbList"
+									:script-list="dirScriptList"
+								/>
+							</div>
+						</el-tab-pane>
+						<el-tab-pane label="Auth" name="auth">
+							<div style="padding: 8px 0; max-height: 100%; overflow: auto">
+								<el-form label-width="130px"><div style="padding:8px 0; max-height:100%; overflow:auto">
+										<el-form label-width="130px">
+											<el-form-item label="认证类型：">
+												<el-select v-model="dirAuth.auth_type" style="width:280px" placeholder="请选择认证类型">
+													<el-option label="无认证" value="none" />
+													<el-option label="Bearer Token" value="bearer" />
+													<el-option label="JWT Bearer" value="jwt" />
+													<el-option label="Basic Auth" value="basic" />
+													<el-option label="Digest Auth" value="digest" />
+													<el-option label="API Key" value="apikey" />
+													<el-option label="OAuth 2.0" value="oauth2" />
+												</el-select>
+											</el-form-item>
+
+											<template v-if="dirAuth.auth_type === 'bearer'">
+												<el-form-item label="Token：">
+													<el-input v-model="dirAuth.auth_token" placeholder="支持 {{变量}}，如 {{token}}" style="width:420px" />
+												</el-form-item>
+												<el-form-item label="前缀：">
+													<el-input v-model="dirAuth.auth_prefix" placeholder="默认 Bearer，可留空" style="width:200px" />
+												</el-form-item>
+											</template>
+
+											<template v-if="dirAuth.auth_type === 'jwt'">
+												<el-form-item label="Token 来源：">
+													<el-radio-group v-model="dirAuth.auth_jwt_mode">
+														<el-radio value="token">使用已有 Token</el-radio>
+														<el-radio value="generate">本地签发 JWT</el-radio>
+													</el-radio-group>
+												</el-form-item>
+												<template v-if="dirAuth.auth_jwt_mode !== 'generate'">
+													<el-form-item label="JWT Token：">
+														<el-input v-model="dirAuth.auth_token" type="textarea" :rows="3" placeholder="粘贴 JWT，支持 {{变量}}" style="width:480px" />
+													</el-form-item>
+												</template>
+												<template v-else>
+													<el-form-item label="算法：">
+														<el-select v-model="dirAuth.auth_jwt_alg" style="width:200px">
+															<el-option v-for="a in jwtAlgOptions" :key="a" :label="a" :value="a" />
+														</el-select>
+													</el-form-item>
+													<el-form-item label="Secret / 私钥：">
+														<el-input v-model="dirAuth.auth_jwt_secret" type="textarea" :rows="3" placeholder="HS* 填密钥；RS*/ES* 填 PEM 私钥" style="width:480px" />
+													</el-form-item>
+													<el-form-item label="Payload：">
+														<el-input v-model="dirAuth.auth_jwt_payload" type="textarea" :rows="5" placeholder='{"sub":"user","exp":1710000000}' style="width:480px" />
+													</el-form-item>
+													<el-form-item label="Header（可选）：">
+														<el-input v-model="dirAuth.auth_jwt_headers" type="textarea" :rows="2" placeholder='{"typ":"JWT"}' style="width:480px" />
+													</el-form-item>
+												</template>
+												<el-form-item label="前缀：">
+													<el-input v-model="dirAuth.auth_prefix" placeholder="默认 Bearer" style="width:200px" />
+												</el-form-item>
+											</template>
+
+											<template v-if="dirAuth.auth_type === 'basic' || dirAuth.auth_type === 'digest'">
+												<el-form-item label="用户名：">
+													<el-input v-model="dirAuth.auth_username" placeholder="请输入用户名，支持 {{变量}}" style="width:320px" />
+												</el-form-item>
+												<el-form-item label="密码：">
+													<el-input v-model="dirAuth.auth_password" placeholder="请输入密码，支持 {{变量}}" type="password" show-password style="width:320px" />
+												</el-form-item>
+											</template>
+
+											<template v-if="dirAuth.auth_type === 'apikey'">
+												<el-form-item label="Key：">
+													<el-input v-model="dirAuth.auth_key" placeholder="如 X-API-KEY / api_key" style="width:320px" />
+												</el-form-item>
+												<el-form-item label="Value：">
+													<el-input v-model="dirAuth.auth_value" placeholder="支持 {{变量}}" style="width:320px" />
+												</el-form-item>
+												<el-form-item label="添加到：">
+													<el-radio-group v-model="dirAuth.auth_in">
+														<el-radio value="header">Header</el-radio>
+														<el-radio value="query">Query Params</el-radio>
+													</el-radio-group>
+												</el-form-item>
+											</template>
+
+											<template v-if="dirAuth.auth_type === 'oauth2'">
+												<el-form-item label="Grant Type：">
+													<el-select v-model="dirAuth.auth_oauth_grant" style="width:280px">
+														<el-option label="Access Token（已有令牌）" value="access_token" />
+														<el-option label="Client Credentials" value="client_credentials" />
+														<el-option label="Password Credentials" value="password" />
+													</el-select>
+												</el-form-item>
+												<template v-if="dirAuth.auth_oauth_grant === 'access_token'">
+													<el-form-item label="Access Token：">
+														<el-input v-model="dirAuth.auth_oauth_access_token" type="textarea" :rows="2" placeholder="支持 {{access_token}}" style="width:480px" />
+													</el-form-item>
+												</template>
+												<template v-else>
+													<el-form-item label="Token URL：">
+														<el-input v-model="dirAuth.auth_oauth_token_url" placeholder="https://auth.example.com/oauth/token" style="width:480px" />
+													</el-form-item>
+													<el-form-item label="Client ID：">
+														<el-input v-model="dirAuth.auth_oauth_client_id" style="width:320px" />
+													</el-form-item>
+													<el-form-item label="Client Secret：">
+														<el-input v-model="dirAuth.auth_oauth_client_secret" type="password" show-password style="width:320px" />
+													</el-form-item>
+													<el-form-item label="Scope：">
+														<el-input v-model="dirAuth.auth_oauth_scope" placeholder="可选，多个用空格分隔" style="width:320px" />
+													</el-form-item>
+													<el-form-item label="Client 认证：">
+														<el-radio-group v-model="dirAuth.auth_oauth_client_auth">
+															<el-radio value="basic">Basic Auth Header</el-radio>
+															<el-radio value="body">Request Body</el-radio>
+														</el-radio-group>
+													</el-form-item>
+													<template v-if="dirAuth.auth_oauth_grant === 'password'">
+														<el-form-item label="用户名：">
+															<el-input v-model="dirAuth.auth_username" style="width:320px" />
+														</el-form-item>
+														<el-form-item label="密码：">
+															<el-input v-model="dirAuth.auth_password" type="password" show-password style="width:320px" />
+														</el-form-item>
+													</template>
+												</template>
+												<el-form-item label="前缀：">
+													<el-input v-model="dirAuth.auth_prefix" placeholder="默认 Bearer" style="width:200px" />
+												</el-form-item>
+											</template>
+
+											<div v-if="dirAuth.auth_type && dirAuth.auth_type !== 'none'" class="auth-hint">
+												发送请求时会自动写入 Authorization / 指定 Header 或 Query；支持环境变量替换。
+											</div>
+										</el-form>
+									</div>
+								</el-form>
+							</div>
+						</el-tab-pane>
 					</el-tabs>
 				</div>
 				<div v-else-if="!apiTabs.length" class="detail-empty">
@@ -404,6 +561,7 @@ import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
 import BatchEditDialog from './components/BatchEditDialog.vue';
+import OperationPanel from './components/OperationPanel.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
@@ -523,6 +681,17 @@ const selectedDir = ref<any>(null);
 const dirDetailTab = ref('settings');
 const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
 const dirChecked = ref<number[]>([]);
+const dirBefore = ref<any[]>([]);
+const dirAfter = ref<any[]>([]);
+const dirDbList = ref<any[]>([]);
+const dirScriptList = ref<any[]>([]);
+const dirAuth = ref<any>({
+	auth_type: 'none', auth_token: '', auth_username: '', auth_password: '',
+	auth_key: '', auth_value: '', auth_in: 'header', auth_prefix: 'Bearer',
+	auth_jwt_mode: 'token', auth_jwt_alg: 'HS256', auth_jwt_secret: '', auth_jwt_payload: '{\n  "sub": "user"\n}', auth_jwt_headers: '',
+	auth_oauth_grant: 'access_token', auth_oauth_access_token: '', auth_oauth_token_url: '',
+	auth_oauth_client_id: '', auth_oauth_client_secret: '', auth_oauth_scope: '', auth_oauth_client_auth: 'basic',
+});
 
 const dirApis = computed(() => {
 	const out: any[] = [];
@@ -571,6 +740,18 @@ const dirBatchDelete = async () => {
 		ElMessage.error(e?.message || '删除失败');
 	}
 };
+const loadDirLists = async () => {
+	try {
+		const r: any = await useApiAutomationApi().ntest_script_list({ api_service_id: Number(props.serviceId) });
+		dirScriptList.value = Array.isArray(r?.data) ? r.data : [];
+	} catch { dirScriptList.value = []; }
+	try {
+		const r2: any = await useApiAutomationApi().api_db_list({});
+		const raw = r2?.data;
+		dirDbList.value = Array.isArray(raw?.content) ? raw.content : (Array.isArray(raw) ? raw : []);
+	} catch { dirDbList.value = []; }
+};
+
 const saveDirConfig = async () => {
 	if (!selectedDir.value) return;
 	try {
@@ -581,6 +762,9 @@ const saveDirConfig = async () => {
 		if (!cp || typeof cp !== 'object') cp = {};
 		cp.visibility = dirConfig.value.visibility;
 		cp.id_key = dirConfig.value.id_key;
+		cp.before = dirBefore.value;
+		cp.after = dirAfter.value;
+		cp.auth = dirAuth.value;
 		await edit_menu({ id: selectedDir.value.id, name: selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
 		ElMessage.success('目录设置已保存');
 		await loadTree();
@@ -674,6 +858,10 @@ const onNodeClick = async (data: any) => {
 			visibility: cp.visibility || 'shared',
 			id_key: cp.id_key || 'method_path',
 		};
+		dirBefore.value = Array.isArray(cp.before) ? cp.before : [];
+		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
+		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
+		loadDirLists();
 		return;
 	}
 	if (data.type !== 2 && data.type !== 3) return;
@@ -1332,4 +1520,5 @@ onMounted(() => {
 .dot-green { background: #67c23a; }
 .dot-blue { background: #409eff; }
 .dd-empty { font-size: 12px; color: var(--el-text-color-secondary); text-align: center; padding: 30px 0; }
+.dd-op-wrap { max-height: 480px; overflow: auto; }
 </style>
