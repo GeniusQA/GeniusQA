@@ -872,5 +872,5 @@ onMounted(() => {
 	flex: 0 0 auto;
 }
 .proto-ws { background: #7c4dff; }
-.proto-wh { background: #e6a23c; }
+.proto-wh { background: #ec4899; }
 </style>

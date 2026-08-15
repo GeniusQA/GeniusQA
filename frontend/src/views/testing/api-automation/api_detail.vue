@@ -15,7 +15,7 @@
 				<div class="api-detail-header">
 					<div class="req-url-bar">
 						<el-tag v-if="req.protocol === 'websocket'" effect="dark" color="#7c4dff" class="ws-badge">WebSocket</el-tag>
-						<el-tag v-else-if="req.protocol === 'webhook'" effect="dark" color="#7c4dff" class="ws-badge">Webhook</el-tag>
+						<el-tag v-else-if="req.protocol === 'webhook'" effect="dark" color="#ec4899" class="ws-badge">Webhook</el-tag>
 						<el-select v-if="req.protocol !== 'websocket'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
 							<el-option v-for="(m, i) in method_list" :key="i" :label="m.name" :value="m.value">
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
