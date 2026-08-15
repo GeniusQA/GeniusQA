@@ -194,7 +194,7 @@
 
 			<!-- cURL -->
 			<el-form v-else-if="importSourceType === 'curl'" label-width="100px">
-				<el-form-item label="cURL 命令" required>
+				<el-form-item label="粘贴 cURL 数据" required>
 					<el-input
 						v-model="curlText"
 						type="textarea"
