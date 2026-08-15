@@ -1781,6 +1781,7 @@ class ApiAutomationService:
                     "type": r.type,
                     "api_id": r.api_id,
                     "api_service_id": r.api_service_id,
+                    "common_params": r.common_params,
                 }
             )
             if r.api_id:
@@ -1789,6 +1790,7 @@ class ApiAutomationService:
         
         method_map: Dict[int, int] = {}
         protocol_map: Dict[int, str] = {}
+        url_map: Dict[int, str] = {}
         if api_ids:
             api_rows = (
                 await db.execute(
@@ -1807,12 +1809,14 @@ class ApiAutomationService:
                     method_val = 2
                 method_map[int(a.id)] = method_val
                 protocol_map[int(a.id)] = str(req_cfg.get("protocol") or "http").lower()
+                url_map[int(a.id)] = str(a.url or "")
 
         for it in items:
             api_id = it.get("api_id")
             if api_id and int(api_id) in method_map:
                 it["method"] = method_map[int(api_id)]
                 it["protocol"] = protocol_map.get(int(api_id), "http")
+                it["url"] = url_map.get(int(api_id), "")
 
         menu_tree = _build_tree(items)
         # 模块层：每个服务（模块）包一层节点（id 加 svc_ 前缀避免与菜单 id 冲突）
@@ -3768,11 +3772,14 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
-    async def edit_menu(db: AsyncSession, menu_id: int, name: str, user_id: int) -> None:
+    async def edit_menu(db: AsyncSession, menu_id: int, name: str, user_id: int, common_params: Any = None) -> None:
+        values: Dict[str, Any] = {"name": name, "updated_by": user_id}
+        if common_params is not None:
+            values["common_params"] = common_params
         await db.execute(
             update(ApiMenuModel)
             .where(ApiMenuModel.id == int(menu_id), ApiMenuModel.enabled_flag == 1, ApiMenuModel.created_by == user_id)
-            .values(name=name, updated_by=user_id)
+            .values(**values)
         )
         await db.commit()
 

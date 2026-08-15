@@ -107,6 +107,74 @@
 						</el-tab-pane>
 					</el-tabs>
 				</div>
+				<div v-else-if="selectedDir && !apiTabs.length" class="dir-detail">
+					<div class="dir-detail-head">
+						<h3 class="dir-detail-title">{{ selectedDir.name }}</h3>
+						<el-button type="primary" size="small" @click="saveDirConfig">保存</el-button>
+					</div>
+					<el-tabs v-model="dirDetailTab" class="dir-detail-tabs">
+						<el-tab-pane label="目录设置" name="settings">
+							<div class="dd-section">
+								<div class="dd-section-title">功能说明</div>
+								<div class="dd-desc">「{{ selectedDir.name }}」主要用来对目录内的所有接口进行设置：目录级前置/后置操作、Auth 鉴权，以及接口唯一标识（导入数据时用于匹配对应接口），目录下的接口默认继承这些设置。</div>
+							</div>
+							<div class="dd-section">
+								<div class="dd-section-title">可见性</div>
+								<div class="dd-row">
+									<div class="dd-row-text">
+										<div class="dd-row-label">可见性</div>
+										<div class="dd-row-desc">设置目录内的接口文档是否可以对外分享或发布</div>
+									</div>
+									<el-select v-model="dirConfig.visibility" style="width: 200px">
+										<el-option label="共享" value="shared" />
+										<el-option label="内部" value="internal" />
+									</el-select>
+								</div>
+							</div>
+							<div class="dd-section">
+								<div class="dd-section-title">高级配置</div>
+								<div class="dd-row">
+									<div class="dd-row-text">
+										<div class="dd-row-label">目录下的接口唯一标识</div>
+										<div class="dd-row-desc">导入数据的时候用来匹配对应的接口</div>
+									</div>
+									<el-select v-model="dirConfig.id_key" style="width: 220px">
+										<el-option label="Method & Path" value="method_path" />
+										<el-option label="OperationId" value="operation_id" />
+										<el-option label="Query 参数" value="query" />
+										<el-option label="Body 参数" value="body" />
+										<el-option label="Header 参数" value="header" />
+									</el-select>
+								</div>
+							</div>
+						</el-tab-pane>
+						<el-tab-pane label="全部接口" name="apis">
+							<div class="dd-apis">
+								<div v-if="dirApis.length" class="dd-apis-bar">
+									<span>已选 {{ dirChecked.length }}/{{ dirApis.length }} 项</span>
+									<el-button link type="danger" size="small" :disabled="!dirChecked.length" @click="dirBatchDelete">删除</el-button>
+								</div>
+								<div class="dd-apis-head">
+									<el-checkbox :model-value="dirApis.length > 0 && dirChecked.length === dirApis.length" @change="(v: any) => toggleDirAll(v)" />
+									<span>接口名称</span><span>请求类型</span><span>接口路径</span><span>接口分组</span><span>接口状态</span><span>标签</span>
+								</div>
+								<div v-for="a in dirApis" :key="a.id" class="dd-apis-row">
+									<el-checkbox :model-value="dirChecked.includes(a.id)" @change="(v: any) => toggleDirCheck(a.id, v)" />
+									<span class="dd-api-name">{{ a.name }}</span>
+									<span class="dd-method" :style="{ color: methodColor(a.method) }">{{ methodLabel(a.method) }}</span>
+									<span class="dd-api-path">{{ a.url || '/' }}</span>
+									<span>{{ a.groupName }}</span>
+									<span><span class="dd-status-dot dot-blue"></span>开发中</span>
+									<span>-</span>
+								</div>
+								<div v-if="!dirApis.length" class="dd-empty">该目录下暂无接口</div>
+							</div>
+						</el-tab-pane>
+						<el-tab-pane label="前置操作" name="before"><div class="dd-empty">目录级前置操作配置开发中</div></el-tab-pane>
+						<el-tab-pane label="后置操作" name="after"><div class="dd-empty">目录级后置操作配置开发中</div></el-tab-pane>
+						<el-tab-pane label="Auth" name="auth"><div class="dd-empty">目录级 Auth 配置开发中</div></el-tab-pane>
+					</el-tabs>
+				</div>
 				<div v-else-if="!apiTabs.length" class="detail-empty">
 					<el-icon style="font-size:40px;color:#dcdfe6"><Document /></el-icon>
 					<p>点击左侧接口查看详情</p>
@@ -451,6 +519,76 @@ const handleNodeDrop = async (draggingNode: any, dropNode: any, dropType: string
 	}
 }
 
+const selectedDir = ref<any>(null);
+const dirDetailTab = ref('settings');
+const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
+const dirChecked = ref<number[]>([]);
+
+const dirApis = computed(() => {
+	const out: any[] = [];
+	const walk = (nodes: any[], group: string) => {
+		for (const n of nodes || []) {
+			if (n.type === 2) {
+				out.push({
+					id: n.id,
+					api_id: n.api_id,
+					name: n.name,
+					method: n.method || 2,
+					url: n.url || '',
+					groupName: group || '根目录',
+				});
+			} else if (n.type === 1) {
+				walk(n.children || [], n.name);
+			} else {
+				walk(n.children || [], group);
+			}
+		}
+	};
+	walk(selectedDir.value?.children || [], '');
+	return out;
+});
+
+const toggleDirCheck = (id: number, v: any) => {
+	if (v) {
+		if (!dirChecked.value.includes(id)) dirChecked.value.push(id);
+	} else {
+		dirChecked.value = dirChecked.value.filter((x) => x !== id);
+	}
+};
+const toggleDirAll = (v: any) => {
+	dirChecked.value = v ? dirApis.value.map((a) => a.id) : [];
+};
+const dirBatchDelete = async () => {
+	if (!dirChecked.value.length) return;
+	try {
+		for (const id of dirChecked.value) {
+			await del_menu({ id });
+		}
+		ElMessage.success(`已删除 ${dirChecked.value.length} 个接口`);
+		dirChecked.value = [];
+		await loadTree();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '删除失败');
+	}
+};
+const saveDirConfig = async () => {
+	if (!selectedDir.value) return;
+	try {
+		let cp: Record<string, any> = {};
+		try {
+			cp = selectedDir.value.common_params ? JSON.parse(selectedDir.value.common_params) : {};
+		} catch { cp = {}; }
+		if (!cp || typeof cp !== 'object') cp = {};
+		cp.visibility = dirConfig.value.visibility;
+		cp.id_key = dirConfig.value.id_key;
+		await edit_menu({ id: selectedDir.value.id, name: selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
+		ElMessage.success('目录设置已保存');
+		await loadTree();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '保存失败');
+	}
+};
+
 const selectedModule = ref<any>(null);
 const moduleDetailTab = ref('overview');
 const moduleVars = ref<{ key: string; remote: string; local: string }[]>([]);
@@ -518,7 +656,24 @@ const applyModuleVarsBulk = (rows: any[]) => {
 const onNodeClick = async (data: any) => {
 	if (data.type === 0) {
 		apiTabs.value = [];
+		selectedDir.value = null;
 		await loadModuleDetail(data);
+		return;
+	}
+	if (data.type === 1) {
+		apiTabs.value = [];
+		selectedModule.value = null;
+		selectedDir.value = data;
+		dirDetailTab.value = 'settings';
+		dirChecked.value = [];
+		let cp: Record<string, any> = {};
+		try {
+			cp = data.common_params ? JSON.parse(data.common_params) : {};
+		} catch { cp = {}; }
+		dirConfig.value = {
+			visibility: cp.visibility || 'shared',
+			id_key: cp.id_key || 'method_path',
+		};
 		return;
 	}
 	if (data.type !== 2 && data.type !== 3) return;
@@ -1156,4 +1311,25 @@ onMounted(() => {
 .md-vars-head { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
 .md-vars-row { margin-bottom: 6px; }
 .md-vars-actions { margin-top: 8px; display: flex; gap: 12px; }
+.dir-detail { padding: 4px 2px; }
+.dir-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.dir-detail-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); }
+.dd-section { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+.dd-section-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.dd-desc { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.8; }
+.dd-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dd-row-text { flex: 1; }
+.dd-row-label { font-size: 13px; color: var(--el-text-color-primary); }
+.dd-row-desc { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+.dd-apis-bar { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 8px; }
+.dd-apis-head, .dd-apis-row { display: grid; grid-template-columns: 30px 1.2fr 90px 1.6fr 1fr 100px 80px; gap: 8px; align-items: center; }
+.dd-apis-head { font-size: 12px; color: var(--el-text-color-secondary); padding: 6px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+.dd-apis-row { padding: 5px 0; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 13px; }
+.dd-api-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-api-path { font-family: Consolas, Monaco, monospace; font-size: 12px; color: var(--el-text-color-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-method { font-weight: 600; font-size: 12px; }
+.dd-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.dot-green { background: #67c23a; }
+.dot-blue { background: #409eff; }
+.dd-empty { font-size: 12px; color: var(--el-text-color-secondary); text-align: center; padding: 30px 0; }
 </style>

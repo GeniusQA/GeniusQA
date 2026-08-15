@@ -278,7 +278,9 @@ async def edit_menu(
     """编辑菜单"""
     try:
         body = await body_to_json(request)
-        await ApiAutomationService.edit_menu(db, int(body["id"]), str(body["name"]), current_user_id)
+        await ApiAutomationService.edit_menu(
+            db, int(body["id"]), str(body["name"]), current_user_id, common_params=body.get("common_params")
+        )
         return success_response({}, message="编辑成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
