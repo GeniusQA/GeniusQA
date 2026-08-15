@@ -1,5 +1,5 @@
 <template>
-	<el-dialog v-model="inner" title="批量编辑" width="560px" append-to-body>
+	<el-dialog v-model="inner" title="批量编辑" width="560px">
 		<div class="batch-mode">
 			<el-radio-group v-model="batchMode" size="small">
 				<el-radio-button label="comma">逗号模式</el-radio-button>
@@ -26,6 +26,7 @@ import { ref, watch } from 'vue';
 const props = defineProps<{
 	modelValue: boolean;
 	target: string;
+	initialText?: string;
 }>();
 const emit = defineEmits<{
 	(e: 'update:modelValue', v: boolean): void;
@@ -37,6 +38,10 @@ watch(
 	() => props.modelValue,
 	(v) => {
 		inner.value = v;
+		if (v) {
+			batchMode.value = 'comma';
+			batchText.value = props.initialText || '';
+		}
 	},
 	{ immediate: true }
 );
@@ -44,6 +49,7 @@ watch(inner, (v) => emit('update:modelValue', v));
 
 const batchMode = ref<'comma' | 'colon'>('comma');
 const batchText = ref('');
+watch(() => props.initialText, (v) => { batchText.value = v || ''; });
 
 const apply = () => {
 	const sep = batchMode.value === 'comma' ? ',' : ':';
@@ -51,9 +57,9 @@ const apply = () => {
 	const rows = lines.map((l) => {
 		const idx = l.indexOf(sep);
 		if (idx > 0) {
-			return { key: l.slice(0, idx).trim(), value: l.slice(idx + 1).trim(), status: true, type: 'String', remark: '' };
+			return { key: l.slice(0, idx).trim(), value: l.slice(idx + 1).trim(), status: true, type: 'string', remark: '' };
 		}
-		return { key: l, value: '', status: true, type: 'String', remark: '' };
+		return { key: l, value: '', status: true, type: 'string', remark: '' };
 	});
 	emit('apply', rows);
 	inner.value = false;

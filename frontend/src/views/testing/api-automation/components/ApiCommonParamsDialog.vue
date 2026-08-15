@@ -208,7 +208,7 @@
 </template>
 
 	<!-- 批量编辑弹窗（Apifox：逗号模式/冒号模式） -->
-	<BatchEditDialog v-model="batchVisible" :target="batchTarget" @apply="onBatchApply" />
+	<BatchEditDialog v-model="batchVisible" :target="batchTarget" :initial-text="batchInitText" @apply="onBatchApply" />
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
@@ -231,7 +231,7 @@ const saving = ref(false);
 const activeTab = ref('header');
 
 type KvRow = { key: string; value: string; status: boolean; type?: string; remark?: string; domain?: string };
-const paramTypes = ['String', 'Number', 'Boolean', 'File'];
+const paramTypes = ['string', 'integer', 'boolean', 'number', 'array', 'object'];
 
 const form = reactive<{
 	header: KvRow[];
@@ -251,8 +251,8 @@ const form = reactive<{
 	auth: { auth_type: 'none' },
 });
 
-const emptyKv = (): KvRow => ({ key: '', value: '', status: true, type: 'String', remark: '' });
-const emptyCookie = (): KvRow => ({ key: '', value: '', status: true, type: 'String', remark: '', domain: '' });
+const emptyKv = (): KvRow => ({ key: '', value: '', status: true, type: 'string', remark: '' });
+const emptyCookie = (): KvRow => ({ key: '', value: '', status: true, type: 'string', remark: '', domain: '' });
 
 const countEnabled = (list: KvRow[]) => list.filter((x) => x.status !== false && String(x.key || '').trim()).length;
 
@@ -260,8 +260,15 @@ const countEnabled = (list: KvRow[]) => list.filter((x) => x.status !== false &&
 const batchVisible = ref(false);
 const batchTarget = ref('header');
 
+const batchInitText = ref('');
+
 const openBatchEdit = (tab: string) => {
 	batchTarget.value = tab;
+	const rows = ((form as any)[tab] || []) as KvRow[];
+	batchInitText.value = rows
+		.filter((r) => String(r.key || '').trim())
+		.map((r) => `${r.key},${r.value}`)
+		.join('\n');
 	batchVisible.value = true;
 };
 
@@ -279,7 +286,7 @@ const normalizeList = (list: any[], cookie = false): KvRow[] => {
 				key,
 				value: x.value == null ? '' : String(x.value),
 				status: x.status === false ? false : true,
-				type: x.type || 'String',
+				type: String(x.type || 'string').toLowerCase(),
 				remark: x.remark == null ? '' : String(x.remark),
 			};
 			if (cookie) row.domain = x.domain == null ? '' : String(x.domain);
