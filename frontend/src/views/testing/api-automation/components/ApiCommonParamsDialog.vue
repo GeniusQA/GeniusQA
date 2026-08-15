@@ -26,7 +26,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.header.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
@@ -47,7 +47,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:0.9" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.cookie.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
@@ -69,7 +69,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.query.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
@@ -93,7 +93,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.body.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
@@ -126,7 +126,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.header.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
@@ -147,7 +147,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.domain" placeholder="Domain（可选）" size="small" style="flex:0.9" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.cookie.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
@@ -169,7 +169,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.query.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
@@ -193,7 +193,7 @@
 						<el-select v-model="row.type" size="small" style="width:86px">
 							<el-option v-for="t in paramTypes" :key="t" :label="t" :value="t" />
 						</el-select>
-						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" />
+						<el-input v-model="row.value" placeholder="默认值" size="small" style="flex:1.2" :disabled="row.type === 'object'" />
 						<el-input v-model="row.remark" placeholder="说明（可选）" size="small" style="flex:1" />
 						<el-button type="danger" link size="small" class="cp-del-icon" @click="form.body.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
 					</div>
