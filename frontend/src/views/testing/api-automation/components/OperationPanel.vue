@@ -19,6 +19,7 @@
         <div class="op-card__header" @click="toggleCollapse(index)">
           <div class="op-card__title">
             <el-icon class="op-card__drag" draggable="true" @dragstart="onDragStart(index, $event)" @click.stop><Rank /></el-icon>
+            <el-switch v-model="item.enabled" size="small" style="margin-right:4px" @click.stop />
             <span class="op-card__badge" :class="`badge--${typeColor(item.type)}`">
               {{ index + 1 }}
             </span>
@@ -27,7 +28,9 @@
             <span class="op-card__summary">{{ itemSummary(item) }}</span>
           </div>
           <div class="op-card__actions" @click.stop>
-            <el-switch v-model="item.enabled" size="small" style="margin-right:6px" />
+            <el-tooltip content="开启后子级接口默认代入执行该操作" placement="top">
+              <el-switch v-model="item.inherit_child" size="small" style="margin-right:6px" />
+            </el-tooltip>
             <el-icon
               class="op-card__collapse-icon"
               :class="{ 'is-collapsed': collapsed[index] }"
@@ -678,7 +681,7 @@ const availableTypes = computed(() =>
 
 // ---- Default item factory ----
 const defaultItem = (type: number): any => {
-  const base = { type, enabled: true }
+  const base = { type, enabled: true, inherit_child: true }
   if (props.mode === 'before') {
     if (type === 1) return { ...base, title: '', env_id: null, api_id: null }
     if (type === 2) return { ...base, name: '', env_type: null, value: '' }

@@ -1084,6 +1084,12 @@ class ApiAutomationService:
         return out
 
     @staticmethod
+    def _op_fingerprint(op: Dict[str, Any]) -> str:
+        """操作指纹：用于子级按操作单独剔除继承项。"""
+        payload = op.get("code") or op.get("sql") or op.get("name") or op.get("title") or ""
+        return f"{op.get('type')}:{str(payload)[:64]}"
+
+    @staticmethod
     def apply_common_params_to_req(req: Dict[str, Any], common: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """将服务级全局参数合并进请求"""
         if not isinstance(req, dict):
@@ -1100,16 +1106,27 @@ class ApiAutomationService:
 
         # 前置/后置操作继承：默认父级在前 + 接口在后（req.inherit_before_first=false 时接口在前）
         # 接口可单独关闭继承：req.inherit_before / req.inherit_after = false 时跳过父级
+        # 操作级继承：父级操作 inherit_child=false 不代入子级；子级可用 inherit_before_excludes（操作指纹）单独剔除
         if common.get("before") and req.get("inherit_before", True) is not False:
+            parent_ops = [op for op in common.get("before") if op.get("inherit_child") is not False]
             if req.get("inherit_before_first", True) is False:
-                req["before"] = list(req.get("before") or []) + list(common.get("before") or [])
+                merged_before = list(req.get("before") or []) + list(parent_ops)
             else:
-                req["before"] = list(common.get("before") or []) + list(req.get("before") or [])
+                merged_before = list(parent_ops) + list(req.get("before") or [])
+            _ex = req.get("inherit_before_excludes") or []
+            if _ex:
+                merged_before = [op for op in merged_before if ApiAutomationService._op_fingerprint(op) not in _ex]
+            req["before"] = merged_before
         if common.get("after") and req.get("inherit_after", True) is not False:
+            parent_ops = [op for op in common.get("after") if op.get("inherit_child") is not False]
             if req.get("inherit_after_first", True) is False:
-                req["after"] = list(req.get("after") or []) + list(common.get("after") or [])
+                merged_after = list(req.get("after") or []) + list(parent_ops)
             else:
-                req["after"] = list(common.get("after") or []) + list(req.get("after") or [])
+                merged_after = list(parent_ops) + list(req.get("after") or [])
+            _ex = req.get("inherit_after_excludes") or []
+            if _ex:
+                merged_after = [op for op in merged_after if ApiAutomationService._op_fingerprint(op) not in _ex]
+            req["after"] = merged_after
         # 鉴权继承：接口未配置鉴权时继承公共鉴权（平铺字段）
         if not req.get("auth_type") and isinstance(common.get("auth"), dict) and common["auth"].get("auth_type"):
             for k, v in common["auth"].items():

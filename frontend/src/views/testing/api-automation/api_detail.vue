@@ -322,7 +322,10 @@
 									</div>
 									<div v-if="showInheritBefore && inheritBefore.length" class="inherit-detail">
 										<div v-for="(op, i) in inheritBefore" :key="i" class="inherit-op">
-											<div class="inherit-op-title">{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span></div>
+											<div class="inherit-op-title">
+												<el-switch size="small" style="margin-right:6px" :model-value="!isBeforeExcluded(op)" @change="(v: any) => toggleBeforeExclude(op, v)" />
+												{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span>
+											</div>
 											<pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
 											<div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
 										</div>
@@ -377,7 +380,10 @@
 </div>
 <div v-if="showInheritAfter && inheritAfter.length" class="inherit-detail">
 <div v-for="(op, i) in inheritAfter" :key="i" class="inherit-op">
-<div class="inherit-op-title">{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span></div>
+<div class="inherit-op-title">
+<el-switch size="small" style="margin-right:6px" :model-value="!isAfterExcluded(op)" @change="(v: any) => toggleAfterExclude(op, v)" />
+{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span>
+</div>
 <pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
 <div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
 </div>
@@ -1146,6 +1152,24 @@ const effectiveDbList = computed(() => {
 const inheritBefore = ref<any[]>([]);
 const inheritAfter = ref<any[]>([]);
 
+// ---- 继承操作按操作级开关剔除（指纹与后端 _op_fingerprint 一致）----
+const opFingerprint = (op: any) => {
+  const payload = op.code || op.sql || op.name || op.title || ''
+  return `${op.type}:${String(payload).slice(0, 64)}`
+}
+const isBeforeExcluded = (op: any) => (req.value.inherit_before_excludes || []).includes(opFingerprint(op))
+const toggleBeforeExclude = (op: any, on: boolean) => {
+  const fp = opFingerprint(op)
+  const arr = req.value.inherit_before_excludes || []
+  req.value.inherit_before_excludes = on ? arr.filter((x: string) => x !== fp) : [...arr, fp]
+}
+const isAfterExcluded = (op: any) => (req.value.inherit_after_excludes || []).includes(opFingerprint(op))
+const toggleAfterExclude = (op: any, on: boolean) => {
+  const fp = opFingerprint(op)
+  const arr = req.value.inherit_after_excludes || []
+  req.value.inherit_after_excludes = on ? arr.filter((x: string) => x !== fp) : [...arr, fp]
+}
+
 const opLabel = (op: any) => {
 	if (!op || typeof op !== 'object') return '操作'
 	const t = op.type
@@ -1175,6 +1199,7 @@ const req = ref({
 	method: 1, url: '', params: [], header: [], body: '', body_type: 2,
 	inherit_before: true, inherit_after: true,
 	inherit_before_first: true, inherit_after_first: true,
+	inherit_before_excludes: [], inherit_after_excludes: [],
 	form_data: [], form_urlencoded: [], file_path: [],
 	before: [], after: [], assert: [],
 	config: { retry: 0, req_timeout: 30, res_timeout: 30, ssl_verify: true, allow_redirects: true, url_encode: false },
@@ -1293,6 +1318,8 @@ watch(
 			inherit_after: reqSrc.inherit_after !== false,
 			inherit_before_first: reqSrc.inherit_before_first !== false,
 			inherit_after_first: reqSrc.inherit_after_first !== false,
+			inherit_before_excludes: Array.isArray(reqSrc.inherit_before_excludes) ? reqSrc.inherit_before_excludes : [],
+			inherit_after_excludes: Array.isArray(reqSrc.inherit_after_excludes) ? reqSrc.inherit_after_excludes : [],
 			assert: Array.isArray(reqSrc.assert) ? reqSrc.assert : [],
 			config: { retry: reqSrc.config?.retry ?? 0, req_timeout: reqSrc.config?.req_timeout ?? 30, res_timeout: reqSrc.config?.res_timeout ?? 30, ssl_verify: reqSrc.config?.ssl_verify ?? true, allow_redirects: reqSrc.config?.allow_redirects ?? true, url_encode: reqSrc.config?.url_encode ?? false },
 			xml_body: reqSrc.xml_body ?? '', text_body: reqSrc.text_body ?? '',
