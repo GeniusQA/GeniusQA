@@ -28,7 +28,7 @@
             <span class="op-card__summary">{{ itemSummary(item) }}</span>
           </div>
           <div class="op-card__actions" @click.stop>
-            <el-tooltip content="开启后子级接口默认代入执行该操作" placement="top">
+            <el-tooltip content="在子级默认开启" placement="top">
               <el-switch v-model="item.inherit_child" size="small" style="margin-right:6px" />
             </el-tooltip>
             <el-icon

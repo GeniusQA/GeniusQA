@@ -314,17 +314,17 @@
 											<span class="inherit-muted">（{{ inheritBefore.length }} 个操作，来自根目录/父级目录）</span>
 											<el-icon class="inherit-arrow" :style="{ transform: showInheritBefore ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s' }"><ArrowRight /></el-icon>
 										</div>
-										<div class="inherit-switch">
-											<span class="inherit-muted">执行父级前置操作</span>
-											<el-switch v-model="req.inherit_before" />
-										</div>
 										<div class="inherit-drop-hint">拖动手动操作到此处 = 手动先执行</div>
 									</div>
 									<div v-if="showInheritBefore && inheritBefore.length" class="inherit-detail">
 										<div v-for="(op, i) in inheritBefore" :key="i" class="inherit-op">
 											<div class="inherit-op-title">
-												<el-switch size="small" style="margin-right:6px" :model-value="!isBeforeExcluded(op)" @change="(v: any) => toggleBeforeExclude(op, v)" />
+												<el-checkbox size="small" style="margin-right:6px" :model-value="!isBeforeExcluded(op)" @change="(v: any) => toggleBeforeExclude(op, v)" />
 												{{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span>
+												<span style="flex:1"></span>
+												<el-tooltip content="在子级默认开启，可以设为跟随父级" placement="top">
+													<el-switch size="small" :model-value="op.follow_parent !== false" @change="(v: boolean) => op.follow_parent = v" />
+												</el-tooltip>
 											</div>
 											<pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
 											<div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
@@ -373,16 +373,17 @@
 <span class="inherit-muted">（{{ inheritAfter.length }} 个操作，来自根目录/父级目录）</span>
 <el-icon class="inherit-arrow" :style="{ transform: showInheritAfter ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s' }"><ArrowRight /></el-icon>
 </div>
-<div class="inherit-switch">
-<span class="inherit-muted">执行父级后置操作</span>
-<el-switch v-model="req.inherit_after" />
-</div>
+
 </div>
 <div v-if="showInheritAfter && inheritAfter.length" class="inherit-detail">
 <div v-for="(op, i) in inheritAfter" :key="i" class="inherit-op">
 <div class="inherit-op-title">
-<el-switch size="small" style="margin-right:6px" :model-value="!isAfterExcluded(op)" @change="(v: any) => toggleAfterExclude(op, v)" />
+<el-checkbox size="small" style="margin-right:6px" :model-value="!isAfterExcluded(op)" @change="(v: any) => toggleAfterExclude(op, v)" />
 {{ opLabel(op) }} <span class="inherit-muted">{{ langLabel(op.language) }}</span>
+<span style="flex:1"></span>
+<el-tooltip content="在子级默认开启，可以设为跟随父级" placement="top">
+<el-switch size="small" :model-value="op.follow_parent !== false" @change="(v: boolean) => op.follow_parent = v" />
+</el-tooltip>
 </div>
 <pre v-if="op.code" class="inherit-op-code">{{ op.code }}</pre>
 <div v-else class="inherit-op-meta">{{ JSON.stringify(op).slice(0, 200) }}</div>
