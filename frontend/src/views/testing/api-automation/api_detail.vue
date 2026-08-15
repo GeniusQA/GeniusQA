@@ -72,7 +72,16 @@ webhooks:
 											<el-option label="Hexadecimal" value="hex" />
 										</el-select>
 									</div>
-									<el-input v-model="wsMessage" type="textarea" :rows="7" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : wsFormat === 'Binary' ? (wsBinaryType === 'base64' ? '输入 Base64 编码的二进制内容' : '输入十六进制内容（如 0A FF 01，可含空格）') : '输入消息内容'" />
+									<div class="ws-msg-tools">
+										<el-button size="small" link type="primary" @click="wsFormatMsg">格式化</el-button>
+										<span class="ws-wrap-toggle">
+											<span class="ws-muted">自动换行</span>
+											<el-switch v-model="wsWrap" size="small" />
+										</span>
+										<span style="flex: 1"></span>
+										<el-button size="small" link type="danger" @click="wsMessage = ''">清除</el-button>
+									</div>
+									<el-input v-model="wsMessage" type="textarea" :rows="7" :wrap="wsWrap ? 'soft' : 'off'" class="ws-message-input" :placeholder="wsFormat === 'JSON' ? '输入 JSON 消息' : wsFormat === 'Binary' ? (wsBinaryType === 'base64' ? '输入 Base64 编码的二进制内容' : '输入十六进制内容（如 0A FF 01，可含空格）') : '输入消息内容'" />
 									<div class="ws-send-options">
 										<el-checkbox v-model="wsClearAfterSend">发送后清空输入</el-checkbox>
 										<div style="flex:1"></div>
@@ -1634,6 +1643,16 @@ const wsTab = ref('message');
 const wsFormat = ref('Text');
 const wsBinaryType = ref('base64');
 const wsClearAfterSend = ref(true);
+const wsWrap = ref(true);
+const wsFormatMsg = () => {
+	if (wsFormat.value !== 'JSON') { ElMessage.info('仅 JSON 格式支持格式化'); return; }
+	try {
+		const parsed = JSON.parse(wsMessage.value || '{}');
+		wsMessage.value = JSON.stringify(parsed, null, 2);
+	} catch {
+		ElMessage.warning('JSON 解析失败，无法格式化');
+	}
+};
 const wsMessages = ref<{ dir: 'sent' | 'recv'; time: string; content: string }[]>([]);
 const wsMessage = ref('');
 const wsLastOk = ref(false);
@@ -2182,4 +2201,7 @@ const confirmSaveAsCase = async () => {
 	background: #ffffff !important;
 	border-color: var(--el-border-color-light) !important;
 }
+.ws-msg-tools { display: flex; align-items: center; gap: 10px; }
+.ws-wrap-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--el-text-color-secondary); }
+.ws-message-input :deep(textarea) { font-family: Consolas, Monaco, 'Courier New', monospace; }
 </style>
