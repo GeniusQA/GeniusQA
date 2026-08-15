@@ -16,7 +16,7 @@
 		<div class="batch-foot-hint">
 			<template v-if="batchMode === 'comma'">
 				数据格式遵循
-				<el-popover placement="top" trigger="click" width="560">
+				<el-popover placement="bottom-start" trigger="click" width="560">
 					<template #reference>
 						<a class="csv-link">《标准 CSV 规范》</a>
 					</template>
@@ -92,13 +92,34 @@ const csvRules: [string, string][] = [
 	['说明', '参数说明（可选）'],
 ];
 const csvSpecs: { desc: string; code: string }[] = [
-	{ desc: '字段之间以半角逗号(,)分隔', code: 'aaa,bbb,ccc' },
-	{ desc: '记录之间以 CRLF（\r\n）分隔', code: 'aaa,bbb,ccc\r\nddd,eee,fff' },
-	{ desc: '每条记录应包含相同数量的字段', code: 'aaa,bbb,ccc' },
-	{ desc: '使用半角双引号包裹含逗号、换行或双引号的字段', code: '"aaa","b,bb","ccc"' },
-	{ desc: '字段内的双引号用双引号转义', code: '"aaa","b""bb","ccc"' },
-	{ desc: '字段内的空格保留（不修剪）', code: 'aaa, bbb,ccc' },
-	{ desc: '最后一条记录末尾的换行符可省略', code: 'aaa,bbb,ccc 或 aaa,bbb,ccc\r\n' },
+	{
+		desc: '文件中的各条记录必须位于不同行，其间以换行符 CRLF 分隔。例如：',
+		code: 'aaa,bbb,ccc\nzzz,yyy,xxx',
+	},
+	{
+		desc: '最后一条记录的末尾可以不包括换行符。例如：',
+		code: 'aaa,bbb,ccc\nzzz,yyy,xxx',
+	},
+	{
+		desc: '文件中的首条记录可以是字段名（但这不是必要的），且其所含的名称数量及存储规则须与其他记录保持一致。例如：',
+		code: 'field_name,field_name,field_name\naaa,bbb,ccc\nzzz,yyy,xxx',
+	},
+	{
+		desc: '每条记录中可以包含一个或多个字段，每个字段以半角逗号分隔。文件中的所有记录必须拥有相同数量的字段。字段中的空格属于字段取值，不可忽略。每条记录的最后一个字段之后不应再添加半角逗号。例如：',
+		code: 'aaa,bbb,ccc',
+	},
+	{
+		desc: '每个字段可以用半角双引号括起来（但这不一定是必要的）。如果字段没有被双引号括起来，那么字段中不应该出现双引号。例如：',
+		code: '"aaa","bbb","ccc"\nzzz,yyy,xxx',
+	},
+	{
+		desc: '含有换行符、半角双引号或半角逗号的字段应该用半角双引号括起来。例如：',
+		code: '"aaa","b\nbb","ccc"\nzzz,yyy,xxx',
+	},
+	{
+		desc: '如果字段被半角双引号括起来了，那么在表示字段取值中本身含有的半角双引号时，需要在其前方增加一个半角双引号。例如：',
+		code: '"aaa","b""bb","ccc"',
+	},
 ];
 watch(() => props.initialText, (v) => { batchText.value = v || ''; });
 
@@ -154,6 +175,11 @@ const apply = () => {
 	color: #7c3aed;
 	cursor: pointer;
 	text-decoration: underline;
+}
+.csv-rules {
+	max-height: 420px;
+	overflow-y: auto;
+	padding-right: 4px;
 }
 .csv-rule-title {
 	font-weight: 600;
