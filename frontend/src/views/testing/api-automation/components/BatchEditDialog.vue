@@ -11,8 +11,26 @@
 			v-model="batchText"
 			type="textarea"
 			:rows="9"
-			:placeholder="phHint"
+			:placeholder="phPlaceholder"
 		/>
+		<div class="batch-foot-hint">
+			<template v-if="batchMode === 'comma'">
+				数据格式遵循
+				<el-popover placement="top" trigger="click" width="440">
+					<template #reference>
+						<a class="csv-link">《标准 CSV 规范》</a>
+					</template>
+					<div class="csv-rules">
+						<div class="csv-rule-title">CSV 六列格式</div>
+						<div v-for="r in csvRules" :key="r[0]" class="csv-rule-row">
+							<b>{{ r[0] }}</b><span>{{ r[1] }}</span>
+						</div>
+					</div>
+				</el-popover>
+				，字段之间以英文逗号(,)分隔，多条记录以换行分隔
+			</template>
+			<template v-else>字段之间以英文冒号(:)分隔，多条记录以换行分隔</template>
+		</div>
 		<template #footer>
 			<el-button @click="inner = false">取消</el-button>
 			<el-button type="primary" @click="apply">确定</el-button>
@@ -54,11 +72,19 @@ const fmtHint = computed(() =>
 		? '格式：参数名,类型,必需,默认值,默认启用,说明'
 		: '格式：参数名:默认值'
 );
-const phHint = computed(() =>
+const phPlaceholder = computed(() =>
 	batchMode.value === 'comma'
-		? '数据格式遵循《标准 CSV 规范》，字段之间以英文逗号(,)分隔，多条记录以换行分隔'
-		: '字段之间以英文冒号(:)分隔，多条记录以换行分隔'
+		? '如：X-MERCHANT-ID,string,true,MCH007881,true,商户号'
+		: '如：X-MERCHANT-ID:MCH007881'
 );
+const csvRules: [string, string][] = [
+	['参数名', '参数名称（必填）'],
+	['类型', 'string / integer / boolean / number / array / object'],
+	['必需', 'true / false'],
+	['默认值', '参数默认值（object 类型不可填）'],
+	['默认启用', 'true / false'],
+	['说明', '参数说明（可选）'],
+];
 watch(() => props.initialText, (v) => { batchText.value = v || ''; });
 
 const TYPES = ['string', 'integer', 'boolean', 'number', 'array', 'object'];
@@ -102,5 +128,34 @@ const apply = () => {
 .batch-hint {
 	font-size: 12px;
 	color: #909399;
+}
+.batch-foot-hint {
+	margin-top: 6px;
+	font-size: 12px;
+	color: #909399;
+	line-height: 1.6;
+}
+.csv-link {
+	color: #7c3aed;
+	cursor: pointer;
+	text-decoration: underline;
+}
+.csv-rule-title {
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: #1f2937;
+}
+.csv-rule-row {
+	display: flex;
+	gap: 10px;
+	padding: 4px 0;
+	font-size: 13px;
+}
+.csv-rule-row b {
+	min-width: 56px;
+	color: #1f2937;
+}
+.csv-rule-row span {
+	color: #4b5563;
 }
 </style>
