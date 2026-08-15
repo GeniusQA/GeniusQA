@@ -111,9 +111,6 @@ class ApiAutomationService:
             )
             env_row = env.scalar_one_or_none()
             if env_row:
-                for i in (env_row.config or []):
-                    if isinstance(i, dict) and ApiAutomationService._normalize_var_name(i.get("name")) == lookup:
-                        return i.get("value")
                 for j in (env_row.variable or []):
                     if isinstance(j, dict) and ApiAutomationService._normalize_var_name(j.get("name")) == lookup:
                         return j.get("value")
@@ -6000,24 +5997,6 @@ class ApiAutomationService:
         ]
 
     @staticmethod
-    async def get_service_base_url(db: AsyncSession, service_id: int) -> str:
-        """尝试从服务关联的环境配置中获取 base_url"""
-        try:
-            # 查找该服务下第一个环境的 host 配置
-            result = await db.execute(
-                select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1).limit(1)
-            )
-            env = result.scalar_one_or_none()
-            if env and env.config:
-                cfg = env.config if isinstance(env.config, list) else []
-                for item in cfg:
-                    if item.get("key") in ("host", "base_url", "baseUrl"):
-                        return str(item.get("value", ""))
-        except Exception:
-            pass
-        return ""
-
-
     # ── 服务排序 ──────────────────────────────────────────────────────
 
     @staticmethod

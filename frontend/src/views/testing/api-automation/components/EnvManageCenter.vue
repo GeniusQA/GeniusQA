@@ -68,13 +68,6 @@
 						</div>
 						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
 
-						<div class="env-block-title">其他配置项（{{}} 可引用）</div>
-						<div v-for="(item, idx) in envPlainConfig" :key="'c' + idx" class="env-row">
-							<el-input v-model="item.name" placeholder="配置项名" size="small" />
-							<el-input v-model="item.value" placeholder="配置项值" size="small" />
-							<el-button type="danger" link size="small" @click="removePlainConfig(idx)">删除</el-button>
-						</div>
-						<el-button size="small" @click="curEnv.config.push({ name: '', value: '' })">+ 添加配置项</el-button>
 
 						<div class="env-block-title">环境变量</div>
 						<div v-for="(item, idx) in curEnv.variable" :key="'v' + idx" class="env-row">
@@ -177,9 +170,7 @@ const envFrontUrls = computed<any[]>(() => {
 		return [];
 	}
 });
-const envPlainConfig = computed<any[]>(() =>
-	(curEnv.value?.config || []).filter((c: any) => String(c.name || '').trim() !== FRONT_KEY)
-);
+
 const syncFrontUrls = () => {
 	const cfg = curEnv.value.config;
 	const idx = cfg.findIndex((c: any) => String(c.name || '').trim() === FRONT_KEY);
@@ -194,13 +185,7 @@ const removeFrontUrl = (idx: number) => {
 	envFrontUrls.value.splice(idx, 1);
 	syncFrontUrls();
 };
-const removePlainConfig = (idx: number) => {
-	const cfg = curEnv.value.config;
-	const plain = envPlainConfig.value;
-	const target = plain[idx];
-	const ci = cfg.indexOf(target);
-	if (ci >= 0) cfg.splice(ci, 1);
-};
+
 
 const saveCurEnv = async () => {
 	if (!curEnv.value) return;
@@ -214,7 +199,7 @@ const saveCurEnv = async () => {
 			env_list: [{
 				id: curEnv.value.id,
 				name: curEnv.value.name,
-				config: curEnv.value.config.filter((c: any) => String(c.name || '').trim()),
+				config: curEnv.value.config.filter((c: any) => String(c.name || '').trim() === FRONT_KEY),
 				variable: curEnv.value.variable.filter((v: any) => String(v.name || '').trim()),
 			}],
 		});
