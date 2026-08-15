@@ -3263,7 +3263,7 @@ class ApiAutomationService:
                 for f in fu
             )
             if not exists:
-                fu.append({"menu_id": mid, "url": "", "protocol": protocol})
+                fu.append({"menu_id": mid, "url": "", "protocol": protocol, "auto": True})
                 fu_item["value"] = _json.dumps(fu)
                 updates.append((int(env.id), cfg))
         if updates:
@@ -3312,7 +3312,7 @@ class ApiAutomationService:
                 existing = set(str(f.get("menu_id") or "") for f in fu)
                 for mid in module_ids:
                     if str(mid) not in existing:
-                        fu.append({"menu_id": mid, "url": "", "protocol": "http"})
+                        fu.append({"menu_id": mid, "url": "", "protocol": "http", "auto": True})
                         existing.add(str(mid))
                 new_fu = fu
             fu_item["value"] = _json.dumps(new_fu)

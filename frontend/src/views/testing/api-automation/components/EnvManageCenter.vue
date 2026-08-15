@@ -66,9 +66,9 @@
 										<el-button link size="small" class="env-front-more"><el-icon><MoreFilled /></el-icon></el-button>
 									</template>
 									<div class="proto-check-title">协议</div>
-									<el-checkbox v-model="g.checks.http" @change="(v: any) => toggleProto(g, 'http', v)">Http</el-checkbox>
-									<el-checkbox v-model="g.checks.websocket" @change="(v: any) => toggleProto(g, 'websocket', v)">WebSocket</el-checkbox>
-									<el-checkbox v-model="g.checks.socketio" @change="(v: any) => toggleProto(g, 'socketio', v)">Socket.IO</el-checkbox>
+									<el-checkbox v-model="g.checks.http" :disabled="!!g.autoFlags.http" @change="(v: any) => toggleProto(g, 'http', v)">Http</el-checkbox>
+									<el-checkbox v-model="g.checks.websocket" :disabled="!!g.autoFlags.websocket" @change="(v: any) => toggleProto(g, 'websocket', v)">WebSocket</el-checkbox>
+									<el-checkbox v-model="g.checks.socketio" :disabled="!!g.autoFlags.socketio" @change="(v: any) => toggleProto(g, 'socketio', v)">Socket.IO</el-checkbox>
 								</el-popover>
 							</div>
 							<div v-for="row in g.rows" :key="String(row.menu_id) + (row.protocol || 'http')" class="env-row">
@@ -201,6 +201,11 @@ const frontUrlGroups = computed(() => {
 				http: rows.some((r: any) => (r.protocol || 'http') === 'http'),
 				websocket: rows.some((r: any) => r.protocol === 'websocket'),
 				socketio: rows.some((r: any) => r.protocol === 'socketio'),
+			},
+			autoFlags: {
+				http: rows.some((r: any) => (r.protocol || 'http') === 'http' && !!r.auto),
+				websocket: rows.some((r: any) => r.protocol === 'websocket' && !!r.auto),
+				socketio: rows.some((r: any) => r.protocol === 'socketio' && !!r.auto),
 			},
 		};
 	});
