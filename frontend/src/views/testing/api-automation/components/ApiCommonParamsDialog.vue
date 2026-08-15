@@ -221,11 +221,21 @@ defineExpose({ open });
 </script>
 
 <style scoped>
+.cp-embedded-dialog {
+	box-shadow: none !important;
+	border: none !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+}
 .cp-embedded-dialog :deep(.el-dialog__header) {
 	display: none;
 }
 .cp-embedded-dialog :deep(.el-dialog__body) {
-	padding: 0 8px;
+	padding: 0;
+	overflow: visible;
+}
+.cp-embedded-dialog :deep(.el-dialog__footer) {
+	padding: 12px 0 0;
 }
 .common-params-tip {
 	font-size: 12px;
