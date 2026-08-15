@@ -2809,6 +2809,8 @@ class ApiAutomationService:
                 raise ValueError("文档内容解析失败（支持 OpenAPI/Swagger 的 JSON 或 YAML）")
         if source_type not in ("swagger", "apifox", "postman"):
             raise ValueError("source_type 仅支持 swagger / apifox / postman")
+        if source_type == "postman" and doc_url:
+            raise ValueError("Postman 仅支持文件导入（Collection v2.1 JSON），不支持 URL 导入")
 
         service = (
             await db.execute(

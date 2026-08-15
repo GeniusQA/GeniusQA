@@ -119,7 +119,6 @@
 							<el-select v-model="doc_source_type" style="width:100%">
 								<el-option label="OpenAPI/Swagger" value="swagger" />
 								<el-option label="Apifox" value="apifox" />
-								<el-option label="Postman" value="postman" />
 							</el-select>
 						</el-form-item>
 						<el-form-item label="文档 URL" required>
