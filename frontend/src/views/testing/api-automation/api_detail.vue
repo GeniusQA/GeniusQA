@@ -1377,6 +1377,9 @@ watch(
 		const reqSrc = apiInfo.req || {};
 		const resSrc = apiInfo.res || {};
 		req.value = {
+			protocol: reqSrc.protocol ?? 'http',
+			webhook_name: reqSrc.webhook_name ?? '',
+			webhook_url: reqSrc.webhook_url ?? '',
 			method: reqSrc.method ?? 2, url: reqSrc.url ?? apiInfo.url ?? '',
 			params: Array.isArray(reqSrc.params) ? reqSrc.params : [],
 			header: Array.isArray(reqSrc.header) ? reqSrc.header.map((h: any) => ({ ...h, name: h.name ?? h.key ?? '' })) : [],
