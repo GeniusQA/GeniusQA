@@ -568,32 +568,7 @@ mode="assert"
 					</div>
 
 				
-				<el-dialog v-model="bulkEditVisible" title="批量编辑" width="560px" destroy-on-close append-to-body>
-					<div class="bulk-edit-toolbar">
-						<el-radio-group v-model="bulkEditMode" size="small">
-							<el-radio-button value="comma">逗号模式</el-radio-button>
-							<el-radio-button value="colon">冒号模式</el-radio-button>
-						</el-radio-group>
-						<span class="bulk-edit-format">格式：{{ bulkEditMode === 'colon' ? '参数名:示例值' : '参数名,示例值' }}</span>
-					</div>
-					<el-input
-						v-model="bulkEditText"
-						type="textarea"
-						:rows="12"
-						:placeholder="bulkEditPlaceholder"
-						spellcheck="false"
-						class="bulk-edit-textarea"
-					/>
-					<div class="bulk-edit-tip">
-						{{ bulkEditMode === 'colon'
-							? '字段之间以英文冒号(:)分隔，多条记录以换行分隔'
-							: '字段之间以英文逗号(,)分隔，多条记录以换行分隔' }}
-					</div>
-					<template #footer>
-						<el-button @click="bulkEditVisible = false">取消</el-button>
-						<el-button type="primary" @click="confirmBulkEdit">确定</el-button>
-					</template>
-				</el-dialog>
+				<BatchEditDialog v-model="bulkEditVisible" :target="bulkEditTarget" :initial-text="bulkEditInitialText" @apply="applyBulkRows" />
 
 				
 				<el-dialog v-model="saveCaseDialogVisible" title="保存为测试用例" width="560px" destroy-on-close>
@@ -1010,6 +985,7 @@ import { api_send, save_api, save_api_case, edit_history, apiAutomationApi } fro
 import { useFileApi } from '/@/api/v1/common/file';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
+import BatchEditDialog from './components/BatchEditDialog.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { getBaseApiUrl } from '/@/utils/config';
@@ -1471,9 +1447,8 @@ const removeCookie = (i: number) => { req.value.cookies?.splice(i, 1); };
 
 type BulkEditTarget = 'params' | 'header' | 'form_data' | 'form_urlencoded' | 'cookies';
 const bulkEditVisible = ref(false);
-const bulkEditMode = ref<'colon' | 'comma'>('colon');
-const bulkEditText = ref('');
 const bulkEditTarget = ref<BulkEditTarget>('header');
+const bulkEditInitialText = ref('');
 const bulkEditPlaceholder = computed(() =>
 	bulkEditMode.value === 'colon'
 		? 'name:value\nAuthorization: Bearer xxx'
@@ -1497,13 +1472,29 @@ const getBulkRows = (target: BulkEditTarget): Array<{ key: string; value: string
 	})) : [];
 };
 
-const serializeBulkRows = (rows: Array<{ key: string; value: string }>, mode: 'colon' | 'comma') => {
-	const sep = mode === 'colon' ? ':' : ',';
-	return rows
-		.filter((r) => String(r.key || '').trim())
-		.map((r) => `${String(r.key).trim()}${sep}${String(r.value ?? '')}`)
-		.join('\n');
+
+const applyBulkRows = (rows: Array<{ key: string; value: string; status: boolean; type: string; remark: string }>) => {
+	const target = bulkEditTarget.value;
+	if (target === 'cookies') {
+		const oldMap = new Map((req.value.cookies || []).map((c: any) => [String(c.name || ''), c]));
+		req.value.cookies = rows.map((r) => ({
+			status: r.status,
+			name: r.key,
+			value: r.value,
+			domain: String(oldMap.get(r.key)?.domain || ''),
+		}));
+	} else {
+		(req.value as any)[target] = rows.map((r) => ({
+			key: r.key,
+			value: r.value,
+			status: r.status,
+			type: r.type,
+			desc: r.remark,
+		}));
+	}
+	bulkEditVisible.value = false;
 };
+
 
 const parseBulkText = (text: string, mode: 'colon' | 'comma') => {
 	const sep = mode === 'colon' ? ':' : ',';
