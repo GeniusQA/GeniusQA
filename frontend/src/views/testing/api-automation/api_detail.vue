@@ -42,8 +42,8 @@ webhooks:
 								<el-input v-model="req.webhook_url" placeholder="调试 URL，可空（留空使用接口路径）" clearable class="url-input" />
 							</el-tooltip>
 						</template>
-						<el-input v-else v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
-						<el-button v-if="req.protocol === 'websocket'" type="primary" @click="wsConnect" class="send-btn">连接</el-button>
+						<el-input v-else v-model="req.url" :disabled="req.protocol === 'websocket' && wsConnected" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
+						<el-button v-if="req.protocol === 'websocket'" :type="wsConnected ? 'default' : 'primary'" @click="wsConnected ? wsDisconnect() : wsConnect()" class="send-btn">{{ wsConnected ? '断开' : '连接' }}</el-button>
 						<el-button v-else type="primary" @click="sendRequest" class="send-btn">发送</el-button>
 						<el-dropdown @command="handleSaveCommand">
 							<el-button type="success" class="save-btn">保存项 <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -1659,6 +1659,12 @@ const wsFormatMsg = () => {
 const wsMessages = ref<{ dir: 'sent' | 'recv'; time: string; content: string }[]>([]);
 const wsMessage = ref('');
 const wsLastOk = ref(false);
+const wsConnected = ref(false);
+const wsDisconnect = () => {
+	wsConnected.value = false;
+	wsLastOk.value = false;
+	ElMessage.info('已断开');
+};
 const nowTime = () => {
 	const d = new Date();
 	return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
@@ -1670,10 +1676,12 @@ const wsConnect = async () => {
 		const r: any = await apiAutomationApi.wsTest({ url, message: '', connect_only: true, headers: req.value.header || [], ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200 && r?.data?.ok) {
 			wsLastOk.value = true;
+			wsConnected.value = true;
 			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}（在 Message 页签输入消息后点击底部「发送」即可收发）` });
 			ElMessage.success('连接成功，请在 Message 页签输入消息后点击「发送」');
 		} else {
 			wsLastOk.value = false;
+			wsConnected.value = false;
 			ElMessage.error(`连接失败：${r?.data?.error || r?.message || '未知错误'}`);
 		}
 	} catch (e: any) {
@@ -1698,6 +1706,7 @@ const wsSend = async () => {
 				else if (data.timeout) wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `（${data.elapsed}s 内未收到响应）` });
 			} else {
 				wsLastOk.value = false;
+				wsConnected.value = false;
 				wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `失败：${data.error || '未知错误'}` });
 			}
 		} else {
