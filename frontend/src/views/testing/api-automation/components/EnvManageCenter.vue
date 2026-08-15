@@ -1,5 +1,14 @@
 <template>
-	<el-dialog v-model="visible" title="环境管理" width="1000px" top="5vh" destroy-on-close @closed="onClosed">
+	<div class="env-center-page">
+		<!-- 页面头部 -->
+		<div class="env-page-head">
+			<el-button size="small" @click="emit('back')">
+				<el-icon style="margin-right:2px"><ArrowLeft /></el-icon>返回接口列表
+			</el-button>
+			<span class="env-page-title">环境管理</span>
+			<span class="env-page-sub">全局参数 / 环境变量 / 数据库连接</span>
+		</div>
+
 		<div class="env-center">
 			<!-- 左栏：分组菜单 -->
 			<div class="env-side">
@@ -43,7 +52,7 @@
 					<ApiCommonParamsDialog :service-id="serviceId" embedded ref="cpRef" />
 				</template>
 
-				<!-- 环境详情（Apifox 排版：配置项 + 环境变量表） -->
+				<!-- 环境详情 -->
 				<template v-else-if="section === 'env' && curEnv">
 					<div class="env-detail">
 						<div class="env-detail-head">
@@ -95,11 +104,11 @@
 				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
 			</template>
 		</el-dialog>
-	</el-dialog>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api_env, save_env, add_env, del_env } from '/@/api/v1/testing/apiAutomation';
 import ApiVarPopover from './ApiVarPopover.vue';
@@ -107,8 +116,8 @@ import ApiCommonParamsDialog from './ApiCommonParamsDialog.vue';
 import ApiDbPopover from './ApiDbPopover.vue';
 
 const props = defineProps<{ serviceId?: number | string }>();
+const emit = defineEmits<{ (e: 'back'): void }>();
 
-const visible = ref(false);
 const section = ref<'global-var' | 'global-params' | 'env' | 'db'>('global-var');
 
 // ---- 环境列表 ----
@@ -211,29 +220,44 @@ const switchParams = () => {
 	setTimeout(() => cpRef.value?.open(), 0);
 };
 
-// ---- 打开/关闭 ----
-const open = async () => {
-	visible.value = true;
-	section.value = 'global-var';
-	curEnv.value = null;
-	await loadEnvList();
-};
-
-const onClosed = () => {
-	curEnv.value = null;
-	section.value = 'global-var';
-};
-
-defineExpose({ open });
+onMounted(() => {
+	loadEnvList();
+});
 </script>
 
 <style scoped>
-.env-center {
+.env-center-page {
+	position: fixed;
+	inset: 0;
+	z-index: 1200;
+	background: #f5f6f8;
 	display: flex;
-	height: 560px;
+	flex-direction: column;
+}
+.env-page-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 18px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+}
+.env-page-title {
+	font-size: 16px;
+	font-weight: 700;
+}
+.env-page-sub {
+	font-size: 12px;
+	color: #9ca3af;
+}
+.env-center {
+	flex: 1;
+	display: flex;
+	margin: 14px;
 	border: 1px solid #e5e7eb;
 	border-radius: 8px;
 	overflow: hidden;
+	background: #fff;
 }
 .env-side {
 	width: 200px;

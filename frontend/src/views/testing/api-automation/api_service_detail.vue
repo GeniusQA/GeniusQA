@@ -23,7 +23,7 @@
 						:value="env.id"
 					/>
 				</el-select>
-				<el-button size="small" @click="envCenterRef?.open()">环境管理</el-button>
+				<el-button size="small" @click="showEnvCenter = true">环境管理</el-button>
 			</div>
 		</div>
 
@@ -126,7 +126,7 @@
 			</template>
 		</el-dialog>
 
-		<EnvManageCenter ref="envCenterRef" :service-id="currentServiceId" />
+		<EnvManageCenter v-if="showEnvCenter" :service-id="currentServiceId" @back="showEnvCenter = false" />
 	</div>
 </template>
 
@@ -242,7 +242,7 @@ const {
 const envList = ref<any[]>([]);
 const envLoading = ref(false);
 const envDialogVisible = ref(false);
-const envCenterRef = ref<any>(null);
+const showEnvCenter = ref(false);
 const envSearchName = ref('');
 const filteredEnvList = computed(() =>
 	envSearchName.value
