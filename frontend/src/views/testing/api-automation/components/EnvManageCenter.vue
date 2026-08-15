@@ -53,7 +53,7 @@
 						</div>
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
-<div class="env-block-title">前置 URL（按模块匹配）</div>
+<div class="env-block-title">前置 URL</div>
 						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
 							<el-select
 								v-model="f.menu_id"
@@ -64,7 +64,7 @@
 								clearable
 							/>
 							<el-input v-model="f.url" placeholder="https:// 起始的前置 URL" size="small" style="flex:1.4" />
-							<el-button type="danger" link size="small" @click="removeFrontUrl(idx)">删除</el-button>
+							<el-button type="danger" link size="small" @click="removeFrontUrl(idx)" class="env-del-icon"><el-icon><Delete /></el-icon></el-button>
 						</div>
 						<el-button size="small" @click="addFrontUrl">+ 添加前置 URL</el-button>
 
@@ -73,9 +73,8 @@
 						<div v-for="(item, idx) in curEnv.variable" :key="'v' + idx" class="env-row">
 							<el-input v-model="item.name" placeholder="变量名（如 token）" size="small" />
 							<el-input v-model="item.value" placeholder="变量值" size="small" />
-							<el-button type="danger" link size="small" @click="curEnv.variable.splice(idx, 1)">删除</el-button>
+							<el-button type="danger" link size="small" @click="curEnv.variable.splice(idx, 1)" class="env-del-icon"><el-icon><Delete /></el-icon></el-button>
 						</div>
-						<el-button size="small" @click="curEnv.variable.push({ name: '', value: '' })">+ 添加变量</el-button>
 						<div class="env-tip">环境变量：脚本 ntest.set 的变量会自动写入此处，可被 {{变量名}} 引用</div>
 
 						<div class="env-detail-foot">
@@ -108,7 +107,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api_env, save_env, add_env, del_env, api_tree } from '/@/api/v1/testing/apiAutomation';
 import ApiVarPopover from './ApiVarPopover.vue';
@@ -185,6 +185,20 @@ const removeFrontUrl = (idx: number) => {
 	syncFrontUrls();
 };
 
+
+// Apifox 交互：环境变量列表末尾始终保留一个空输入行，输入后自动另起一行
+watch(
+	() => curEnv.value?.variable,
+	(list: any[] | undefined) => {
+		if (Array.isArray(list)) {
+			const last = list[list.length - 1];
+			if (!last || String(last.name || '').trim()) {
+				list.push({ name: '', value: '' });
+			}
+		}
+	},
+	{ deep: true, immediate: true }
+);
 
 const saveCurEnv = async () => {
 	if (!curEnv.value) return;
@@ -333,6 +347,11 @@ defineExpose({ open });
 	margin-bottom: 14px;
 }
 .env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
+.env-del-icon {
+	padding: 4px 2px;
+	font-size: 14px;
+	color: #dc2626;
+}
 .env-block-tip {
 	font-size: 12px;
 	color: #909399;
