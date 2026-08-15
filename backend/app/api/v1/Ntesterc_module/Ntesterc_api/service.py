@@ -2960,16 +2960,23 @@ class ApiAutomationService:
             raise ValueError("文档地址或文档内容至少提供一个")
         # 文件导入支持 YAML 文本：字符串内容统一 yaml 解析（YAML 为 JSON 超集）
         if isinstance(doc_content, str) and doc_content.strip():
+            text = doc_content.lstrip("\ufeff").strip()  # 兼容 UTF-8 BOM
+            parsed = None
+            parse_err = ""
             try:
-                parsed = yaml.safe_load(doc_content)
-                if isinstance(parsed, dict):
-                    doc_content = parsed
-                else:
-                    raise ValueError("文档内容根节点必须是对象")
-            except ValueError:
-                raise
-            except Exception:
-                raise ValueError("文档内容解析失败（支持 OpenAPI/Swagger 的 JSON 或 YAML）")
+                parsed = yaml.safe_load(text)
+            except Exception as e:  # noqa: BLE001
+                parse_err = str(e)[:120]
+                try:
+                    parsed = json.loads(text)  # 非标准 YAML 的 JSON 回退
+                except Exception as e2:  # noqa: BLE001
+                    parse_err = f"{parse_err} / json: {str(e2)[:120]}"
+            if parsed is None and not parse_err and text.lower() in ("null", "none"):
+                raise ValueError("文档内容为空")
+            if isinstance(parsed, dict):
+                doc_content = parsed
+            else:
+                raise ValueError(f"文档内容根节点必须是对象（解析详情：{parse_err or '结构为空'}）")
         if source_type not in ("swagger", "apifox", "postman"):
             raise ValueError("source_type 仅支持 swagger / apifox / postman")
         if source_type == "postman" and doc_url:
