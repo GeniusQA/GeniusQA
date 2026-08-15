@@ -15,13 +15,14 @@
 				<div class="api-detail-header">
 					<div class="req-url-bar">
 						<el-tag v-if="req.protocol === 'websocket'" effect="dark" color="#7c4dff" class="ws-badge">WebSocket</el-tag>
-						<el-tag v-else-if="req.protocol === 'webhook'" effect="plain" type="warning" class="ws-badge">Webhook</el-tag>
-						<el-select v-if="req.protocol !== 'websocket'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
+						<el-tag v-else-if="req.protocol === 'webhook'" effect="dark" color="#7c4dff" class="ws-badge">Webhook</el-tag>
+						<el-select v-if="req.protocol !== 'websocket' && req.protocol !== 'webhook'" v-model="req.method" class="method-select" :style="{ '--method-color': currentMethodColor }">
 							<el-option v-for="(m, i) in method_list" :key="i" :label="m.name" :value="m.value">
 								<span :style="{ color: m.color, fontWeight: 600 }">{{ m.name }}</span>
 							</el-option>
 						</el-select>
-						<el-input v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
+						<el-input v-if="req.protocol === 'webhook'" v-model="req.webhook_name" placeholder="Webhook name" clearable class="url-input" />
+						<el-input v-else v-model="req.url" :placeholder="req.protocol === 'websocket' ? '未设置前置URL，接口路径以 ws:// 或 wss:// 起始' : '请输入请求地址'" clearable class="url-input" />
 						<el-button v-if="req.protocol === 'websocket'" type="primary" @click="wsConnect" class="send-btn">连接</el-button>
 						<el-button v-else type="primary" @click="sendRequest" class="send-btn">发送</el-button>
 						<el-dropdown @command="handleSaveCommand">
@@ -35,8 +36,8 @@
 						</el-dropdown>
 					</div>
 					<div v-if="req.protocol === 'webhook'" class="webhook-bar">
-						<el-input v-model="req.webhook_name" placeholder="Webhook 名称" style="width: 200px; flex: 0 0 200px" size="small" />
-						<el-input v-model="req.webhook_url" placeholder="调试 URL（模拟发送的目标地址，留空使用上方 URL）" size="small" />
+						<span class="webhook-tip">调试 URL</span>
+						<el-input v-model="req.webhook_url" placeholder="调试 URL，可为空（留空使用接口路径）" size="small" />
 					</div>
 				</div>
 
@@ -2044,5 +2045,6 @@ const confirmSaveAsCase = async () => {
 .ws-msg-tag.sent { background: #ecf5ff; color: #409eff; }
 .ws-msg-tag.recv { background: #f0f9eb; color: #67c23a; }
 .ws-msg-content { margin: 0; font-size: 13px; background: var(--el-fill-color-light); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; word-break: break-all; flex: 1; }
-.webhook-bar { display: flex; gap: 8px; margin-top: 8px; }
+.webhook-bar { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.webhook-tip { font-size: 13px; color: var(--el-text-color-secondary); white-space: nowrap; }
 </style>
