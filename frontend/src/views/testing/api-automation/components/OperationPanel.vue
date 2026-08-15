@@ -19,7 +19,7 @@
         <div class="op-card__header" @click="toggleCollapse(index)">
           <div class="op-card__title">
             <el-icon class="op-card__drag" draggable="true" @dragstart="onDragStart(index, $event)" @click.stop><Rank /></el-icon>
-            <el-switch v-model="item.enabled" size="small" style="margin-right:4px" @click.stop />
+            <el-checkbox v-model="item.enabled" size="small" style="margin-right:6px" @click.stop />
             <span class="op-card__badge" :class="`badge--${typeColor(item.type)}`">
               {{ index + 1 }}
             </span>
