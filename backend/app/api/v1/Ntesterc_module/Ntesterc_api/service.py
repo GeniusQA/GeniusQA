@@ -1363,6 +1363,20 @@ class ApiAutomationService:
     async def save_envs(db: AsyncSession, env_list: List[Dict[str, Any]], user_id: int) -> None:
         for env in env_list:
             env_id = int(env["id"])
+            cfg = env.get("config")
+            # 强制：http/websocket 协议的前置 URL 行为系统驱动行（auto），不可取消勾选
+            if isinstance(cfg, list):
+                for item in cfg:
+                    if isinstance(item, dict) and str(item.get("name") or "").strip() == "__front_urls__":
+                        try:
+                            fu = json.loads(item.get("value") or "[]")
+                            if isinstance(fu, list):
+                                for f in fu:
+                                    if isinstance(f, dict) and str(f.get("protocol") or "http").lower() in ("http", "websocket"):
+                                        f["auto"] = True
+                                item["value"] = json.dumps(fu, ensure_ascii=False)
+                        except Exception:
+                            pass
             await db.execute(
                 update(ApiEnvironmentModel)
                 .where(
@@ -1372,7 +1386,7 @@ class ApiAutomationService:
                 )
                 .values(
                     name=env.get("name"),
-                    config=env.get("config"),
+                    config=cfg,
                     variable=env.get("variable"),
                     updated_by=user_id,
                 )
