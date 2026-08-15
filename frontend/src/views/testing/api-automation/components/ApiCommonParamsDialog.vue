@@ -78,7 +78,7 @@
 			</el-tab-pane>
 						</el-tabs>
 		<template #footer>
-			<el-button @click="visible = false">取消</el-button>
+			<el-button v-if="!embedded" @click="visible = false">取消</el-button>
 			<el-button type="primary" :loading="saving" @click="save">保存</el-button>
 		</template>
 	</el-dialog>
