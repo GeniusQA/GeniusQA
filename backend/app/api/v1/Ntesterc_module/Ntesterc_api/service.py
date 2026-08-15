@@ -226,6 +226,27 @@ class ApiAutomationService:
                     continue
         if not front_urls:
             return ""
+        # 服务级匹配：front_urls 中 menu_id 为 svc_{id}（模块=服务），接口所属服务一致即命中
+        _m0 = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_id == int(api_id),
+                    ApiMenuModel.enabled_flag == 1,
+                )
+            )
+        ).scalars().first()
+        if _m0 is not None:
+            _svc_id = int(_m0.api_service_id or 0)
+            for f in front_urls or []:
+                try:
+                    _mid = f.get("menu_id")
+                    if isinstance(_mid, str) and _mid.startswith("svc_"):
+                        if int(_mid[4:]) == _svc_id:
+                            val = str(f.get("url") or "").strip()
+                            if val.startswith(("http://", "https://")):
+                                return val
+                except Exception:
+                    continue
         chain_ids: list = []
         cur = (
             await db.execute(
@@ -760,6 +781,8 @@ class ApiAutomationService:
         await db.flush()
         # 模块创建自动生成根目录（固定名"接口"，不可删除/重命名）
         await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
+        # 模块（服务）创建联动：所有环境前置 URL 默认生成一条空行
+        await ApiAutomationService._sync_env_front_urls(db, [f"svc_{svc.id}"])
         await db.commit()
 
     @staticmethod
@@ -1237,6 +1260,8 @@ class ApiAutomationService:
             )
             .values(enabled_flag=0, updated_by=user_id)
         )
+        # 模块（服务）删除联动：所有环境移除该模块前置 URL 行
+        await ApiAutomationService._sync_env_front_urls(db, [f"svc_{sid}"], remove=True)
         await db.commit()
 
     @staticmethod
@@ -2936,7 +2961,7 @@ class ApiAutomationService:
                 select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
             )
         ).scalars().all()
-        ids = set(int(x) for x in module_ids)
+        ids = set(str(x) for x in module_ids)
         updates: List[tuple] = []
         for env in envs:
             cfg = list(env.config or [])
@@ -2957,13 +2982,13 @@ class ApiAutomationService:
             except Exception:
                 fu = []
             if remove:
-                new_fu = [f for f in fu if int(f.get("menu_id") or 0) not in ids]
+                new_fu = [f for f in fu if str(f.get("menu_id") or "") not in ids]
             else:
-                existing = set(int(f.get("menu_id") or 0) for f in fu)
+                existing = set(str(f.get("menu_id") or "") for f in fu)
                 for mid in module_ids:
-                    if mid not in existing:
+                    if str(mid) not in existing:
                         fu.append({"menu_id": mid, "url": ""})
-                        existing.add(mid)
+                        existing.add(str(mid))
                 new_fu = fu
             fu_item["value"] = _json.dumps(new_fu)
             updates.append((int(env.id), cfg))

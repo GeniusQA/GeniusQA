@@ -154,7 +154,6 @@ const loadMenuTree = async () => {
 	try {
 		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
 		frontUrlMenuOptions.value = (r?.data || [])
-			.filter((n: any) => n.type === 0)
 			.map((n: any) => ({ id: n.id, name: n.name }));
 	} catch {
 		frontUrlMenuOptions.value = [];
