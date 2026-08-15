@@ -88,19 +88,31 @@
 										<el-button type="primary" link size="small" @click="addParam">+ 添加参数</el-button>
 										<el-button type="primary" link size="small" @click="openBulkEdit('params')">批量编辑</el-button>
 									</div>
-								</div>
-							</el-tab-pane>
-							<el-tab-pane label="设置" name="settings">
-								<div style="overflow: auto; height: 100%">
-									<div v-for="(h, i) in req.header" :key="i" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+									<div class="ws-sub-title">握手 Headers</div>
+									<div v-for="(h, i) in req.header" :key="'h' + i" class="ws-params-row">
 										<el-checkbox v-model="h.status" />
-										<el-input v-model="h.key" placeholder="Header 名" style="flex:1" size="small" />
-										<el-input v-model="h.value" placeholder="Header 值" style="flex:1" size="small" />
+										<el-input v-model="h.key" placeholder="Header 名" size="small" />
+										<el-input v-model="h.value" placeholder="Header 值" size="small" />
+										<span style="width: 110px"></span>
+										<el-input :model-value="h.desc || ''" placeholder="说明" size="small" disabled />
 										<el-button type="danger" link size="small" @click="removeHeader(i)">删除</el-button>
 									</div>
 									<div class="kv-actions">
 										<el-button type="primary" link size="small" @click="addHeader">+ 添加 Header</el-button>
 									</div>
+								</div>
+							</el-tab-pane>
+							<el-tab-pane label="设置" name="settings">
+								<div style="overflow: auto; height: 100%">
+									<div class="ws-config-row">
+										<span class="ws-config-label">SSL 证书验证</span>
+										<el-switch v-model="req.config.ssl_verify" />
+									</div>
+									<div class="ws-config-row">
+										<span class="ws-config-label">连接超时（秒）</span>
+										<el-input-number v-model="req.config.req_timeout" :min="1" :max="120" size="small" style="width: 120px" />
+									</div>
+									<div class="ws-config-tip">SSL 验证关闭后，wss:// 连接将不校验服务端证书（仅用于调试环境）。</div>
 								</div>
 							</el-tab-pane>
 						</el-tabs>
@@ -1599,7 +1611,7 @@ const wsConnect = async () => {
 	const url = String(req.value.url || '').trim();
 	if (!url) { ElMessage.warning('请先填写 WebSocket 地址（ws:// 或 wss:// 开头）'); return; }
 	try {
-		const r: any = await useApiAutomationApi().wsTest({ url, message: '', connect_only: true, headers: req.value.header || [] });
+		const r: any = await useApiAutomationApi().wsTest({ url, message: '', connect_only: true, headers: req.value.header || [], ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200 && r?.data?.ok) {
 			wsLastOk.value = true;
 			wsMessages.value.push({ dir: 'recv', time: nowTime(), content: `连接成功 ${url}` });
@@ -1621,7 +1633,7 @@ const wsSend = async () => {
 	wsMessages.value.push({ dir: 'sent', time: nowTime(), content: text });
 	if (wsClearAfterSend.value) wsMessage.value = '';
 	try {
-		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [], binary_type: wsFormat.value === 'Binary' ? wsBinaryType.value : undefined });
+		const r: any = await useApiAutomationApi().wsTest({ url, message: text, headers: req.value.header || [], binary_type: wsFormat.value === 'Binary' ? wsBinaryType.value : undefined, ssl_verify: req.value.config?.ssl_verify !== false });
 		if (r?.code === 200) {
 			const data = r.data || {};
 			if (data.ok) {
@@ -2084,4 +2096,8 @@ const confirmSaveAsCase = async () => {
 	align-items: center;
 	margin-bottom: 6px;
 }
+.ws-sub-title { font-size: 12px; color: var(--el-text-color-secondary); margin: 10px 0 6px; }
+.ws-config-row { display: flex; align-items: center; justify-content: space-between; max-width: 320px; padding: 10px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+.ws-config-label { font-size: 13px; color: var(--el-text-color-primary); }
+.ws-config-tip { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 10px; line-height: 1.6; }
 </style>

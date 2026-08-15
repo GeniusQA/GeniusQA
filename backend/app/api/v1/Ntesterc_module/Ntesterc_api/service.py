@@ -5329,6 +5329,7 @@ class ApiAutomationService:
                 headers[str(h["key"])] = str(h.get("value") or "")
         message = body.get("message")
         sent_text = message if isinstance(message, str) else json.dumps(message, ensure_ascii=False)
+        ssl_verify = bool(body.get("ssl_verify", True))
         binary_type = str(body.get("binary_type") or "").lower()
         if binary_type == "base64":
             try:
@@ -5342,9 +5343,17 @@ class ApiAutomationService:
                 raise ValueError("十六进制解析失败，请输入如 0A FF 01（可含空格）")
         else:
             payload = sent_text
+        connect_kwargs: Dict[str, Any] = {"additional_headers": headers, "open_timeout": 8}
+        if url.startswith("wss://") and not ssl_verify:
+            import ssl
+
+            _ctx = ssl.create_default_context()
+            _ctx.check_hostname = False
+            _ctx.verify_mode = ssl.CERT_NONE
+            connect_kwargs["ssl"] = _ctx
         t0 = time.time()
         try:
-            async with websockets.connect(url, additional_headers=headers, open_timeout=8) as ws:
+            async with websockets.connect(url, **connect_kwargs) as ws:
                 await ws.send(payload)
                 received = await asyncio.wait_for(ws.recv(), timeout=8)
             if isinstance(received, bytes):
