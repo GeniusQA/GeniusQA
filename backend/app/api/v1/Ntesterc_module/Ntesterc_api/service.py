@@ -1362,6 +1362,19 @@ class ApiAutomationService:
             updated_by=user_id,
         )
         db.add(env)
+        await db.flush()
+        # 新建环境默认代入已有模块（服务）前置 URL 空行
+        svcs = (
+            await db.execute(
+                select(ApiServiceModel).where(
+                    ApiServiceModel.enabled_flag == 1,
+                    ApiServiceModel.created_by == user_id,
+                )
+            )
+        ).scalars().all()
+        mod_ids = [f"svc_{svc.id}" for svc in svcs]
+        if mod_ids:
+            await ApiAutomationService._sync_env_front_urls(db, mod_ids)
         await db.commit()
 
     @staticmethod
