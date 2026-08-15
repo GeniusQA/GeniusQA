@@ -114,48 +114,21 @@
 
 		<!-- 导入接口弹窗 -->
 		<el-dialog v-model="importDialogVisible" title="导入接口" width="560px" destroy-on-close @closed="onImportDialogClosed">
-			<el-tabs v-model="importTab">
-				<el-tab-pane label="URL 导入" name="url">
+			<el-form label-width="100px">
+				<el-form-item label="数据源格式" required>
+					<el-select v-model="importSourceType" style="width:100%" @change="onImportSourceChange">
+						<el-option label="OpenAPI/Swagger" value="swagger" />
+						<el-option label="Postman" value="postman" />
+						<el-option label="cURL" value="curl" />
+						<el-option label="Apifox" value="apifox" />
+					</el-select>
+				</el-form-item>
+			</el-form>
+
+			<!-- OpenAPI/Swagger：上传文件 / URL 导入 -->
+			<el-tabs v-if="importSourceType === 'swagger'" v-model="importTab">
+				<el-tab-pane label="上传文件" name="file">
 					<el-form label-width="100px">
-						<el-form-item label="文档类型" required>
-							<el-select v-model="doc_source_type" style="width:100%">
-								<el-option label="OpenAPI/Swagger" value="swagger" />
-								<el-option label="Apifox" value="apifox" />
-							</el-select>
-						</el-form-item>
-						<el-form-item label="文档 URL" required>
-							<el-input v-model="doc_source_url" placeholder="输入文档 URL" clearable />
-						</el-form-item>
-						<el-form-item v-if="doc_source_type === 'swagger'" label="Basic Auth">
-							<el-switch v-model="urlAuthEnabled" />
-						</el-form-item>
-						<template v-if="doc_source_type === 'swagger' && urlAuthEnabled">
-							<el-form-item label="账号">
-								<el-input v-model="urlAuthUsername" placeholder="账号" clearable />
-							</el-form-item>
-							<el-form-item label="密码">
-								<el-input v-model="urlAuthPassword" type="password" placeholder="密码" show-password />
-							</el-form-item>
-						</template>
-						<el-form-item v-if="doc_source_type === 'apifox'" label="Cookies" required>
-							<el-input v-model="doc_source_cookies" placeholder="Apifox Cookies（必填）" clearable />
-						</el-form-item>
-					</el-form>
-				</el-tab-pane>
-				<el-tab-pane label="文件导入" name="file">
-					<el-form label-width="100px">
-						<el-form-item label="文档类型" required>
-							<el-select v-model="file_source_type" style="width:100%">
-								<el-option label="OpenAPI/Swagger" value="swagger" />
-								<el-option label="Apifox" value="apifox" />
-								<el-option label="Postman" value="postman" />
-							</el-select>
-						</el-form-item>
-						<el-form-item v-if="file_source_type === 'postman'" label=" ">
-							<div class="import-tip-bar">
-								Postman：请在 Postman 中选择 Collection → 「...」→ Export → Collection v2.1，导出 JSON 文件后导入
-							</div>
-						</el-form-item>
 						<el-form-item label="文档文件" required>
 							<el-upload
 								ref="uploadRef"
@@ -168,29 +141,82 @@
 							>
 								<el-button size="small">选择 JSON 文件</el-button>
 								<template #tip>
-									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON/YAML、Apifox「导出项目」JSON、Postman Collection v2.1 JSON</div>
+									<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML 文件</div>
 								</template>
 							</el-upload>
 						</el-form-item>
 					</el-form>
 				</el-tab-pane>
-				<el-tab-pane label="cURL 导入" name="curl">
+				<el-tab-pane label="URL 导入" name="url">
 					<el-form label-width="100px">
-						<el-form-item label="cURL 命令" required>
-							<el-input
-								v-model="curlText"
-								type="textarea"
-								:rows="8"
-								placeholder="curl --request GET --url http://www.google.com"
-							/>
+						<el-form-item label="文档 URL" required>
+							<el-input v-model="doc_source_url" placeholder="输入 OpenAPI/Swagger 数据 URL" clearable />
 						</el-form-item>
-						<el-form-item label="忽略通用 Header">
-							<el-switch v-model="curlIgnoreCommon" />
-							<span class="curl-ignore-tip">忽略 User-Agent、Referer 等通用 Header</span>
+						<el-form-item label="Basic Auth">
+							<el-switch v-model="urlAuthEnabled" />
 						</el-form-item>
+						<template v-if="urlAuthEnabled">
+							<el-form-item label="账号">
+								<el-input v-model="urlAuthUsername" placeholder="账号" clearable />
+							</el-form-item>
+							<el-form-item label="密码">
+								<el-input v-model="urlAuthPassword" type="password" placeholder="密码" show-password />
+							</el-form-item>
+						</template>
 					</el-form>
 				</el-tab-pane>
 			</el-tabs>
+
+			<!-- Postman：仅文件上传 -->
+			<el-form v-else-if="importSourceType === 'postman'" label-width="100px">
+				<el-form-item label=" ">
+					<div class="import-tip-bar">
+						Postman：请在 Postman 中选择 Collection → 「...」→ Export → Collection v2.1，导出 JSON 文件后导入
+					</div>
+				</el-form-item>
+				<el-form-item label="文档文件" required>
+					<el-upload
+						ref="uploadRef"
+						:auto-upload="false"
+						:limit="1"
+						accept=".json"
+						:on-change="onImportFileChange"
+						:on-remove="onImportFileRemove"
+						:on-exceed="onImportFileExceed"
+					>
+						<el-button size="small">选择 JSON 文件</el-button>
+						<template #tip>
+							<div class="el-upload__tip">支持 Postman Collection v2.1 JSON（Export 导出的文件）</div>
+						</template>
+					</el-upload>
+				</el-form-item>
+			</el-form>
+
+			<!-- cURL -->
+			<el-form v-else-if="importSourceType === 'curl'" label-width="100px">
+				<el-form-item label="cURL 命令" required>
+					<el-input
+						v-model="curlText"
+						type="textarea"
+						:rows="8"
+						placeholder="curl --request GET --url http://www.google.com"
+					/>
+				</el-form-item>
+				<el-form-item label="忽略通用 Header">
+					<el-switch v-model="curlIgnoreCommon" />
+					<span class="curl-ignore-tip">忽略 User-Agent、Referer 等通用 Header</span>
+				</el-form-item>
+			</el-form>
+
+			<!-- Apifox：URL + Cookies -->
+			<el-form v-else label-width="100px">
+				<el-form-item label="项目 URL" required>
+					<el-input v-model="doc_source_url" placeholder="https://app.apifox.com/project/xxx 或 s.apifox.cn 分享链接" clearable />
+				</el-form-item>
+				<el-form-item label="Cookies" required>
+					<el-input v-model="doc_source_cookies" placeholder="Apifox Cookies（必填）" clearable />
+				</el-form-item>
+			</el-form>
 			<template #footer>
 				<el-button @click="importDialogVisible = false">取消</el-button>
 				<el-button type="primary" :loading="pulling" @click="confirmImport">导入</el-button>
@@ -397,7 +423,8 @@ const methodColor = (m: number) => METHOD_MAP[m]?.color || '#409EFF';
 
 // ---- 导入接口 ----
 const importDialogVisible = ref(false);
-const importTab = ref<'url' | 'file' | 'curl'>('url');
+const importTab = ref<'url' | 'file'>('file');
+const importSourceType = ref<'swagger' | 'postman' | 'curl' | 'apifox'>('swagger');
 const curlText = ref('');
 const curlIgnoreCommon = ref(true);
 const doc_source_type = ref('swagger');
@@ -418,13 +445,24 @@ watch(
 	() => applySourceFromProps(),
 );
 
+const onImportSourceChange = (v: string) => {
+	doc_source_type.value = v === 'apifox' ? 'apifox' : 'swagger';
+	file_source_type.value = v === 'postman' ? 'postman' : (v === 'apifox' ? 'apifox' : 'swagger');
+	if (v === 'swagger') importTab.value = 'file';
+};
+
 const openImportDialog = () => {
 	applySourceFromProps();
-	importTab.value = 'url';
+	importSourceType.value = 'swagger';
+	importTab.value = 'file';
+	doc_source_type.value = 'swagger';
+	file_source_type.value = 'swagger';
 	urlAuthEnabled.value = false;
 	urlAuthUsername.value = '';
 	urlAuthPassword.value = '';
 	doc_source_cookies.value = '';
+	curlText.value = '';
+	curlIgnoreCommon.value = true;
 	importFileContent.value = null;
 	uploadRef.value?.clearFiles();
 	importDialogVisible.value = true;
@@ -433,6 +471,10 @@ const openImportDialog = () => {
 const onImportDialogClosed = () => {
 	importFileContent.value = null;
 	uploadRef.value?.clearFiles();
+	importSourceType.value = 'swagger';
+	importTab.value = 'file';
+	curlText.value = '';
+	curlIgnoreCommon.value = true;
 };
 
 const readFileAsText = (file: UploadRawFile) =>
@@ -480,13 +522,23 @@ const saveSourceNow = async (source_type: string, source_addr: string) => {
 };
 
 const confirmImport = async () => {
+	if (importSourceType.value === 'curl') {
+		await importByCurl();
+		return;
+	}
+	if (importSourceType.value === 'apifox') {
+		await importByUrl();
+		return;
+	}
+	if (importSourceType.value === 'postman') {
+		await importByFile();
+		return;
+	}
 	if (importTab.value === 'url') {
 		await importByUrl();
-	} else if (importTab.value === 'curl') {
-		await importByCurl();
-	} else {
-		await importByFile();
+		return;
 	}
+	await importByFile();
 };
 
 // ---- cURL 导入 ----
