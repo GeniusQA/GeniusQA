@@ -155,6 +155,22 @@
 						</el-form-item>
 					</el-form>
 				</el-tab-pane>
+				<el-tab-pane label="cURL 导入" name="curl">
+					<el-form label-width="100px">
+						<el-form-item label="cURL 命令" required>
+							<el-input
+								v-model="curlText"
+								type="textarea"
+								:rows="8"
+								placeholder="curl --request GET --url http://www.google.com"
+							/>
+						</el-form-item>
+						<el-form-item label="忽略通用 Header">
+							<el-switch v-model="curlIgnoreCommon" />
+							<span class="curl-ignore-tip">忽略 User-Agent、Referer 等通用 Header</span>
+						</el-form-item>
+					</el-form>
+				</el-tab-pane>
 			</el-tabs>
 			<template #footer>
 				<el-button @click="importDialogVisible = false">取消</el-button>
@@ -199,7 +215,7 @@ import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
 import {
-	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu,
+	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu, useApiAutomationApi,
 	pull_api_doc, edit_api_service, add_api_service, del_api_service, sort_menu,
 } from '/@/api/v1/testing/apiAutomation';
 
@@ -348,7 +364,9 @@ const methodColor = (m: number) => METHOD_MAP[m]?.color || '#409EFF';
 
 // ---- 导入接口 ----
 const importDialogVisible = ref(false);
-const importTab = ref<'url' | 'file'>('url');
+const importTab = ref<'url' | 'file' | 'curl'>('url');
+const curlText = ref('');
+const curlIgnoreCommon = ref(true);
 const doc_source_type = ref('swagger');
 const doc_source_url = ref('');
 const doc_source_cookies = ref('');
@@ -436,38 +454,96 @@ const saveSourceNow = async (source_type: string, source_addr: string) => {
 const confirmImport = async () => {
 	if (importTab.value === 'url') {
 		await importByUrl();
+	} else if (importTab.value === 'curl') {
+		await importByCurl();
 	} else {
 		await importByFile();
 	}
 };
 
-const importByUrl = async () => {
-	if (!doc_source_url.value.trim()) {
-		ElMessage.warning('请输入文档地址');
-		return;
+// ---- cURL 导入 ----
+const parseCurl = (raw: string) => {
+	const parts: string[] = [];
+	for (const tok of raw.match(/"([^"]*)"|'([^']*)'|[^\s]+/g) || []) {
+		parts.push(tok.replace(/^["']|["']$/g, ''));
 	}
-	if (doc_source_type.value === 'apifox' && !doc_source_cookies.value.trim()) {
-		ElMessage.warning('Apifox 需要填写 Cookies');
+	let method = 'GET';
+	let url = '';
+	const headers: { key: string; value: string; status: boolean }[] = [];
+	let bodyRaw = '';
+	let hasData = false;
+	let i = 0;
+	const next = () => parts[++i];
+	while (i < parts.length) {
+		const t = parts[i];
+		if (t === '-X' || t === '--request') {
+			method = (next() || 'GET').toUpperCase();
+		} else if (t === '-H' || t === '--header') {
+			const h = next() || '';
+			const idx = h.indexOf(':');
+			if (idx > 0) headers.push({ key: h.slice(0, idx).trim(), value: h.slice(idx + 1).trim(), status: true });
+		} else if (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary' || t === '--data-ascii') {
+			bodyRaw = (bodyRaw ? bodyRaw + '&' : '') + (next() || '');
+			hasData = true;
+		} else if (t === '-G' || t === '--get') {
+			method = 'GET';
+		} else if (t.charAt(0) !== '-' && !url) {
+			url = t;
+		}
+		i++;
+	}
+	if (hasData && method === 'GET') method = 'POST';
+	const commonHeaders = ['user-agent', 'referer', 'accept', 'accept-language', 'accept-encoding', 'connection', 'cookie', 'content-length'];
+	const header = headers.filter((h) => !(curlIgnoreCommon.value && commonHeaders.indexOf(h.key.toLowerCase()) >= 0));
+	let bodyType = 2;
+	let body: any = bodyRaw;
+	const ct = header.find((h) => h.key.toLowerCase() === 'content-type');
+	if (ct && ct.value.toLowerCase().indexOf('application/json') >= 0) {
+		bodyType = 2;
+		try { body = bodyRaw ? JSON.parse(bodyRaw) : {}; } catch (e) { body = bodyRaw; }
+	} else if (ct && ct.value.toLowerCase().indexOf('x-www-form-urlencoded') >= 0) {
+		bodyType = 3;
+		body = bodyRaw.split('&').map((p) => {
+			const kv = p.split('=');
+			return { key: decodeURIComponent(kv[0] || ''), value: decodeURIComponent(kv.slice(1).join('=') || ''), status: true };
+		});
+	} else if (bodyRaw) {
+		try { body = JSON.parse(bodyRaw); } catch (e) { body = bodyRaw; }
+	}
+	const methodMap: Record<string, number> = { GET: 1, POST: 2, PUT: 3, DELETE: 4, PATCH: 5, HEAD: 6, OPTIONS: 7 };
+	return { method: methodMap[method] || 2, url, header, body, bodyType, params: [] };
+};
+
+const importByCurl = async () => {
+	if (!curlText.value.trim()) {
+		ElMessage.warning('请粘贴 cURL 命令');
 		return;
 	}
 	pulling.value = true;
 	try {
-		const source_type = normalizeSourceType(doc_source_type.value);
-		const doc_url = doc_source_url.value.trim();
-		try {
-			await saveSourceNow(source_type, doc_url);
-		} catch { /* 保存失败不阻断拉取 */ }
-		await pull_api_doc({
+		const parsed = parseCurl(curlText.value) as any;
+		if (!parsed.url) {
+			ElMessage.warning('未解析到 URL，请检查 cURL 命令格式');
+			return;
+		}
+		const name = parsed.url.split('?')[0].split('/').filter(Boolean).pop() || '导入接口';
+		const payload = {
 			api_service_id: props.serviceId,
-			source_type: source_type as 'swagger' | 'apifox',
-			doc_url,
-			...(source_type === 'apifox' ? { cookies: doc_source_cookies.value.trim() } : {}),
-		});
-		ElMessage.success('导入成功');
+			pid: 0,
+			name: name,
+			url: parsed.url,
+			method: parsed.method,
+			header: parsed.header,
+			body: parsed.body,
+			bodyType: parsed.bodyType,
+			params: parsed.params,
+		};
+		await useApiAutomationApi().curlImport(payload);
+		ElMessage.success('cURL 导入成功');
 		importDialogVisible.value = false;
 		await loadTree();
 	} catch (e: any) {
-		ElMessage.error(e?.message || '导入失败');
+		ElMessage.error(e?.message || 'cURL 导入失败');
 	} finally {
 		pulling.value = false;
 	}
@@ -710,4 +786,9 @@ onMounted(() => {
 .inner-tabs :deep(.el-tabs__content) { display: none; }
 .inner-tab-content { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .inner-panel-wrap { flex: 1; min-height: 0; overflow: hidden; height: 100%; }
+.curl-ignore-tip {
+	margin-left: 8px;
+	font-size: 12px;
+	color: #909399;
+}
 </style>

@@ -74,6 +74,7 @@ export function useApiAutomationApi() {
     del_api_db: (data: { id: number }) => postApiAutomation('/v1/Ntesterc_api/del_api_db', data),
     test_db_conn: (data: { id: number }) => postApiAutomation('/v1/Ntesterc_api/test_db_conn', data),
 
+    curlImport: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/import_curl', data),
     pull_api_doc: (data: {
       api_service_id: number;
       source_type: 'swagger' | 'apifox';

@@ -694,6 +694,21 @@ async def test_db_conn(
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
 
+@router.post("/import_curl")
+async def import_curl(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """cURL 导入接口"""
+    try:
+        body = await body_to_json(request)
+        await ApiAutomationService.import_curl_api(db, body, current_user_id)
+        return success_response({}, message="导入成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/pull_api_doc")
 async def pull_api_doc(
     request: Request,

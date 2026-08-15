@@ -1353,6 +1353,62 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
+    @staticmethod
+    async def import_curl_api(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
+        """cURL 导入：前端已解析出结构化数据，这里创建接口节点 + 接口记录。"""
+        api_service_id = int(body["api_service_id"])
+        pid = int(body.get("pid") or 0)
+        if not pid:
+            root = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.api_service_id == api_service_id,
+                        ApiMenuModel.pid == 0,
+                        ApiMenuModel.enabled_flag == 1,
+                    )
+                )
+            ).scalars().first()
+            pid = root.id if root else 0
+        url = str(body.get("url") or "/").strip()
+        name = str(body.get("name") or "").strip() or "未命名接口"
+        req: Dict[str, Any] = {
+            "params_id": None,
+            "body": body.get("body") if body.get("body") is not None else {},
+            "after": [],
+            "assert": [],
+            "before": [],
+            "config": {"retry": 0, "req_timeout": 5, "res_timeout": 5},
+            "header": body.get("header") or [{"key": "Content-Type", "value": "application/json", "status": True}],
+            "method": int(body.get("method") or 2),
+            "params": body.get("params") or [],
+            "body_type": int(body.get("body_type") or 2),
+            "file_path": [],
+            "form_data": [],
+            "form_urlencoded": [],
+        }
+        api = ApiModel(
+            api_service_id=api_service_id,
+            url=url,
+            document={},
+            req=req,
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(api)
+        await db.flush()
+        menu = ApiMenuModel(
+            name=name,
+            type=2,
+            pid=pid,
+            api_id=api.id,
+            api_service_id=api_service_id,
+            status=1,
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(menu)
+        await db.commit()
+
     async def add_env(db: AsyncSession, data: Dict[str, Any], user_id: int) -> None:
         env = ApiEnvironmentModel(
             name=data["name"],
