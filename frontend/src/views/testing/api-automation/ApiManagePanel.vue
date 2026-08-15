@@ -159,9 +159,6 @@
 					>
 						<el-icon class="el-icon--upload"><UploadFilled /></el-icon>
 						<div class="el-upload__text">点击或拖拽文件到本区域导入</div>
-						<template #tip>
-							<div class="el-upload__tip">支持 OpenAPI 3.0/3.1、Swagger 2.0 的 JSON 或 YAML 文件</div>
-						</template>
 					</el-upload>
 				</template>
 				<el-form v-else label-position="top">
@@ -200,9 +197,6 @@
 				>
 					<el-icon class="el-icon--upload"><UploadFilled /></el-icon>
 					<div class="el-upload__text">点击或拖拽文件到本区域导入</div>
-					<template #tip>
-						<div class="el-upload__tip">支持 Postman Collection v2.1 JSON（Export 导出的文件）</div>
-					</template>
 				</el-upload>
 			</template>
 
