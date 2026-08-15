@@ -1512,11 +1512,17 @@ const sendRequest = async () => {
 			res.value = data?.res ? { ...res.value, ...data.res } : (data || res.value);
 			ElMessage.success('请求发送成功');
 		} else {
-			ElMessage.error(response.message || '请求发送失败');
+			const msg = response.message || response.data?.message || `接口返回异常（code=${response.code}）`;
+			ElMessage.error(`请求发送失败：${msg}`);
 		}
-	} catch (error) {
+	} catch (error: any) {
 		console.error('发送请求失败', error);
-		ElMessage.error('请求发送失败');
+		const msg =
+			error?.response?.data?.message ||
+			error?.response?.data?.detail ||
+			error?.message ||
+			'未知错误';
+		ElMessage.error(`请求发送失败：${msg}`);
 	}
 };
 
