@@ -227,9 +227,18 @@
 			</el-form>
 			<template #footer>
 				<el-button @click="importDialogVisible = false">取消</el-button>
-				<el-button type="primary" :loading="pulling" @click="confirmImport">导入</el-button>
+				<el-button type="primary" :loading="pulling" @click="confirmImport">继续</el-button>
 			</template>
 		</el-dialog>
+
+		<!-- 导入预览 & 配置弹窗 -->
+		<ImportPreviewDialog
+			v-model="previewVisible"
+			:preview-list="previewList"
+			:service-id="props.serviceId"
+			:import-params="previewParams"
+			@imported="onPreviewImported"
+		/>
 
 		<!-- 新增目录/接口弹窗 -->
 		<el-dialog v-model="menuDialogVisible" :title="menuDialogTitle" width="400px" destroy-on-close>
@@ -278,6 +287,7 @@ import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'ele
 import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
+import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
 import ApiMockPanel from './components/ApiMockPanel.vue';
@@ -530,24 +540,61 @@ const saveSourceNow = async (source_type: string, source_addr: string) => {
 	emit('update-source', { source_type: normalized, source_addr });
 };
 
+const previewVisible = ref(false);
+const previewList = ref<any[]>([]);
+const previewParams = ref<Record<string, any>>({});
+
+const buildImportBase = (): Record<string, any> | null => {
+	if (importSourceType.value === 'apifox') {
+		if (!doc_source_url.value.trim()) { ElMessage.warning('请输入 Apifox 项目 URL'); return null; }
+		if (!doc_source_cookies.value.trim()) { ElMessage.warning('请输入 Apifox Cookies'); return null; }
+		return { source_type: 'apifox', doc_url: doc_source_url.value.trim(), cookies: doc_source_cookies.value.trim() };
+	}
+	if (importSourceType.value === 'postman') {
+		if (!importFileContent.value) { ElMessage.warning('请选择 Postman Collection 文件'); return null; }
+		return { source_type: 'postman', doc_content: String(importFileContent.value || '') };
+	}
+	if (importTab.value === 'url') {
+		if (!doc_source_url.value.trim()) { ElMessage.warning('请输入文档 URL'); return null; }
+		const base: Record<string, any> = { source_type: 'swagger', doc_url: doc_source_url.value.trim() };
+		if (urlAuthEnabled.value) {
+			base.basic_auth = { username: urlAuthUsername.value.trim(), password: urlAuthPassword.value };
+		}
+		return base;
+	}
+	if (!importFileContent.value) { ElMessage.warning('请选择要导入的 JSON 或 YAML 文件'); return null; }
+	return { source_type: 'swagger', doc_content: String(importFileContent.value || '') };
+};
+
 const confirmImport = async () => {
 	if (importSourceType.value === 'curl') {
 		await importByCurl();
 		return;
 	}
-	if (importSourceType.value === 'apifox') {
-		await importByUrl();
-		return;
+	const base = buildImportBase();
+	if (!base) return;
+	pulling.value = true;
+	try {
+		const r: any = await pull_api_doc({ api_service_id: props.serviceId, ...base, preview: true });
+		if (r?.code === 200) {
+			const list = r?.data?.preview || [];
+			if (!list.length) { ElMessage.warning('文档中未解析到接口'); return; }
+			previewList.value = list;
+			previewParams.value = base;
+			previewVisible.value = true;
+		} else {
+			ElMessage.error(r?.message || '解析失败');
+		}
+	} catch (e: any) {
+		ElMessage.error(e?.message || '解析失败');
+	} finally {
+		pulling.value = false;
 	}
-	if (importSourceType.value === 'postman') {
-		await importByFile();
-		return;
-	}
-	if (importTab.value === 'url') {
-		await importByUrl();
-		return;
-	}
-	await importByFile();
+};
+
+const onPreviewImported = () => {
+	importDialogVisible.value = false;
+	loadTree();
 };
 
 // ---- cURL 导入 ----

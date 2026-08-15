@@ -2678,12 +2678,96 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    def _preview_doc(doc: Any) -> List[Dict[str, Any]]:
+        """提取文档接口清单（预览用，不写库）"""
+        out: List[Dict[str, Any]] = []
+        if not isinstance(doc, dict):
+            return out
+        paths = doc.get("paths")
+        if isinstance(paths, dict):
+            for p, methods in paths.items():
+                if not isinstance(methods, dict):
+                    continue
+                for m, op in methods.items():
+                    if str(m).lower() in ("get", "post", "put", "delete", "patch", "head", "options"):
+                        opd = op if isinstance(op, dict) else {}
+                        name = str(opd.get("summary") or opd.get("operationId") or f"{m.upper()} {p}")
+                        out.append({"name": name, "method": str(m).upper(), "url": str(p), "key": f"{str(m).upper()} {p}"})
+        items = doc.get("item")
+        if isinstance(items, list):
+            def walk(its):
+                for it in its or []:
+                    if not isinstance(it, dict):
+                        continue
+                    if "request" in it:
+                        req = it.get("request") or {}
+                        u = req.get("url") if isinstance(req, dict) else None
+                        raw = u.get("raw") if isinstance(u, dict) else (u or "")
+                        mm = str((req.get("method") if isinstance(req, dict) else "") or "GET").upper()
+                        out.append({"name": str(it.get("name") or f"{mm} {raw}"), "method": mm, "url": str(raw or ""), "key": f"{mm} {raw}"})
+                    else:
+                        walk(it.get("item"))
+            walk(items)
+        apis = doc.get("apis")
+        if isinstance(apis, list):
+            for a in apis:
+                if isinstance(a, dict):
+                    p = str(a.get("path") or "")
+                    mm = str(a.get("method") or "GET").upper()
+                    out.append({"name": str(a.get("name") or f"{mm} {p}"), "method": mm, "url": p, "key": f"{mm} {p}"})
+        return out
+
+    @staticmethod
+    def _filter_doc_by_selected(doc: Any, selected: List[str]) -> Any:
+        """按 selected（"METHOD path"）过滤文档，仅保留选中的接口"""
+        if not selected:
+            return doc
+        sel = set(selected)
+        if not isinstance(doc, dict):
+            return doc
+        paths = doc.get("paths")
+        if isinstance(paths, dict):
+            new_paths = {}
+            for p, methods in paths.items():
+                if not isinstance(methods, dict):
+                    continue
+                nm = {}
+                for m, op in methods.items():
+                    if f"{str(m).upper()} {p}" in sel or f"{str(m).lower()} {p}" in sel:
+                        nm[m] = op
+                if nm:
+                    new_paths[p] = nm
+            doc["paths"] = new_paths
+        items = doc.get("item")
+        if isinstance(items, list):
+            def walk(its):
+                kept = []
+                for it in its or []:
+                    if not isinstance(it, dict):
+                        continue
+                    if "request" in it:
+                        req = it.get("request") or {}
+                        u = req.get("url") if isinstance(req, dict) else None
+                        raw = u.get("raw") if isinstance(u, dict) else (u or "")
+                        mm = str((req.get("method") if isinstance(req, dict) else "") or "GET").upper()
+                        if f"{mm} {raw}" in sel:
+                            kept.append(it)
+                    else:
+                        sub = walk(it.get("item"))
+                        if sub:
+                            kept.append({**it, "item": sub})
+                return kept
+            doc["item"] = walk(items)
+        return doc
+
+    @staticmethod
     async def _import_postman_collection(
-        db: AsyncSession, doc: Dict[str, Any], api_service_id: int, user_id: int
+        db: AsyncSession, doc: Dict[str, Any], api_service_id: int, user_id: int, target_pid: int = 0
     ) -> tuple:
         """导入 Postman Collection v2.1：item 递归，folder->目录，request->接口"""
         imported = 0
         folders = 0
+        api_ids: List[int] = []
 
         def _status(disabled: Any) -> bool:
             return not bool(disabled)
@@ -2799,6 +2883,7 @@ class ApiAutomationService:
                         name=name, pid=pid, type=2, api_service_id=api_service_id,
                         status=1, api_id=api.id, created_by=user_id, updated_by=user_id,
                     ))
+                    api_ids.append(int(api.id))
                     imported += 1
                 else:
                     menu = ApiMenuModel(
@@ -2810,19 +2895,22 @@ class ApiAutomationService:
                     folders += 1
                     await walk(it.get("item") or [], int(menu.id))
 
-        root = (
-            await db.execute(
-                select(ApiMenuModel).where(
-                    ApiMenuModel.api_service_id == api_service_id,
-                    ApiMenuModel.pid == 0,
-                    ApiMenuModel.enabled_flag == 1,
+        if target_pid:
+            root_pid = target_pid
+        else:
+            root = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.api_service_id == api_service_id,
+                        ApiMenuModel.pid == 0,
+                        ApiMenuModel.enabled_flag == 1,
+                    )
                 )
-            )
-        ).scalars().first()
-        root_pid = int(root.id) if root else 0
+            ).scalars().first()
+            root_pid = int(root.id) if root else 0
         await walk(doc.get("item") or [], root_pid)
         await db.commit()
-        return imported, folders
+        return imported, folders, api_ids
 
     async def pull_api_doc(db: AsyncSession, body: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         api_service_id = int(body.get("api_service_id") or 0)
@@ -2830,6 +2918,22 @@ class ApiAutomationService:
         source_type = str(body.get("source_type") or "swagger").strip().lower()
         doc_content = body.get("doc_content")
         cookies = str(body.get("cookies") or "").strip()
+        create_module = bool(body.get("create_module"))
+        module_name = str(body.get("module_name") or "").strip()
+        if create_module:
+            if not module_name:
+                raise ValueError("创建新模块需要填写模块名称")
+            svc = ApiServiceModel(
+                name=module_name,
+                api_project_id=int(body.get("api_project_id") or 0),
+                created_by=user_id,
+                updated_by=user_id,
+            )
+            db.add(svc)
+            await db.flush()
+            await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
+            await ApiAutomationService._sync_env_front_urls(db, [f"svc_{svc.id}"])
+            api_service_id = int(svc.id)
         basic_auth = body.get("basic_auth") if isinstance(body.get("basic_auth"), dict) else None
         auth_tuple = None
         if basic_auth and basic_auth.get("username"):
@@ -3025,6 +3129,16 @@ class ApiAutomationService:
 
         # 兼容多种文档结构：
         paths: Dict[str, Any] = {}
+        selected = body.get("selected")
+        if isinstance(selected, list) and selected:
+            doc_json = ApiAutomationService._filter_doc_by_selected(doc_json, selected)
+        if body.get("preview"):
+            return {"preview": ApiAutomationService._preview_doc(doc_json), "mode": "preview"}
+
+        target_pid = int(body.get("pid") or 0)
+        created_api_ids: List[int] = []
+        gen_case = bool(body.get("gen_case"))
+
         candidates = [
             doc_json.get("paths"),
             (doc_json.get("data") or {}).get("paths") if isinstance(doc_json.get("data"), dict) else None,
@@ -3042,9 +3156,31 @@ class ApiAutomationService:
             if source_type == "postman" or (
                 isinstance(doc_json, dict) and doc_json.get("info") and isinstance(doc_json.get("item"), list)
             ):
-                imported, folders = await ApiAutomationService._import_postman_collection(
-                    db, doc_json, api_service_id, user_id
+                imported, folders, postman_ids = await ApiAutomationService._import_postman_collection(
+                    db, doc_json, api_service_id, user_id, target_pid
                 )
+                if gen_case and postman_ids:
+                    await db.flush()
+                    for _aid in postman_ids:
+                        try:
+                            _src = (
+                                await db.execute(select(ApiModel).where(ApiModel.id == _aid, ApiModel.enabled_flag == 1))
+                            ).scalar_one_or_none()
+                            if _src:
+                                await ApiAutomationService.save_api_case(
+                                    db,
+                                    {
+                                        "id": _aid,
+                                        "api_service_id": int(_src.api_service_id),
+                                        "url": _src.url,
+                                        "req": _src.req or {},
+                                        "document": _src.document or {},
+                                        "name": _src.name,
+                                    },
+                                    user_id,
+                                )
+                        except Exception:
+                            pass
                 return {
                     "source_type": source_type,
                     "imported": imported,
@@ -3086,7 +3222,7 @@ class ApiAutomationService:
                         ApiMenuModel.created_by == user_id,
                         ApiMenuModel.api_service_id == api_service_id,
                         ApiMenuModel.type == 1,
-                        ApiMenuModel.pid == 0,
+                        ApiMenuModel.pid == target_pid,
                         ApiMenuModel.name == key,
                     )
                 )
@@ -3097,7 +3233,7 @@ class ApiAutomationService:
             menu = ApiMenuModel(
                 name=key,
                 type=1,
-                pid=0,
+                pid=target_pid,
                 api_service_id=api_service_id,
                 status=1,
                 api_id=None,
@@ -3135,9 +3271,12 @@ class ApiAutomationService:
                     continue
 
                 tags = operation.get("tags") or []
-                folder_name = str(tags[0] if tags else "默认分组")
-                folder_id = await get_or_create_folder(folder_name)
-                folder_names.add(folder_name)
+                if tags:
+                    folder_name = str(tags[0])
+                    folder_id = await get_or_create_folder(folder_name)
+                    folder_names.add(folder_name)
+                else:
+                    folder_id = target_pid
 
                 req = ApiAutomationService._build_req_from_openapi(api_path, method, operation)
                 api_name = str(operation.get("summary") or operation.get("operationId") or f"{method.upper()} {api_path}")
@@ -3193,6 +3332,7 @@ class ApiAutomationService:
                     api_id = int(api_row.id)
                     existing_apis.append(api_row)
                     imported_count += 1
+                    created_api_ids.append(int(api_row.id))
 
                 leaf = (
                     await db.execute(
@@ -3232,6 +3372,28 @@ class ApiAutomationService:
             .where(ApiServiceModel.id == api_service_id, ApiServiceModel.enabled_flag == 1)
             .values(last_pull_status=1)
         )
+        if gen_case and created_api_ids:
+            await db.flush()
+            for _aid in created_api_ids:
+                try:
+                    _src = (
+                        await db.execute(select(ApiModel).where(ApiModel.id == _aid, ApiModel.enabled_flag == 1))
+                    ).scalar_one_or_none()
+                    if _src:
+                        await ApiAutomationService.save_api_case(
+                            db,
+                            {
+                                "id": _aid,
+                                "api_service_id": int(_src.api_service_id),
+                                "url": _src.url,
+                                "req": _src.req or {},
+                                "document": _src.document or {},
+                                "name": _src.name,
+                            },
+                            user_id,
+                        )
+                except Exception:
+                    pass
         await db.commit()
         return {
             "source_type": source_type,
