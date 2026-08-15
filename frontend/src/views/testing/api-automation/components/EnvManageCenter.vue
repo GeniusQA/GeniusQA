@@ -47,15 +47,9 @@
 				<template v-else-if="section === 'env' && curEnv">
 					<div class="env-detail">
 						<div class="env-detail-head">
-							<template v-if="curEnv.id == null">
-								<span class="env-detail-title">新建环境</span>
-								<el-input v-model="curEnv.name" placeholder="请输入环境名称" size="small" style="width: 240px" />
-							</template>
-							<template v-else>
-								<span class="env-detail-title">{{ curEnv.name }}</span>
-								<el-button size="small" type="warning" @click="openEnvForm(curEnv)">编辑环境</el-button>
-								<el-button size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
-							</template>
+							<span class="env-detail-title">{{ curEnv.id == null ? '新建环境' : '编辑环境' }}</span>
+							<el-input v-model="curEnv.name" placeholder="请输入环境名称" size="small" style="width: 240px" />
+							<el-button v-if="curEnv.id != null" size="small" type="danger" plain @click="deleteEnv(curEnv)">删除</el-button>
 						</div>
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
@@ -89,18 +83,6 @@
 			</div>
 		</div>
 
-		<!-- 新增/编辑环境表单 -->
-		<el-dialog v-model="envFormVisible" :title="envForm.id ? '编辑环境' : '新建环境'" width="520px" @closed="resetEnvForm">
-			<el-form :model="envForm" label-width="80px">
-				<el-form-item label="* 环境名称">
-					<el-input v-model="envForm.name" placeholder="请输入环境名称" />
-				</el-form-item>
-			</el-form>
-			<template #footer>
-				<el-button @click="envFormVisible = false">取消</el-button>
-				<el-button type="primary" :loading="envSaving" @click="submitEnvForm">保存</el-button>
-			</template>
-		</el-dialog>
 	</el-dialog>
 </template>
 
@@ -250,41 +232,6 @@ const startNewEnv = async () => {
 	syncFrontUrls();
 };
 
-// ---- 环境新增/编辑/删除 ----
-const envFormVisible = ref(false);
-const envForm = ref<{ id?: number; name: string }>({ name: '' });
-
-const openEnvForm = (e: any | null) => {
-	envForm.value = e ? { id: e.id, name: e.name || '' } : { name: '' };
-	envFormVisible.value = true;
-};
-
-const resetEnvForm = () => {
-	envForm.value = { name: '' };
-};
-
-const submitEnvForm = async () => {
-	if (!envForm.value.name.trim()) {
-		ElMessage.warning('请输入环境名称');
-		return;
-	}
-	envSaving.value = true;
-	try {
-		if (envForm.value.id) {
-			await save_env({ env_list: [{ id: envForm.value.id, name: envForm.value.name.trim() }] });
-			ElMessage.success('保存成功');
-		} else {
-			await add_env({ name: envForm.value.name.trim(), config: [], variable: [] });
-			ElMessage.success('新建成功');
-		}
-		envFormVisible.value = false;
-		await loadEnvList();
-	} catch (e: any) {
-		ElMessage.error(e?.message || '保存失败');
-	} finally {
-		envSaving.value = false;
-	}
-};
 
 const deleteEnv = async (e: any) => {
 	try {
