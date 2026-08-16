@@ -241,6 +241,7 @@ onMounted(() => {
 }
 
 .service-detail-header {
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -257,6 +258,10 @@ onMounted(() => {
 }
 
 .service-name {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	white-space: nowrap;
 	font-size: 16px;
 	font-weight: 600;
 	color: #303133;
