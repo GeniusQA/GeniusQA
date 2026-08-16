@@ -1741,7 +1741,7 @@ onMounted(() => {
 .toolbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .manage-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
-.tree-panel { width: 260px; flex-shrink: 0; border-right: 1px solid var(--el-border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); }
+.tree-panel { width: 320px; flex-shrink: 0; border-right: 1px solid var(--el-border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); }
 .tree-actions { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--el-border-color); flex-shrink: 0; }
 .api-tree { flex: 1; overflow-y: auto; padding: 4px 0; }
 .tree-node { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-right: 4px; }
@@ -1890,6 +1890,6 @@ onMounted(() => {
 .dm-json :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 12px; line-height: 1.5; }
 .dm-hint { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 6px; }
 .icon-dm { color: #8b5cf6; }
-.tree-batch-bar { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: #fef0f0; border-radius: 4px; margin-bottom: 4px; }
-.batch-count { font-size: 12px; color: var(--el-color-danger); }
+.tree-batch-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 6px 8px; background: #fef0f0; border-radius: 4px; margin-bottom: 4px; white-space: nowrap; }
+.batch-count { font-size: 12px; color: var(--el-color-danger); flex-shrink: 0; }
 </style>
