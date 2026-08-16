@@ -32,7 +32,7 @@
 						</template>
 					</el-dropdown>
 					<el-button link size="small" @click="treeCheckClear">清空</el-button>
-					<el-button type="danger" size="small" :loading="treeDeleting" @click="treeBatchDelete">{{ treeDeleting ? `删除中 ${treeDeleteProgress}/${treeCheckedKeys.length}` : '删除选中' }}</el-button>
+					<el-button type="danger" size="small" class="batch-delete-btn" :loading="treeDeleting" @click="treeBatchDelete">{{ treeDeleting ? `删除中 ${treeDeleteProgress}/${treeCheckedKeys.length}` : '删除选中' }}</el-button>
 				</div>
 				<el-tree
 					ref="treeRef"
@@ -1892,4 +1892,5 @@ onMounted(() => {
 .icon-dm { color: #8b5cf6; }
 .tree-batch-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 6px 8px; background: #fef0f0; border-radius: 4px; margin-bottom: 4px; white-space: nowrap; }
 .batch-count { font-size: 12px; color: var(--el-color-danger); flex-shrink: 0; }
+.batch-delete-btn { margin-left: auto; }
 </style>
