@@ -273,19 +273,28 @@ const loadDirs = async () => {
 		const raw = r?.data;
 		const tree = Array.isArray(raw) ? raw : [];
 		const dirs: any[] = [];
-		const walk = (nodes: any[], prefix: string) => {
+		const walk = (nodes: any[], rootName: string) => {
 			for (const n of nodes || []) {
-				if (n.type === 1 || n.type === 5) {
-					const p = prefix ? prefix + ' / ' + n.name : n.name;
-					dirs.push({ id: n.id, path: p });
-					walk(n.children || [], p);
-				} else if (n.type === 0) {
+				if (n.type === 0) {
 					walk(n.children || [], n.name);
+					continue;
+				}
+				if ((n.type === 1 || n.type === 5) && Number(n.pid) === 0) {
+					// 根目录（「接口」）：默认选项，文案=模块名；继续遍历其子目录
+					if (!dirs.length) dirs.push({ id: n.id, path: rootName || n.name });
+					walk(n.children || [], rootName);
+					continue;
+				}
+				if (n.type === 1 || n.type === 5) {
+					dirs.push({ id: n.id, path: n.name });
+					walk(n.children || [], rootName);
 				}
 			}
 		};
 		walk(tree, '');
+		if (!dirs.length) dirs.push({ id: 0, path: '根目录' });
 		dirList.value = dirs;
+		if (!targetPid.value && dirs.length) targetPid.value = dirs[0].id;
 	} catch {
 		dirList.value = [];
 	}
