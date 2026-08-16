@@ -876,7 +876,7 @@ const loadModuleDetail = async (data: any) => {
 	moduleSource.value = { source_type: '', source_addr: '' };
 	moduleVars.value = [];
 	try {
-		const r: any = await api_service_list({ project_id: props.serviceId });
+		const r: any = await api_service_list({});
 		const list = r?.data || [];
 		const svc = list.find((s: any) => Number(s.id) === Number(data.api_service_id));
 		if (svc) {
