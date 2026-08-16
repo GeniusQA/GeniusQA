@@ -606,6 +606,9 @@
 						placeholder="选择父级目录（选模块=默认根目录）"
 						style="width:100%"
 					/>
+					<el-button link type="primary" size="small" style="margin-top: 4px" @click="openCreateDir">
+						<el-icon><Plus /></el-icon> 新建目录
+					</el-button>
 				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
 					<el-tree-select
@@ -619,6 +622,9 @@
 						placeholder="选择父级目录（选模块=默认根目录）"
 						style="width:100%"
 					/>
+					<el-button link type="primary" size="small" style="margin-top: 4px" @click="openCreateDir">
+						<el-icon><Plus /></el-icon> 新建目录
+					</el-button>
 				</el-form-item>
 			</el-form>
 			<template #footer>
@@ -633,7 +639,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
@@ -1623,6 +1629,12 @@ const folderTree = computed(() => {
 		}).filter((x: any) => x !== null);
 	return build(treeData.value || []);
 });
+
+const openCreateDir = () => {
+	menuForm.value = { name: '', type: 1, pid: menuForm.value.pid || folderTree.value[0]?.id || 0, editId: 0, mode: 'add', protocol: 'http' };
+	menuDialogTitle.value = '添加目录';
+	menuDialogVisible.value = true;
+};
 
 const menuDialogVisible = ref(false);
 const menuDialogTitle = ref('');
