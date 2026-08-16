@@ -172,8 +172,8 @@
 
 		<template #footer>
 			<div style="display: flex; align-items: center; gap: 8px">
-				<el-button v-if="isEdit" type="danger" link :loading="deleting" @click="doDelete">删除</el-button>
 				<el-button :loading="syncing" @click="doSync" style="margin-right: auto">立即导入</el-button>
+				<el-button v-if="isEdit" type="danger" plain :loading="deleting" @click="doDelete">删除</el-button>
 				<el-button @click="inner = false">取消</el-button>
 				<el-button type="primary" :loading="saving" @click="doSave">保存</el-button>
 			</div>
