@@ -3597,6 +3597,20 @@ class ApiAutomationService:
             return {"preview": ApiAutomationService._preview_doc(doc_json), "mode": "preview"}
 
         target_pid = int(body.get("pid") or 0)
+        # pid=0 默认落到服务根目录（对齐 Apifox：导入默认进模块根目录）
+        if not target_pid:
+            _root_menu = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.api_service_id == api_service_id,
+                        ApiMenuModel.enabled_flag == 1,
+                        ApiMenuModel.pid == 0,
+                        ApiMenuModel.type == 1,
+                    ).order_by(ApiMenuModel.id.asc()).limit(1)
+                )
+            ).scalar_one_or_none()
+            if _root_menu:
+                target_pid = int(_root_menu.id)
         created_api_ids: List[int] = []
         gen_case = bool(body.get("gen_case"))
         match_mode = str(body.get("match_mode") or "overwrite")
@@ -3607,6 +3621,8 @@ class ApiAutomationService:
         import_models = bool(body.get("import_models") if body.get("import_models") is not None else True)
         model_match_mode = str(body.get("model_match_mode") or "overwrite")
         model_pid = int(body.get("model_pid") or 0)
+        if not model_pid:
+            model_pid = target_pid
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
