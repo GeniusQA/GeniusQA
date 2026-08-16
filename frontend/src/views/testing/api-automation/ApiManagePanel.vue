@@ -214,12 +214,15 @@
 										</el-dropdown-menu>
 									</template>
 								</el-dropdown>
+								<el-button v-if="dirDocPreview" size="small" style="margin-left: 8px" @click="dirDocPreview = false">编辑</el-button>
 								<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 								<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
 							</div>
 							<MdEditor
 								ref="mdEditorRef"
 								v-model="dirDocContent"
+								:preview="dirDocPreview"
+								@on-preview-toggle="dirDocPreview = $event"
 								:toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'image', 'table', 'mermaid', 'katex', 'revoke', 'next', '=', 'preview']"
 								placeholder="请输入内容"
 								:on-upload-img="onDocUploadImg"
@@ -928,6 +931,7 @@ const dirName = ref('');
 const dirDocTitle = ref('');
 const dirDocContent = ref('');
 const dirDocMode = ref<'edit' | 'preview'>('edit');
+const dirDocPreview = ref(false);
 const dirDocHtml = computed(() => {
 	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
 });
@@ -958,9 +962,7 @@ const generateDirDoc = async () => {
 			dirDocTitle.value = r.data.title || selectedDir.value.name;
 			dirDocContent.value = r.data.content || '';
 			ElMessage.success('文档已生成');
-			nextTick(() => {
-				try { mdEditorRef.value?.togglePreview?.(); } catch {}
-			});
+			dirDocPreview.value = true;
 		} else {
 			ElMessage.error(r?.message || '生成失败');
 		}
@@ -988,9 +990,7 @@ const onImportMd = (file: any) => {
 		const fname = raw.name.replace(/\.(md|markdown)$/i, '');
 		if (fname) dirDocTitle.value = fname;
 		ElMessage.success('MD 文件已导入');
-		nextTick(() => {
-			try { mdEditorRef.value?.togglePreview?.(); } catch {}
-		});
+		dirDocPreview.value = true;
 	};
 	reader.readAsText(raw);
 };
@@ -1396,12 +1396,8 @@ const onNodeClick = async (data: any) => {
 			dirDocContent.value = '';
 		}
 		dirDocMode.value = 'edit';
-		// 已有文档内容：进入页面自动展示预览（对齐 Apifox），点编辑可切回
-		if (dirDocContent.value) {
-			nextTick(() => {
-				try { mdEditorRef.value?.togglePreview?.(); } catch {}
-			});
-		}
+		// 已有文档内容：进入页面自动展示预览（对齐 Apifox），点「编辑」切回
+		dirDocPreview.value = !!dirDocContent.value;
 		dirBefore.value = Array.isArray(cp.before) ? cp.before : [];
 		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
 		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
