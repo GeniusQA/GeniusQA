@@ -1592,7 +1592,7 @@ const handleAddCommand = (cmd: string) => {
 		return;
 	}
 	if (cmd === 'add_module') {
-		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
+		menuForm.value = { name: '', type: 5, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
 		menuDialogVisible.value = true;
 		return;
@@ -1635,11 +1635,16 @@ const handleNodeCommand = (cmd: string, data: any) => {
 
 const confirmMenu = async () => {
 	if (menuForm.value.mode === 'add_module') {
-		// 模块 = 顶级模块节点（与现有模块同级，不存在子模块逻辑）
+		// 模块 = 当前服务（项目）下的模块子节点；不创建服务，模块下自动生成「接口」根目录 +「数据模型」
 		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			await add_api_service({ name: menuForm.value.name.trim(), api_project_id: props.serviceId || 0 });
-			ElMessage.success('模块已创建');
+			const rr: any = await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
+			const modId = rr?.data?.id;
+			if (modId) {
+				await add_menu({ name: '接口', pid: Number(modId), type: 1, api_service_id: props.serviceId, protocol: 'http' });
+				await add_menu({ name: '数据模型', pid: Number(modId), type: 1, api_service_id: props.serviceId, protocol: 'http' });
+			}
+			ElMessage.success('模块已创建（含接口根目录与数据模型）');
 			menuDialogVisible.value = false;
 			loadTree();
 		} catch (e: any) {
