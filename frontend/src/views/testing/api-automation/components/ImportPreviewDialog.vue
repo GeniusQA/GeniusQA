@@ -46,26 +46,6 @@
 							<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
 						</el-select>
 					</template>
-					<div class="ipv-label" style="margin-top: 8px">匹配到相同接口时（根据 {{ idKeyLabel(matchIdKey) }}）</div>
-					<el-select v-model="matchMode" size="small" style="width: 100%">
-						<el-option label="覆盖已有接口" value="overwrite" />
-						<el-option label="智能合并" value="smart_merge" />
-						<el-option label="不导入" value="skip" />
-					</el-select>
-					<div class="ipv-label" style="margin-top: 8px">接口唯一标识</div>
-					<el-select v-model="matchIdKey" size="small" style="width: 100%">
-						<el-option label="Method & Path" value="method_path" />
-						<el-option label="OperationId" value="operation_id" />
-						<el-option label="Query 参数" value="query" />
-						<el-option label="Body 参数" value="body" />
-						<el-option label="Header 参数" value="header" />
-					</el-select>
-					<div class="ipv-label" style="margin-top: 8px">接口 Summary 为空时使用</div>
-					<el-select v-model="nameRule" size="small" style="width: 100%">
-						<el-option label="使用 operationId" value="operation_id" />
-						<el-option label="使用 path" value="path" />
-						<el-option label="从 description 提取" value="description" />
-					</el-select>
 					<div class="ipv-switch-row">
 						<span class="ipv-switch-label">为每个接口自动生成一个调试用例</span>
 						<el-switch v-model="genCase" />
@@ -103,6 +83,40 @@
 						<span class="ipv-switch-label">将文件里的 Info 导入</span>
 						<el-switch v-model="importInfo" />
 					</div>
+					<div class="ipv-label" style="margin-top: 8px">接口 Summary 为空时使用</div>
+					<el-select v-model="nameRule" size="small" style="width: 100%">
+						<el-option label="使用 operationId" value="operation_id" />
+						<el-option label="使用 path" value="path" />
+						<el-option label="从 description 提取" value="description" />
+					</el-select>
+					<el-collapse v-model="conflictOpen" class="ipv-collapse">
+						<el-collapse-item name="conflict" title="项目内已经存在相同资源时，如何处理">
+							<div class="ipv-label">匹配到相同接口时（根据 {{ idKeyLabel(matchIdKey) }}）</div>
+							<el-select v-model="matchMode" size="small" style="width: 100%">
+								<el-option label="覆盖已有接口" value="overwrite" />
+								<el-option label="智能合并" value="smart_merge" />
+								<el-option label="不导入" value="skip" />
+							</el-select>
+							<div class="ipv-label" style="margin-top: 6px">接口唯一标识</div>
+							<el-select v-model="matchIdKey" size="small" style="width: 100%">
+								<el-option label="Method & Path" value="method_path" />
+								<el-option label="OperationId" value="operation_id" />
+								<el-option label="Query 参数" value="query" />
+								<el-option label="Body 参数" value="body" />
+								<el-option label="Header 参数" value="header" />
+							</el-select>
+							<div v-if="matchMode !== 'skip'" class="ipv-switch-row" style="margin-top: 6px">
+								<span class="ipv-switch-label">更新接口所在目录</span>
+								<el-switch v-model="updateLocation" size="small" />
+							</div>
+						</el-collapse-item>
+						<el-collapse-item name="missing" title="项目内已经存在，但新数据源中不存在的资源，如何处理">
+							<div class="ipv-switch-row">
+								<span class="ipv-switch-label">删除不在数据源中的资源</span>
+								<el-switch v-model="deleteMissing" size="small" />
+							</div>
+						</el-collapse-item>
+					</el-collapse>
 					<template v-if="importSecurity">
 						<div class="ipv-label" style="margin-top: 10px">当导入的接口有设置 Security 时</div>
 						<el-radio-group v-model="hasSecStrategy" class="ipv-radio-col">
@@ -168,6 +182,9 @@ watch(
 			importModels.value = true;
 			modelMatchMode.value = 'overwrite';
 			modelPid.value = 0;
+			conflictOpen.value = [];
+			updateLocation.value = false;
+			deleteMissing.value = false;
 			selectedSvc.value = Number(props.serviceId) || 0;
 			loadSvcList();
 			loadDirs();
@@ -199,6 +216,9 @@ const importInfo = ref(true);
 const importModels = ref(true);
 const modelMatchMode = ref('overwrite');
 const modelPid = ref(0);
+const conflictOpen = ref([]);
+const updateLocation = ref(false);
+const deleteMissing = ref(false);
 
 const idKeyLabel = (v: string) =>
 	v === 'operation_id' ? 'OperationId' : v === 'query' ? 'Query 参数' : v === 'body' ? 'Body 参数' : v === 'header' ? 'Header 参数' : 'Method & Path';
@@ -303,6 +323,8 @@ const doImport = async () => {
 			import_models: importModels.value,
 			model_match_mode: modelMatchMode.value,
 			model_pid: modelPid.value,
+			update_location: updateLocation.value,
+			delete_missing: deleteMissing.value,
 		});
 		if (r?.code === 200) {
 			ElMessage.success('导入成功');
@@ -338,4 +360,7 @@ const doImport = async () => {
 .ipv-switch-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); }
 .ipv-switch-label { font-size: 12px; color: var(--el-text-color-regular); }
 .ipv-radio-col { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.ipv-collapse { margin-top: 8px; border: none; }
+.ipv-collapse :deep(.el-collapse-item__header) { font-size: 13px; color: var(--el-text-color-regular); height: 36px; }
+.ipv-collapse :deep(.el-collapse-item__wrap) { border-bottom: none; }
 </style>

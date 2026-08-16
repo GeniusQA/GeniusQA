@@ -15,6 +15,11 @@
 					<el-option label="每隔 24 小时" value="24h" />
 				</el-select>
 			</el-form-item>
+			<el-form-item label="运行于" required>
+				<el-select v-model="form.run_on" size="small" style="width: 200px">
+					<el-option label="本机" value="local" />
+				</el-select>
+			</el-form-item>
 			<el-form-item label="数据源格式" required>
 				<el-radio-group v-model="form.data_source_type">
 					<el-radio-button value="swagger">OpenAPI/Swagger</el-radio-button>
@@ -262,6 +267,7 @@ const syncing = ref(false);
 
 const defaultForm = () => ({
 	frequency: '3h',
+	run_on: 'local',
 	data_source_type: 'swagger',
 	name: '',
 	data_source: 'url',
@@ -320,6 +326,7 @@ const buildConfig = () => {
 		data_source: f.data_source,
 		url: f.url.trim(),
 		frequency: f.frequency,
+		run_on: f.run_on || 'local',
 		basic_auth: f.basic_auth.enabled ? { username: f.basic_auth.username.trim(), password: f.basic_auth.password } : null,
 		pid: f.pid || 0,
 		match_mode: f.match_mode,
