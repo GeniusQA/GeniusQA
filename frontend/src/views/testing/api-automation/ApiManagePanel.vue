@@ -622,9 +622,6 @@
 						placeholder="选择父级目录（选模块=默认根目录）"
 						style="width:100%"
 					/>
-					<el-button link type="primary" size="small" style="margin-top: 4px" @click="openCreateDir">
-						<el-icon><Plus /></el-icon> 新建目录
-					</el-button>
 				</el-form-item>
 			</el-form>
 			<template #footer>
