@@ -2523,6 +2523,8 @@ class ApiAutomationService:
                     if isinstance(r, dict):
                         out = {}
                         for k, v in r.items():
+                            if k in ('config', 'params_id'):
+                                continue
                             nv = _norm_req(v)
                             if nv is None or nv == [] or nv == {}:
                                 continue
