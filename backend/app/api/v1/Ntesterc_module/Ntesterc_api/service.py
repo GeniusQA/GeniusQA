@@ -3720,6 +3720,26 @@ class ApiAutomationService:
         import_models = bool(body.get("import_models") if body.get("import_models") is not None else True)
         model_match_mode = str(body.get("model_match_mode") or "overwrite")
         model_pid = int(body.get("model_pid") or 0)
+        # model_pid 兜底：默认落到目标接口根所在模块的「数据模型」子目录
+        if not model_pid and target_pid:
+            _im = (
+                await db.execute(
+                    select(ApiMenuModel).where(ApiMenuModel.id == target_pid, ApiMenuModel.enabled_flag == 1)
+                )
+            ).scalar_one_or_none()
+            if _im is not None and int(_im.type) == 1 and _im.name == "接口" and int(_im.pid or 0):
+                _mdm = (
+                    await db.execute(
+                        select(ApiMenuModel.id).where(
+                            ApiMenuModel.pid == int(_im.pid),
+                            ApiMenuModel.enabled_flag == 1,
+                            ApiMenuModel.type == 1,
+                            ApiMenuModel.name == "数据模型",
+                        ).order_by(ApiMenuModel.id.asc()).limit(1)
+                    )
+                ).scalars().first()
+                if _mdm:
+                    model_pid = int(_mdm)
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
