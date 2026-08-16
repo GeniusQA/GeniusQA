@@ -1,5 +1,5 @@
 <template>
-	<el-dialog v-model="inner" title="导入预览 & 配置" width="760px" destroy-on-close class="import-preview-dialog" append-to-body>
+	<el-dialog v-model="inner" title="导入预览 & 配置" width="960px" destroy-on-close class="import-preview-dialog" append-to-body>
 		<div class="ipv-body">
 			<!-- 左侧：预览 & 勾选 -->
 			<div class="ipv-left">
@@ -342,8 +342,8 @@ const doImport = async () => {
 </script>
 
 <style scoped>
-.ipv-body { display: flex; gap: 14px; min-height: 360px; }
-.ipv-left { flex: 1.2; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; }
+.ipv-body { display: flex; gap: 16px; min-height: 480px; }
+.ipv-left { flex: 1.35; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; }
 .ipv-right { flex: 1; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 12px; }
 .ipv-panel-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 .ipv-search { margin-bottom: 8px; }
