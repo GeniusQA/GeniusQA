@@ -2519,7 +2519,19 @@ class ApiAutomationService:
                     req["assert"] = old_req.get("assert")
                 if old_req.get("config"):
                     req["config"] = old_req.get("config")
-                _same = json.dumps(req, sort_keys=True, ensure_ascii=False) == json.dumps(old_req or {}, sort_keys=True, ensure_ascii=False)
+                def _norm_req(r: Any) -> Any:
+                    if isinstance(r, dict):
+                        out = {}
+                        for k, v in r.items():
+                            nv = _norm_req(v)
+                            if nv is None or nv == [] or nv == {}:
+                                continue
+                            out[k] = nv
+                        return out
+                    if isinstance(r, list):
+                        return [_norm_req(i) for i in r if _norm_req(i) not in (None, [], {})]
+                    return r
+                _same = json.dumps(_norm_req(req), sort_keys=True, ensure_ascii=False) == json.dumps(_norm_req(old_req or {}), sort_keys=True, ensure_ascii=False)
                 if _same:
                     api_id = int(target_api.id)
                     unchanged_count += 1

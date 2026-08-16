@@ -959,6 +959,9 @@ const syncResultVisible = ref(false);
 const onDsSyncOk = (result: any) => {
 	syncResult.value = result || null;
 	syncResultVisible.value = true;
+	// 同步成功后自动刷新树与模块详情（接口数/目录数等实时更新）
+	loadTree();
+	if (selectedModule.value) loadModuleDetail(selectedModule.value);
 };
 const dsSyncing = ref(false);
 
