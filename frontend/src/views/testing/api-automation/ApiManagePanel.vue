@@ -1027,7 +1027,7 @@ const moduleStats = computed(() => {
 		for (const n of nodes || []) {
 			if (n.type === 2) apiCount++;
 			else if (n.type === 3) caseCount++;
-			else if (n.type === 1) dirCount++;
+			else if (n.type === 1 && n.name !== '接口' && n.name !== '数据模型') dirCount++;
 			walk(n.children || []);
 		}
 	};
