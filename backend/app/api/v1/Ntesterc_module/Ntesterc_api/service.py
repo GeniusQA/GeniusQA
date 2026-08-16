@@ -2963,6 +2963,7 @@ class ApiAutomationService:
             api_id=None,
             api_service_id=int(api_service_id),
             pid=int(pid or 0),
+            status=1,
             created_by=user_id,
             updated_by=user_id,
         )
