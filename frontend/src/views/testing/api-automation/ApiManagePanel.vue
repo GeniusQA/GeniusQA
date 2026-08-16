@@ -1191,7 +1191,15 @@ const onNodeClick = async (data: any) => {
 		await loadModuleDetail(data);
 		return;
 	}
-	if (data.type === 1 || data.type === 5) {
+	if (data.type === 5) {
+		// 模块节点 → 模块详情（概览/模块变量/绑定数据源）
+		apiTabs.value = [];
+		dmModel.value = null;
+		selectedDir.value = null;
+		await loadModuleDetail(data);
+		return;
+	}
+	if (data.type === 1) {
 		apiTabs.value = [];
 		dmModel.value = null;
 		selectedModule.value = null;
