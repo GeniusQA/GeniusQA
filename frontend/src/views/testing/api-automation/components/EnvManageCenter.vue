@@ -58,19 +58,23 @@
 
 						<div class="env-block-tip">子目录及接口默认继承所属模块的前置 URL，默认会使用此设置，一般情况下无需修改。</div>
 <div class="env-block-title">前置 URL</div>
-						<div v-for="(f, idx) in envFrontUrls" :key="'f' + idx" class="env-row">
-							<span class="env-front-module">{{ moduleName(f.menu_id) }}</span>
-							<el-popover placement="bottom" :width="150" trigger="click" popper-class="front-proto-popover">
-								<template #reference>
-									<el-button link size="small" class="env-front-more"><el-icon><MoreFilled /></el-icon></el-button>
-								</template>
-								<div class="proto-check-title">协议</div>
-								<el-checkbox :model-value="moduleChecks(f.menu_id).http" :disabled="!!moduleChecks(f.menu_id).autoFlags.http" @change="(v: any) => toggleProto(f.menu_id, 'http', v)">Http</el-checkbox>
-								<el-checkbox :model-value="moduleChecks(f.menu_id).websocket" :disabled="!!moduleChecks(f.menu_id).autoFlags.websocket" @change="(v: any) => toggleProto(f.menu_id, 'websocket', v)">WebSocket</el-checkbox>
-								<el-checkbox :model-value="moduleChecks(f.menu_id).socketio" :disabled="!!moduleChecks(f.menu_id).autoFlags.socketio" @change="(v: any) => toggleProto(f.menu_id, 'socketio', v)">Socket.IO</el-checkbox>
-							</el-popover>
-							<span class="proto-mini" :class="'proto-mini-' + (f.protocol || 'http')">{{ protoLabel(f.protocol) }}</span>
-							<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : (f.protocol || 'http') === 'socketio' ? 'wss:// 起始的 Socket.IO 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1" />
+						<div v-for="(g, gi) in groupedFrontUrls" :key="'g' + gi" class="env-group">
+							<div class="env-group-head">
+								<span class="env-front-module">{{ g.name }}</span>
+								<el-popover placement="bottom" :width="150" trigger="click" popper-class="front-proto-popover">
+									<template #reference>
+										<el-button link size="small" class="env-front-more"><el-icon><MoreFilled /></el-icon></el-button>
+									</template>
+									<div class="proto-check-title">协议</div>
+									<el-checkbox :model-value="moduleChecks(g.menu_id).http" :disabled="!!moduleChecks(g.menu_id).autoFlags.http" @change="(v: any) => toggleProto(g.menu_id, 'http', v)">Http</el-checkbox>
+									<el-checkbox :model-value="moduleChecks(g.menu_id).websocket" :disabled="!!moduleChecks(g.menu_id).autoFlags.websocket" @change="(v: any) => toggleProto(g.menu_id, 'websocket', v)">WebSocket</el-checkbox>
+									<el-checkbox :model-value="moduleChecks(g.menu_id).socketio" :disabled="!!moduleChecks(g.menu_id).autoFlags.socketio" @change="(v: any) => toggleProto(g.menu_id, 'socketio', v)">Socket.IO</el-checkbox>
+								</el-popover>
+							</div>
+							<div v-for="(f, fi) in g.rows" :key="'r' + fi" class="env-row env-row-indent">
+								<span class="proto-mini" :class="'proto-mini-' + (f.protocol || 'http')">{{ protoLabel(f.protocol) }}</span>
+								<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : (f.protocol || 'http') === 'socketio' ? 'wss:// 起始的 Socket.IO 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1" />
+							</div>
 						</div>
 
 
@@ -154,6 +158,22 @@ const loadMenuTree = async () => {
 	}
 };
 const envFrontUrls = ref<any[]>([]);
+// Apifox 布局：同一模块的协议行聚合在模块名下方
+const groupedFrontUrls = computed(() => {
+	const groups: { menu_id: string; name: string; rows: any[] }[] = [];
+	const map = new Map<string, number>();
+	for (const f of envFrontUrls.value) {
+		const mid = String(f.menu_id ?? '');
+		let gi = map.get(mid);
+		if (gi === undefined) {
+			gi = groups.length;
+			map.set(mid, gi);
+			groups.push({ menu_id: mid, name: moduleName(mid), rows: [] });
+		}
+		groups[gi].rows.push(f);
+	}
+	return groups;
+});
 const loadFrontUrls = () => {
 	const cfg = curEnv.value?.config || [];
 	const item = cfg.find((c: any) => String(c.name || '').trim() === FRONT_KEY);
@@ -408,6 +428,9 @@ defineExpose({ open });
 	border-left: 3px solid #7c3aed;
 	padding-left: 8px;
 }
+.env-group { border-bottom: 1px solid var(--el-border-color-extra-light); padding: 4px 0; }
+.env-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.env-row-indent { padding-left: 26px; margin-top: 2px; }
 .env-row {
 	display: flex;
 	gap: 8px;
