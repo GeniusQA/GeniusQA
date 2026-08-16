@@ -177,6 +177,7 @@
 
 		<template #footer>
 			<div style="display: flex; align-items: center; gap: 8px">
+				<el-button v-if="isEdit" type="danger" link :loading="deleting" @click="doDelete">删除</el-button>
 				<el-button :loading="syncing" @click="doSync" style="margin-right: auto">立即导入</el-button>
 				<el-button @click="inner = false">取消</el-button>
 				<el-button type="primary" :loading="saving" @click="doSave">保存</el-button>
@@ -264,6 +265,8 @@ const advTab = ref('api');
 const dirList = ref<any[]>([]);
 const saving = ref(false);
 const syncing = ref(false);
+const deleting = ref(false);
+const isEdit = computed(() => !!props.existing?.url);
 
 const defaultForm = () => ({
 	frequency: '3h',
@@ -362,6 +365,18 @@ const doSave = async () => {
 	} catch (e: any) {
 		ElMessage.error(e?.message || '保存失败');
 	} finally { saving.value = false; }
+};
+
+const doDelete = async () => {
+	deleting.value = true;
+	try {
+		await useApiAutomationApi().saveDataSource({ service_id: props.serviceId, config: {} });
+		ElMessage.success('数据源已删除');
+		inner.value = false;
+		emit('saved');
+	} catch (e: any) {
+		ElMessage.error(e?.message || '删除失败');
+	} finally { deleting.value = false; }
 };
 
 const doSync = async () => {

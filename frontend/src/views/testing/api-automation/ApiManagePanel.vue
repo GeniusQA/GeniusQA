@@ -80,10 +80,13 @@
 									<span class="md-section-title">绑定数据源</span>
 									<el-button link type="primary" size="small" @click="openBindDs">{{ bindDsExisting?.url ? '编辑数据源' : '+ 添加数据源' }}</el-button>
 								</div>
-								<div v-if="moduleSource.source_type" class="md-source-row">
-									<span class="md-source-tag">{{ sourceTypeLabel(moduleSource.source_type) }}</span>
-									<span class="md-source-addr">{{ moduleSource.source_addr || '（未配置地址）' }}</span>
-									<span v-if="bindDsExisting?.frequency" class="md-source-freq">每 {{ freqLabel(bindDsExisting.frequency) }}</span>
+								<div v-if="bindDsExisting?.url" class="md-source-item">
+									<span class="md-source-logo">{{ dsNameLetter }}</span>
+									<div class="md-source-info">
+										<div class="md-source-name">{{ bindDsExisting.name || moduleSource.source_addr || '数据源' }}</div>
+										<div class="md-source-meta">{{ sourceTypeLabel(moduleSource.source_type) }} · {{ freqLabel(bindDsExisting.frequency) }}</div>
+									</div>
+									<el-button link type="primary" size="small" @click="openBindDs">编辑</el-button>
 									<el-button link type="primary" size="small" @click="syncBoundDs" :loading="dsSyncing">立即导入</el-button>
 								</div>
 								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」配置数据源（支持定时自动同步更新接口）</div>
@@ -809,6 +812,11 @@ const dsSyncing = ref(false);
 
 const freqLabel = (v: string) =>
 	v === 'manual' ? '手动触发' : v === '30m' ? '每隔 30 分钟' : v === '1h' ? '每隔 1 小时' : v === '3h' ? '每隔 3 小时' : v === '6h' ? '每隔 6 小时' : v === '12h' ? '每隔 12 小时' : v === '24h' ? '每隔 24 小时' : (v || '-');
+
+const dsNameLetter = computed(() => {
+	const nm = bindDsExisting.value?.name || moduleSource.value.source_addr || 'DS';
+	return (String(nm).charAt(0) || 'D').toUpperCase();
+});
 
 const openBindDs = () => {
 	bindDsExisting.value = moduleSource.value.source_type ? { ...(moduleSource.value.data_source_config || {}), url: moduleSource.value.source_addr } : null;
@@ -1591,4 +1599,9 @@ onMounted(() => {
 .dd-empty { font-size: 12px; color: var(--el-text-color-secondary); text-align: center; padding: 30px 0; }
 .dd-op-wrap { max-height: 480px; overflow: auto; }
 .md-source-freq { font-size: 12px; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); border-radius: 4px; padding: 2px 8px; }
+.md-source-item { display: flex; align-items: center; gap: 12px; }
+.md-source-logo { width: 36px; height: 36px; border-radius: 8px; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex: 0 0 auto; }
+.md-source-info { flex: 1; min-width: 0; }
+.md-source-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md-source-meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
 </style>
