@@ -199,7 +199,7 @@
 								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
 								<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block; margin-left: 8px">
-									<el-button size="small">上传 MD</el-button>
+									<el-button size="small">上传 Markdown 文件</el-button>
 								</el-upload>
 								<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
 									<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -214,6 +214,7 @@
 										</el-dropdown-menu>
 									</template>
 								</el-dropdown>
+								<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
 							</div>
 							<MdEditor
 								ref="mdEditorRef"
@@ -941,6 +942,14 @@ const insertDocBlock = (type: string) => {
 		formula: '$$\nE = mc^2\n$$\n',
 	};
 	mdEditorRef.value?.insert(() => ({ targetValue: snippets[type] || '' }));
+};
+
+const scrollDocToTop = () => {
+	try {
+		const el = (mdEditorRef.value?.$el || document).querySelector('.md-editor-input-wrapper, .md-editor-preview-wrapper, .md-editor-input');
+		if (el) el.scrollTop = 0;
+	} catch {}
+	window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 const onImportMd = (file: any) => {
