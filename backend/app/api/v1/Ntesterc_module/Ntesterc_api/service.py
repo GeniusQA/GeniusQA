@@ -963,11 +963,10 @@ class ApiAutomationService:
         }
         if cfg.get("basic_auth") and isinstance(cfg.get("basic_auth"), dict) and cfg["basic_auth"].get("username"):
             body["basic_auth"] = cfg["basic_auth"]
-        # 自动生成接口用例（对齐 Apifox：默认开启）
-        body["gen_case"] = bool(cfg.get("gen_case") if cfg.get("gen_case") is not None else True)
-        # 冲突策略与接口唯一标识
+        # 冲突策略与接口唯一标识（定时导入不自动生成接口用例）
         body["match_mode"] = str(cfg.get("match_mode") or "overwrite")
         body["match_id_key"] = str(cfg.get("match_id_key") or "method_path")
+        body["update_location"] = bool(cfg.get("update_location"))
         if cfg.get("pid"):
             try:
                 body["pid"] = int(cfg["pid"])
@@ -3365,6 +3364,7 @@ class ApiAutomationService:
         match_id_key = str(body.get("match_id_key") or "method_path")
         name_rule = str(body.get("name_rule") or "operation_id")
         import_info = bool(body.get("import_info"))
+        update_location = bool(body.get("update_location"))
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
@@ -3583,6 +3583,25 @@ class ApiAutomationService:
                         .where(ApiModel.id == target_api.id, ApiModel.enabled_flag == 1)
                         .values(**_upd_values)
                     )
+                    if update_location:
+                        # 更新接口所在目录：把已存在接口的菜单移到导入目标目录
+                        try:
+                            _tgt_menu = (
+                                await db.execute(
+                                    select(ApiMenuModel).where(
+                                        ApiMenuModel.api_id == int(target_api.id),
+                                        ApiMenuModel.enabled_flag == 1,
+                                    )
+                                )
+                            ).scalars().first()
+                            if _tgt_menu is not None and folder_id:
+                                await db.execute(
+                                    update(ApiMenuModel)
+                                    .where(ApiMenuModel.id == int(_tgt_menu.id))
+                                    .values(pid=int(folder_id), updated_by=user_id)
+                                )
+                        except Exception:
+                            pass
                     api_id = int(target_api.id)
                     updated_count += 1
                 else:

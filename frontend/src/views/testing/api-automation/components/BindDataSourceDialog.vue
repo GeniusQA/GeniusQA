@@ -80,11 +80,17 @@
 							<span class="bd-hint">（根据 <a class="bd-link" @click="openIdKeyDialog">{{ idKeyLabel(form.match_id_key) }}</a>）</span>
 						</el-form-item>
 						<el-form-item label=" ">
-							<el-select v-model="form.match_mode" size="small" style="width: 240px">
-								<el-option label="覆盖已有接口" value="overwrite" />
-								<el-option label="智能合并" value="smart_merge" />
-								<el-option label="不导入" value="skip" />
-							</el-select>
+							<div style="display: flex; align-items: center; gap: 16px; width: 100%">
+								<el-select v-model="form.match_mode" size="small" style="width: 240px">
+									<el-option label="覆盖已有接口" value="overwrite" />
+									<el-option label="智能合并" value="smart_merge" />
+									<el-option label="不导入" value="skip" />
+								</el-select>
+								<span v-if="form.match_mode !== 'skip'" style="display: flex; align-items: center; gap: 6px">
+									<span class="bd-hint">更新接口所在目录</span>
+									<el-switch v-model="form.update_location" size="small" />
+								</span>
+							</div>
 						</el-form-item>
 						<div class="bd-switch-row">
 							<span class="bd-switch-label">接口路径加上 basePath</span>
@@ -119,10 +125,6 @@
 								<el-radio value="scheme">对应的鉴权组件</el-radio>
 							</el-radio-group>
 						</template>
-						<div class="bd-switch-row">
-							<span class="bd-switch-label">自动生成接口用例</span>
-							<el-switch v-model="form.gen_case" size="small" />
-						</div>
 						<div class="bd-switch-row">
 							<span class="bd-switch-label">将文件里的 Info 导入
 								<el-tooltip placement="top" :width="360">
@@ -273,7 +275,7 @@ const defaultForm = () => ({
 	delete_missing: false,
 	import_security: true,
 	global_auth: true,
-	gen_case: true,
+	update_location: false,
 	has_sec_strategy: 'scheme',
 	no_sec_strategy: 'inherit',
 	import_info: true,
@@ -323,7 +325,7 @@ const buildConfig = () => {
 		delete_missing: f.delete_missing,
 		import_security: f.import_security,
 		global_auth: f.global_auth,
-		gen_case: f.gen_case,
+		update_location: f.update_location,
 		has_sec_strategy: f.has_sec_strategy,
 		no_sec_strategy: f.no_sec_strategy,
 		import_info: f.import_info,
