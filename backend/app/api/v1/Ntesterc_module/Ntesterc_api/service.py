@@ -2872,7 +2872,7 @@ class ApiAutomationService:
                             ApiMenuModel.api_service_id == api_service_id,
                             ApiMenuModel.type == 2,
                             ApiMenuModel.api_id == api_id,
-                        )
+                        ).order_by(ApiMenuModel.id.asc()).limit(1)
                     )
                 ).scalar_one_or_none()
 
@@ -3960,7 +3960,7 @@ class ApiAutomationService:
                             ApiMenuModel.api_service_id == api_service_id,
                             ApiMenuModel.type == 2,
                             ApiMenuModel.api_id == api_id,
-                        )
+                        ).order_by(ApiMenuModel.id.asc()).limit(1)
                     )
                 ).scalar_one_or_none()
 
