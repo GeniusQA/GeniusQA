@@ -930,8 +930,8 @@ class ApiAutomationService:
             return None
 
     @staticmethod
-    async def sync_data_source(db: AsyncSession, service_id: int, user_id: int) -> Dict[str, Any]:
-        """立即同步：按绑定数据源配置拉取并更新接口"""
+    async def sync_data_source(db: AsyncSession, service_id: int, user_id: int, temp_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """立即同步：按绑定数据源配置拉取并更新接口；temp_config 用于「立即导入」临时拉取（不写库）"""
         await ApiAutomationService._ensure_data_source_config_column(db)
         svc = (
             await db.execute(
@@ -942,7 +942,7 @@ class ApiAutomationService:
         ).scalar_one_or_none()
         if not svc:
             raise ValueError("服务不存在")
-        cfg = svc.data_source_config or {}
+        cfg = temp_config if isinstance(temp_config, dict) and temp_config else (svc.data_source_config or {})
         if not isinstance(cfg, dict) or not cfg:
             raise ValueError("该服务未绑定数据源")
         ds_type = str(cfg.get("data_source_type") or "").strip()
@@ -1017,15 +1017,16 @@ class ApiAutomationService:
                     )
             except Exception:
                 pass
-        # 更新 last_sync_at
-        cfg2 = dict(cfg)
-        from datetime import datetime as _dt
-        cfg2["last_sync_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-        await db.execute(
-            update(ApiServiceModel)
-            .where(ApiServiceModel.id == int(service_id))
-            .values(data_source_config=cfg2)
-        )
+        # 更新 last_sync_at（仅保存的配置；临时导入不写库）
+        if temp_config is None:
+            cfg2 = dict(cfg)
+            from datetime import datetime as _dt
+            cfg2["last_sync_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+            await db.execute(
+                update(ApiServiceModel)
+                .where(ApiServiceModel.id == int(service_id))
+                .values(data_source_config=cfg2)
+            )
         await db.commit()
         return result
 

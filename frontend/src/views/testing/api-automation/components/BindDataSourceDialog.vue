@@ -383,8 +383,8 @@ const doSync = async () => {
 	if (!validate()) return;
 	syncing.value = true;
 	try {
-		await useApiAutomationApi().saveDataSource({ service_id: props.serviceId, config: buildConfig() });
-		const r: any = await useApiAutomationApi().syncDataSource({ service_id: props.serviceId });
+		// 立即导入：用表单配置临时拉取（不保存数据源，只有点「保存」才写库）
+		const r: any = await useApiAutomationApi().syncDataSource({ service_id: props.serviceId, config: buildConfig() });
 		if (r?.code === 200) {
 			emit('syncOk', r.data || { imported: 0, updated: 0, folders: 0, models: 0 });
 		} else {
