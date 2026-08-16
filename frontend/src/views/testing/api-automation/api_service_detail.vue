@@ -132,7 +132,13 @@ const emit = defineEmits<{
 	(e: 'update-source', payload: { source_type?: string; source_addr?: string }): void;
 }>();
 
-const activeTab = ref<'manage' | 'case' | 'script' | 'querydb' | 'precision' | 'result' | 'codegen'>('manage');
+const route = useRoute();
+const router = useRouter();
+const TAB_KEYS = ['manage', 'case', 'script', 'querydb', 'precision', 'result', 'codegen'] as const;
+const _tabFromUrl = String(route.query.tab || '');
+const activeTab = ref<'manage' | 'case' | 'script' | 'querydb' | 'precision' | 'result' | 'codegen'>(
+	(TAB_KEYS as readonly string[]).includes(_tabFromUrl) ? (_tabFromUrl as any) : 'manage'
+);
 const selectedEnvId = ref<number | null>(null);
 const queryDbRef = ref<InstanceType<typeof QueryDbTab> | null>(null);
 
@@ -175,6 +181,10 @@ const restoreSelectedEnv = () => {
 
 watch(activeTab, (tab) => {
 	if (tab === 'querydb') queryDbRef.value?.reloadDbList?.();
+	// Tab 参数持久化：刷新后停留当前导航页
+	if (String(route.query.tab || '') !== String(tab)) {
+		router.replace({ query: { ...route.query, tab: String(tab) } });
+	}
 });
 
 watch(selectedEnvId, (id) => {

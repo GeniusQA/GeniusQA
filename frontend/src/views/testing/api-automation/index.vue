@@ -38,16 +38,15 @@ function onSelectService(service: ServiceInfo) {
 		source_type: service.source_type || '',
 		source_addr: service.source_addr || '',
 	};
-	// URL 持久化：刷新后停留在当前第二层级页面
-	router.replace({
-		query: {
-			...route.query,
-			serviceId: String(service.id),
-			serviceName: service.name,
-			sourceType: service.source_type || '',
-			sourceAddr: service.source_addr || '',
-		},
-	});
+	// URL 持久化：刷新后停留在当前第二层级页面（空值参数不写入，避免冗余）
+	const q: Record<string, string> = {
+		...route.query,
+		serviceId: String(service.id),
+		serviceName: service.name,
+	} as Record<string, string>;
+	if (service.source_type) q.sourceType = service.source_type;
+	if (service.source_addr) q.sourceAddr = service.source_addr;
+	router.replace({ query: q });
 }
 
 function onUpdateSource(payload: { source_type?: string; source_addr?: string }) {
