@@ -951,7 +951,7 @@ class ApiAutomationService:
             return None
 
     @staticmethod
-    async def sync_data_source(db: AsyncSession, service_id: int, user_id: int, temp_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def sync_data_source(db: AsyncSession, service_id: int, user_id: int, temp_config: Optional[Dict[str, Any]] = None, module_id: int = 0) -> Dict[str, Any]:
         """立即同步：按绑定数据源配置拉取并更新接口；temp_config 用于「立即导入」临时拉取（不写库）"""
         await ApiAutomationService._ensure_data_source_config_column(db)
         svc = (
@@ -963,15 +963,20 @@ class ApiAutomationService:
         ).scalar_one_or_none()
         if not svc:
             raise ValueError("服务不存在")
-        module_id = int(temp_config.get("__module_id") or 0) if isinstance(temp_config, dict) else 0
         cfg = temp_config if isinstance(temp_config, dict) and temp_config else None
         if cfg is None and module_id:
+            import json as _json_cp
             menu = (
                 await db.execute(
                     select(ApiMenuModel).where(ApiMenuModel.id == module_id, ApiMenuModel.enabled_flag == 1)
                 )
             ).scalar_one_or_none()
             cp = (menu.common_params or {}) if menu else {}
+            if isinstance(cp, str):
+                try:
+                    cp = _json_cp.loads(cp)
+                except Exception:
+                    cp = {}
             cfg = (cp.get("data_source_config") if isinstance(cp, dict) else None)
         if cfg is None:
             cfg = svc.data_source_config or {}
