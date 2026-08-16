@@ -74,6 +74,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useApiAutomationApi } from '/@/api/v1/testing/apiAutomation';
 import { Local } from '/@/utils/storage';
