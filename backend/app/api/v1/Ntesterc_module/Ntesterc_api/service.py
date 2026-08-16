@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .model import (
     ApiModel,
+    ApiDataModel,
     ApiProjectModel,
     ApiServiceModel,
     ApiMenuModel,
