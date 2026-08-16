@@ -42,6 +42,7 @@
 					:filter-node-method="filterNode"
 					show-checkbox
 					check-strictly
+					check-on-click-node
 					@check="onTreeCheck"
 					draggable
 					:allow-drop="allowDrop"
