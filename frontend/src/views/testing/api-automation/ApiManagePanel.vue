@@ -7,6 +7,7 @@
 				<div class="tree-actions">
 					<el-input v-model="treeFilter" placeholder="搜索接口" clearable size="small" style="flex:1" />
 					<el-dropdown @command="handleAddCommand" style="margin-left:6px">
+						<el-button type="primary" size="small">添加<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
 						<template #dropdown>
 							<el-dropdown-menu>
 								<el-dropdown-item command="add_module">添加模块</el-dropdown-item>
