@@ -13,6 +13,7 @@
 								<el-dropdown-item command="add_module">添加模块</el-dropdown-item>
 								<el-dropdown-item command="add_folder">添加目录</el-dropdown-item>
 								<el-dropdown-item command="add_api">添加接口</el-dropdown-item>
+								<el-dropdown-item command="add_data_model">新建数据模型</el-dropdown-item>
 								<el-dropdown-item command="import_api">导入接口</el-dropdown-item>
 							</el-dropdown-menu>
 						</template>
@@ -35,6 +36,7 @@
 							<div class="node-left">
 								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
+					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
 								<span v-if="(data.type===2||data.type===3) && data.protocol !== 'websocket' && data.protocol !== 'webhook'" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
 								<span v-if="data.type===2 && data.protocol==='websocket'" class="proto-badge proto-ws">WS</span>
@@ -337,6 +339,34 @@
 						</el-tab-pane>
 					</el-tabs>
 				</div>
+				<div v-else-if="dmModel && !apiTabs.length" class="dm-detail">
+					<div class="dm-header">
+						<span class="dm-title">数据模型</span>
+						<div style="flex:1"></div>
+						<el-button size="small" @click="formatDmJson">格式化</el-button>
+						<el-button size="small" @click="genDmSchemaFromExample">从示例生成 Schema</el-button>
+						<el-button size="small" type="primary" :loading="dmSaving" @click="saveDm">保存</el-button>
+						<el-button size="small" type="danger" plain :loading="dmDeleting" @click="deleteDm">删除</el-button>
+					</div>
+					<el-input v-model="dmName" size="small" placeholder="模型名称" style="margin-top:10px" />
+					<div class="dm-label">Schema（JSON Schema）</div>
+					<el-input v-model="dmSchemaJson" type="textarea" :rows="18" class="dm-json" spellcheck="false" />
+					<div class="dm-hint">提示：粘贴 JSON 示例数据后点「从示例生成 Schema」自动推断结构</div>
+				</div>
+				<el-dialog v-model="dmCreateVisible" title="新建数据模型" width="560px" append-to-body>
+					<el-form label-position="top">
+						<el-form-item label="模型名称" required>
+							<el-input v-model="dmCreateName" placeholder="请输入模型名称" />
+						</el-form-item>
+						<el-form-item label="JSON 示例（粘贴后自动推断生成 Schema）" required>
+							<el-input v-model="dmCreateJson" type="textarea" :rows="10" placeholder="{&quot;code&quot;:0,&quot;data&quot;:{&quot;id&quot;:1,&quot;name&quot;:&quot;张三&quot;}}" spellcheck="false" class="dm-json" />
+						</el-form-item>
+					</el-form>
+					<template #footer>
+						<el-button @click="dmCreateVisible = false">取消</el-button>
+						<el-button type="primary" :loading="dmCreating" @click="createDmFromJson">生成并保存</el-button>
+					</template>
+				</el-dialog>
 				<div v-else-if="!apiTabs.length" class="detail-empty">
 					<el-icon style="font-size:40px;color:#dcdfe6"><Document /></el-icon>
 					<p>点击左侧接口查看详情</p>
@@ -570,7 +600,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
@@ -626,7 +656,9 @@ const loadTree = async () => {
 	} catch { treeData.value = []; }
 	// 保持当前选中高亮；无任何选中且无接口 tab 时，默认选中第一个模块展示模块详情
 	await nextTick();
-	if (selectedModule.value) {
+	if (dmModel.value) {
+		treeRef.value?.setCurrentKey(dmModel.value.menu_id || dmModel.value.id);
+	} else if (selectedModule.value) {
 		treeRef.value?.setCurrentKey(selectedModule.value.id);
 	} else if (selectedDir.value) {
 		treeRef.value?.setCurrentKey(selectedDir.value.id);
@@ -883,6 +915,116 @@ const moduleStats = computed(() => {
 const sourceTypeLabel = (t: string) =>
 	t === 'apifox' ? 'Apifox' : t === 'postman' ? 'Postman' : t === 'curl' ? 'cURL' : t ? 'OpenAPI/Swagger' : '';
 
+// ---- 数据模型（type=4 节点）----
+const dmModel = ref<any>(null);
+const dmName = ref('');
+const dmSchemaJson = ref('');
+const dmSaving = ref(false);
+const dmDeleting = ref(false);
+const dmCreateVisible = ref(false);
+const dmCreateName = ref('');
+const dmCreateJson = ref('');
+const dmCreating = ref(false);
+
+const openDmByNode = async (data: any) => {
+	apiTabs.value = [];
+	selectedModule.value = null;
+	selectedDir.value = null;
+	try {
+		const r: any = await apiDataModelList({ api_service_id: props.serviceId });
+		const list = r?.data || [];
+		const m = list.find((x: any) => Number(x.menu_id) === Number(data.id)) || list.find((x: any) => x.name === data.name);
+		if (m) {
+			dmModel.value = m;
+			dmName.value = m.name || '';
+			dmSchemaJson.value = JSON.stringify(m.schema ?? {}, null, 2);
+		} else {
+			dmModel.value = { id: 0, name: data.name || '未命名', schema: { type: 'object', properties: {} }, menu_id: data.id, pid: data.pid };
+			dmName.value = dmModel.value.name;
+			dmSchemaJson.value = '{\n  "type": "object",\n  "properties": {}\n}';
+		}
+	} catch { dmModel.value = null; }
+};
+
+const formatDmJson = () => {
+	try { dmSchemaJson.value = JSON.stringify(JSON.parse(dmSchemaJson.value), null, 2); }
+	catch { ElMessage.error('JSON 格式错误'); }
+};
+
+const saveDm = async () => {
+	let schema: any = null;
+	try { schema = JSON.parse(dmSchemaJson.value); }
+	catch { ElMessage.error('Schema JSON 格式错误'); return; }
+	dmSaving.value = true;
+	try {
+		const r: any = await saveDataModel({
+			id: dmModel.value?.id || 0,
+			api_service_id: props.serviceId,
+			name: dmName.value,
+			schema,
+			pid: dmModel.value?.pid || 0,
+		});
+		dmModel.value = { ...dmModel.value, id: r?.data?.id ?? dmModel.value?.id, name: dmName.value, schema };
+		ElMessage.success('已保存');
+		await loadTree();
+	} catch (e: any) { ElMessage.error(e?.message || '保存失败'); }
+	finally { dmSaving.value = false; }
+};
+
+const deleteDm = async () => {
+	try { await ElMessageBox.confirm(`确认删除数据模型「${dmName.value}」？`, '删除确认', { type: 'warning' }); }
+	catch { return; }
+	dmDeleting.value = true;
+	try {
+		await deleteDataModel({ id: dmModel.value?.id });
+		dmModel.value = null;
+		ElMessage.success('已删除');
+		await loadTree();
+	} catch (e: any) { ElMessage.error(e?.message || '删除失败'); }
+	finally { dmDeleting.value = false; }
+};
+
+const genDmSchemaFromExample = async () => {
+	try {
+		await saveDataModel({
+			id: dmModel.value?.id || 0,
+			api_service_id: props.serviceId,
+			name: dmName.value,
+			json_example: dmSchemaJson.value,
+			pid: dmModel.value?.pid || 0,
+		});
+		const r: any = await apiDataModelList({ api_service_id: props.serviceId });
+		const m = (r?.data || []).find((x: any) => Number(x.id) === Number(dmModel.value?.id));
+		if (m) {
+			dmModel.value = m;
+			dmSchemaJson.value = JSON.stringify(m.schema ?? {}, null, 2);
+		}
+		ElMessage.success('Schema 已从示例生成');
+		await loadTree();
+	} catch (e: any) { ElMessage.error(e?.message || '生成失败'); }
+};
+
+const createDmFromJson = async () => {
+	if (!dmCreateName.value.trim()) { ElMessage.warning('请输入模型名称'); return; }
+	dmCreating.value = true;
+	try {
+		const r: any = await importDataModelJson({ api_service_id: props.serviceId, name: dmCreateName.value, json_text: dmCreateJson.value, pid: 0 });
+		dmCreateVisible.value = false;
+		dmCreateName.value = '';
+		dmCreateJson.value = '';
+		ElMessage.success('数据模型已创建');
+		await loadTree();
+		const rr: any = await apiDataModelList({ api_service_id: props.serviceId });
+		const m = (rr?.data || []).find((x: any) => Number(x.id) === Number(r?.data?.id));
+		if (m) {
+			dmModel.value = m;
+			dmName.value = m.name || '';
+			dmSchemaJson.value = JSON.stringify(m.schema ?? {}, null, 2);
+		}
+	} catch (e: any) { ElMessage.error(e?.message || '创建失败'); }
+	finally { dmCreating.value = false; }
+};
+
 const loadModuleDetail = async (data: any) => {
 	selectedModule.value = data;
 	moduleDetailTab.value = 'overview';
@@ -930,12 +1072,14 @@ const applyModuleVarsBulk = (rows: any[]) => {
 const onNodeClick = async (data: any) => {
 	if (data.type === 0) {
 		apiTabs.value = [];
+		dmModel.value = null;
 		selectedDir.value = null;
 		await loadModuleDetail(data);
 		return;
 	}
 	if (data.type === 1) {
 		apiTabs.value = [];
+		dmModel.value = null;
 		selectedModule.value = null;
 		selectedDir.value = data;
 		dirDetailTab.value = 'settings';
@@ -952,6 +1096,10 @@ const onNodeClick = async (data: any) => {
 		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
 		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
 		loadDirLists();
+		return;
+	}
+	if (data.type === 4) {
+		await openDmByNode(data);
 		return;
 	}
 	if (data.type !== 2 && data.type !== 3) return;
@@ -1326,6 +1474,10 @@ const handleAddCommand = (cmd: string) => {
 		openImportDialog();
 		return;
 	}
+	if (cmd === 'add_data_model') {
+		dmCreateVisible.value = true;
+		return;
+	}
 	if (cmd === 'add_module') {
 		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
@@ -1617,4 +1769,11 @@ onMounted(() => {
 .md-source-info { flex: 1; min-width: 0; }
 .md-source-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .md-source-meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+.dm-detail { padding: 4px 2px; }
+.dm-header { display: flex; align-items: center; gap: 8px; }
+.dm-title { font-size: 15px; font-weight: 600; color: var(--el-text-color-primary); }
+.dm-label { font-size: 13px; color: var(--el-text-color-secondary); margin-top: 12px; margin-bottom: 4px; }
+.dm-json :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 12px; line-height: 1.5; }
+.dm-hint { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 6px; }
+.icon-dm { color: #8b5cf6; }
 </style>

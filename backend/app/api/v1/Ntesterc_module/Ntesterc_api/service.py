@@ -2869,6 +2869,151 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    def _infer_schema_from_json(value):
+        """示例 JSON -> JSON Schema 推断"""
+        if value is None:
+            return {"type": "null"}
+        if isinstance(value, bool):
+            return {"type": "boolean"}
+        if isinstance(value, int):
+            return {"type": "integer"}
+        if isinstance(value, float):
+            return {"type": "number"}
+        if isinstance(value, str):
+            return {"type": "string"}
+        if isinstance(value, list):
+            item = None
+            for v in value[:10]:
+                if v is not None:
+                    item = ApiAutomationService._infer_schema_from_json(v)
+                    break
+            return {"type": "array", "items": item or {"type": "string"}}
+        if isinstance(value, dict):
+            props = {}
+            required = []
+            for k, v in value.items():
+                props[k] = ApiAutomationService._infer_schema_from_json(v)
+                if v is not None:
+                    required.append(k)
+            out = {"type": "object", "properties": props}
+            if required:
+                out["required"] = required
+            return out
+        return {"type": "string"}
+
+    @staticmethod
+    async def list_data_models(db: AsyncSession, api_service_id: int, user_id: int) -> List[Dict[str, Any]]:
+        """数据模型列表（含 schema）"""
+        stmt = select(ApiDataModel).where(
+            ApiDataModel.enabled_flag == 1,
+            ApiDataModel.api_service_id == int(api_service_id),
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        data = []
+        for m in rows:
+            d = m.__dict__.copy()
+            d.pop("_sa_instance_state", None)
+            data.append(d)
+        return data
+
+    @staticmethod
+    async def save_data_model(db: AsyncSession, api_service_id: int, user_id: int, model_id: int = 0,
+                              name: str = "", schema: Any = None, pid: int = 0) -> Dict[str, Any]:
+        """新建/更新数据模型（同步维护 type=4 菜单节点）"""
+        name = str(name or "").strip() or "未命名模型"
+        if model_id:
+            row = (
+                await db.execute(
+                    select(ApiDataModel).where(
+                        ApiDataModel.id == int(model_id),
+                        ApiDataModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+            if not row:
+                raise ValueError("数据模型不存在")
+            row.name = name
+            if schema is not None:
+                row.schema = schema
+            row.updated_by = user_id
+            await db.flush()
+            if row.menu_id:
+                menu = (
+                    await db.execute(select(ApiMenuModel).where(ApiMenuModel.id == row.menu_id))
+                ).scalar_one_or_none()
+                if menu:
+                    menu.name = name
+                    await db.flush()
+            await db.commit()
+            return {"id": row.id, "name": row.name}
+        # 新建：ApiDataModel + type=4 菜单节点
+        model = ApiDataModel(
+            name=name,
+            schema=schema if schema is not None else {"type": "object", "properties": {}},
+            api_service_id=int(api_service_id),
+            pid=int(pid or 0),
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(model)
+        await db.flush()
+        menu = ApiMenuModel(
+            name=name,
+            type=4,
+            api_id=None,
+            api_service_id=int(api_service_id),
+            pid=int(pid or 0),
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(menu)
+        await db.flush()
+        model.menu_id = menu.id
+        await db.commit()
+        return {"id": model.id, "name": model.name}
+
+    @staticmethod
+    async def delete_data_model(db: AsyncSession, user_id: int, model_id: int) -> None:
+        """删除数据模型（软删 + 菜单节点软删）"""
+        row = (
+            await db.execute(
+                select(ApiDataModel).where(
+                    ApiDataModel.id == int(model_id),
+                    ApiDataModel.enabled_flag == 1,
+                )
+            )
+        ).scalar_one_or_none()
+        if not row:
+            return
+        row.enabled_flag = 0
+        await db.flush()
+        if row.menu_id:
+            menu = (
+                await db.execute(select(ApiMenuModel).where(ApiMenuModel.id == row.menu_id))
+            ).scalar_one_or_none()
+            if menu:
+                menu.enabled_flag = 0
+                await db.flush()
+        await db.commit()
+
+    @staticmethod
+    async def import_data_model_json(db: AsyncSession, api_service_id: int, user_id: int,
+                                     name: str, json_text: str, pid: int = 0) -> Dict[str, Any]:
+        """粘贴 JSON 示例 -> 推断 JSON Schema -> 新建数据模型"""
+        import json as _json
+        raw = str(json_text or "").strip()
+        if not raw:
+            raise ValueError("JSON 内容不能为空")
+        try:
+            value = _json.loads(raw)
+        except Exception as e:
+            raise ValueError(f"JSON 解析失败：{e}")
+        schema = ApiAutomationService._infer_schema_from_json(value)
+        return await ApiAutomationService.save_data_model(
+            db, api_service_id, user_id, 0, name, schema, int(pid or 0)
+        )
+
+    @staticmethod
     async def _import_data_models(
         db: AsyncSession,
         doc_json: Any,

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # @author: Rebort
 
+import json
 from pathlib import Path
 from fastapi import APIRouter, Depends, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -748,6 +749,79 @@ async def test_db_conn(
         db_id = int(body.get("id"))
         data = await ApiAutomationService.test_db_connection(db, db_id, current_user_id)
         return success_response(data, message=data.get("message", "测试完成"))
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/api_data_model_list")
+async def api_data_model_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """数据模型列表"""
+    try:
+        body = await body_to_json(request)
+        data = await ApiAutomationService.list_data_models(db, body.get("api_service_id") or 0, current_user_id)
+        return success_response(data, message="请求成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/save_data_model")
+async def save_data_model(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """新建/更新数据模型"""
+    try:
+        body = await body_to_json(request)
+        schema = body.get("schema")
+        if body.get("json_example"):
+            try:
+                example = json.loads(str(body.get("json_example")))
+            except Exception as e:
+                return error_response(f"JSON 解析失败：{e}")
+            schema = ApiAutomationService._infer_schema_from_json(example)
+        data = await ApiAutomationService.save_data_model(
+            db, body.get("api_service_id") or 0, current_user_id,
+            int(body.get("id") or 0), body.get("name") or "", schema, int(body.get("pid") or 0),
+        )
+        return success_response(data, message="保存成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/delete_data_model")
+async def delete_data_model(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """删除数据模型"""
+    try:
+        body = await body_to_json(request)
+        await ApiAutomationService.delete_data_model(db, current_user_id, int(body.get("id") or 0))
+        return success_response(None, message="删除成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/import_data_model_json")
+async def import_data_model_json(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """粘贴 JSON 示例生成数据模型"""
+    try:
+        body = await body_to_json(request)
+        data = await ApiAutomationService.import_data_model_json(
+            db, body.get("api_service_id") or 0, current_user_id,
+            body.get("name") or "", body.get("json_text") or "", int(body.get("pid") or 0),
+        )
+        return success_response(data, message="导入成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
