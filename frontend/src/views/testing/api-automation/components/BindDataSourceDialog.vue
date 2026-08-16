@@ -26,6 +26,9 @@
 					<el-radio-button value="knife4j">Knife4j</el-radio-button>
 					<el-radio-button value="yapi">YApi</el-radio-button>
 				</el-radio-group>
+				<div v-if="['apidoc', 'knife4j', 'yapi'].includes(form.data_source_type)" class="bd-warn" style="margin-top: 6px">
+					该格式暂不支持解析（当前支持 OpenAPI/Swagger 与 Apifox），保存后可配置但同步会提示
+				</div>
 			</el-form-item>
 			<el-form-item label="数据源名称" required>
 				<el-input v-model="form.name" placeholder="请输入名称" size="small" style="width: 320px" />
@@ -120,6 +123,10 @@
 							</el-radio-group>
 						</template>
 						<div class="bd-switch-row">
+							<span class="bd-switch-label">自动生成接口用例</span>
+							<el-switch v-model="form.gen_case" size="small" />
+						</div>
+						<div class="bd-switch-row">
 							<span class="bd-switch-label">将文件里的 Info 导入</span>
 							<el-switch v-model="form.import_info" size="small" />
 						</div>
@@ -199,6 +206,7 @@ const defaultForm = () => ({
 	delete_missing: false,
 	import_security: true,
 	global_auth: true,
+	gen_case: true,
 	has_sec_strategy: 'scheme',
 	no_sec_strategy: 'inherit',
 	import_info: true,
@@ -243,6 +251,7 @@ const buildConfig = () => {
 		delete_missing: f.delete_missing,
 		import_security: f.import_security,
 		global_auth: f.global_auth,
+		gen_case: f.gen_case,
 		has_sec_strategy: f.has_sec_strategy,
 		no_sec_strategy: f.no_sec_strategy,
 		import_info: f.import_info,

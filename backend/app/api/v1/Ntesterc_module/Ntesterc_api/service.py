@@ -903,6 +903,29 @@ class ApiAutomationService:
         await db.commit()
 
     @staticmethod
+    async def _resolve_doc_json_from_url(url: str, body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """拉取并解析数据源文档（JSON/YAML），供 Info 导入等使用"""
+        try:
+            import yaml as _yaml
+            headers = {"Accept": "application/json, text/plain, */*", "User-Agent": "Mozilla/5.0 (GeniusQA)"}
+            auth_tuple = None
+            ba = body.get("basic_auth")
+            if isinstance(ba, dict) and ba.get("username"):
+                auth_tuple = (str(ba.get("username")), str(ba.get("password") or ""))
+            resp = requests.get(url, headers=headers, timeout=20, auth=auth_tuple)
+            resp.raise_for_status()
+            text = resp.text.lstrip("\ufeff").strip()
+            try:
+                parsed = _yaml.safe_load(text)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+            return None
+        except Exception:
+            return None
+
+    @staticmethod
     async def sync_data_source(db: AsyncSession, service_id: int, user_id: int) -> Dict[str, Any]:
         """立即同步：按绑定数据源配置拉取并更新接口"""
         await ApiAutomationService._ensure_data_source_config_column(db)
@@ -920,6 +943,8 @@ class ApiAutomationService:
             raise ValueError("该服务未绑定数据源")
         ds_type = str(cfg.get("data_source_type") or "").strip()
         url = str(cfg.get("url") or "").strip()
+        if ds_type in ("apidoc", "knife4j", "yapi"):
+            raise ValueError(f"数据源格式 {ds_type} 暂不支持解析（当前支持 OpenAPI/Swagger 与 Apifox）")
         if ds_type == "apifox":
             source_type = "apifox"
         else:
@@ -938,6 +963,8 @@ class ApiAutomationService:
         }
         if cfg.get("basic_auth") and isinstance(cfg.get("basic_auth"), dict) and cfg["basic_auth"].get("username"):
             body["basic_auth"] = cfg["basic_auth"]
+        # 自动生成接口用例（对齐 Apifox：默认开启）
+        body["gen_case"] = bool(cfg.get("gen_case") if cfg.get("gen_case") is not None else True)
         if cfg.get("pid"):
             try:
                 body["pid"] = int(cfg["pid"])
