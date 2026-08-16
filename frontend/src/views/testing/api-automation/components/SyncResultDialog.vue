@@ -11,10 +11,7 @@
 					<th>新增</th>
 					<th>修改</th>
 					<th>
-						没有变化
-						<el-tooltip content="接口或数据模型导入前后没有变化" placement="top">
-							<el-icon class="th-info"><QuestionFilled /></el-icon>
-						</el-tooltip>
+						<span class="th-cell">没有变化<el-tooltip content="接口或数据模型导入前后没有变化" placement="top"><el-icon class="th-info"><QuestionFilled /></el-icon></el-tooltip></span>
 					</th>
 				</tr>
 			</thead>
@@ -114,5 +111,6 @@ const rows = computed(() => {
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
-.th-info { font-size: 13px; color: var(--el-text-color-secondary); margin-left: 4px; vertical-align: middle; cursor: pointer; }
+.th-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.th-info { font-size: 13px; color: var(--el-text-color-secondary); vertical-align: middle; cursor: pointer; }
 </style>
