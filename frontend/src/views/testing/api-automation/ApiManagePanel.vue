@@ -978,7 +978,7 @@ const dsNameLetter = computed(() => {
 });
 
 const openBindDs = () => {
-	bindDsExisting.value = moduleSource.value.source_type ? { ...(moduleSource.value.data_source_config || {}), url: moduleSource.value.source_addr } : null;
+	bindDsExisting.value = (moduleSource.value.data_source_config && moduleSource.value.data_source_config.url) ? { ...moduleSource.value.data_source_config } : null;
 	bindDsVisible.value = true;
 };
 
