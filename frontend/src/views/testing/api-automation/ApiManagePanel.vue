@@ -194,7 +194,7 @@
 								</div>
 							</div>
 						</el-tab-pane>
-						<el-tab-pane label="文档" name="docs">
+						<el-tab-pane v-if="selectedDir && selectedDir.name !== '接口'" label="文档" name="docs">
 							<div class="dir-doc-head">
 								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
