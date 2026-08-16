@@ -1592,7 +1592,7 @@ const handleAddCommand = (cmd: string) => {
 		return;
 	}
 	if (cmd === 'add_module') {
-		menuForm.value = { name: '', type: 5, pid: 0, editId: 0, mode: 'add_module' };
+		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
 		menuDialogVisible.value = true;
 		return;
@@ -1635,16 +1635,11 @@ const handleNodeCommand = (cmd: string, data: any) => {
 
 const confirmMenu = async () => {
 	if (menuForm.value.mode === 'add_module') {
-		// 模块 = 服务（项目）下的模块分组节点；先有服务再有模块，不创建服务
+		// 模块 = 顶级模块节点（与现有模块同级，不存在子模块逻辑）
 		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			const rr: any = await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
-			const modId = rr?.data?.id;
-			if (modId) {
-				// 对齐 Apifox：添加模块同时默认生成「数据模型」入口
-				await add_menu({ name: '数据模型', pid: Number(modId), type: 1, api_service_id: props.serviceId, protocol: 'http' });
-			}
-			ElMessage.success('模块已创建（含数据模型）');
+			await add_api_service({ name: menuForm.value.name.trim(), api_project_id: props.serviceId || 0 });
+			ElMessage.success('模块已创建');
 			menuDialogVisible.value = false;
 			loadTree();
 		} catch (e: any) {
