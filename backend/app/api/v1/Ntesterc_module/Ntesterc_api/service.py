@@ -4329,6 +4329,8 @@ class ApiAutomationService:
             await ApiAutomationService._sync_env_front_urls_for_protocol(
                 db, int(body["api_service_id"]), _p
             )
+        if int(menu.type) in (0, 5):
+            await ApiAutomationService._sync_env_front_urls(db, [f"svc_{int(menu.id)}"])
         await db.commit()
         return int(menu.id)
 
@@ -4386,7 +4388,7 @@ class ApiAutomationService:
             await db.execute(
                 update(ApiModel).where(ApiModel.id.in_(api_ids)).values(enabled_flag=0)
             )
-        mod_ids = [int(m.id) for m in mrows if int(m.type) == 0] if to_del else []
+        mod_ids = [f"svc_{int(m.id)}" for m in mrows if int(m.type) in (0, 5)] if to_del else []
         if mod_ids:
             await ApiAutomationService._sync_env_front_urls(db, mod_ids, remove=True)
         await db.commit()
