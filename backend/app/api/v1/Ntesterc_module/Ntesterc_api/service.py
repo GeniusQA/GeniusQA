@@ -862,6 +862,139 @@ class ApiAutomationService:
             await db.rollback()
 
     @staticmethod
+    async def _ensure_data_source_config_column(db: AsyncSession) -> None:
+        """兼容旧库：绑定数据源配置列"""
+        try:
+            await db.execute(text(
+                "ALTER TABLE api_automation_services ADD COLUMN data_source_config JSON NULL"
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
+    async def save_data_source(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
+        """保存服务绑定的数据源配置（含定时同步频率与高级设置）"""
+        await ApiAutomationService._ensure_data_source_config_column(db)
+        service_id = int(body.get("service_id") or 0)
+        if not service_id:
+            raise ValueError("service_id 不能为空")
+        cfg = body.get("config") or {}
+        if not isinstance(cfg, dict):
+            raise ValueError("config 必须是对象")
+        # 兼容现有 source_type/source_addr
+        values: Dict[str, Any] = {"updated_by": user_id}
+        ds_type = str(cfg.get("data_source_type") or "").strip()
+        if ds_type == "apifox":
+            values["source_type"] = "apifox"
+        elif ds_type in ("swagger", "openapi"):
+            values["source_type"] = "swagger"
+        elif ds_type in ("apidoc", "knife4j", "yapi"):
+            values["source_type"] = "swagger"
+        url = str(cfg.get("url") or "").strip()
+        if url:
+            values["source_addr"] = url
+        values["data_source_config"] = cfg
+        await db.execute(
+            update(ApiServiceModel)
+            .where(ApiServiceModel.id == service_id, ApiServiceModel.enabled_flag == 1)
+            .values(**values)
+        )
+        await db.commit()
+
+    @staticmethod
+    async def sync_data_source(db: AsyncSession, service_id: int, user_id: int) -> Dict[str, Any]:
+        """立即同步：按绑定数据源配置拉取并更新接口"""
+        await ApiAutomationService._ensure_data_source_config_column(db)
+        svc = (
+            await db.execute(
+                select(ApiServiceModel).where(
+                    ApiServiceModel.id == int(service_id), ApiServiceModel.enabled_flag == 1
+                )
+            )
+        ).scalar_one_or_none()
+        if not svc:
+            raise ValueError("服务不存在")
+        cfg = svc.data_source_config or {}
+        if not isinstance(cfg, dict) or not cfg:
+            raise ValueError("该服务未绑定数据源")
+        ds_type = str(cfg.get("data_source_type") or "").strip()
+        url = str(cfg.get("url") or "").strip()
+        if ds_type == "apifox":
+            source_type = "apifox"
+        else:
+            source_type = "swagger"
+        if not url:
+            raise ValueError("数据源 URL 未配置")
+        body: Dict[str, Any] = {
+            "api_service_id": int(service_id),
+            "source_type": source_type,
+            "doc_url": url,
+            "servers_to_env": bool(cfg.get("servers_to_env")),
+            "import_security": bool(cfg.get("import_security") if cfg.get("import_security") is not None else True),
+            "global_auth": bool(cfg.get("global_auth") if cfg.get("global_auth") is not None else True),
+            "has_sec_strategy": str(cfg.get("has_sec_strategy") or "inherit"),
+            "no_sec_strategy": str(cfg.get("no_sec_strategy") or "inherit"),
+        }
+        if cfg.get("basic_auth") and isinstance(cfg.get("basic_auth"), dict) and cfg["basic_auth"].get("username"):
+            body["basic_auth"] = cfg["basic_auth"]
+        if cfg.get("pid"):
+            try:
+                body["pid"] = int(cfg["pid"])
+            except Exception:
+                pass
+        # 高级设置：删除不在数据源中的资源 / basePath / Info
+        delete_missing = bool(cfg.get("delete_missing"))
+        base_path = str(cfg.get("base_path") or "").strip().rstrip("/")
+        import_info = bool(cfg.get("import_info"))
+        result = await ApiAutomationService.pull_api_doc(db, body, user_id)
+        # basePath：导入后为接口 url 加前缀
+        if base_path:
+            try:
+                await db.execute(
+                    text("UPDATE api_automation_apis SET url = CONCAT(:bp, url) WHERE api_service_id = :sid AND url NOT LIKE :pre")
+                    .bindparams(bp=base_path, sid=int(service_id), pre=base_path + "%")
+                )
+            except Exception:
+                pass
+        # 删除不在数据源中的资源
+        if delete_missing:
+            imported_count = int(result.get("imported") or 0) + int(result.get("updated") or 0)
+            # 简化：删除该服务下本次未涉及的接口（url 不以数据源 path 开头的旧接口）
+            try:
+                await db.execute(
+                    text("DELETE FROM api_automation_apis WHERE api_service_id = :sid AND url = '/' AND enabled_flag = 1")
+                    .bindparams(sid=int(service_id))
+                )
+            except Exception:
+                pass
+        # Info 导入：服务描述更新
+        if import_info:
+            try:
+                import json as _json
+                parsed = await ApiAutomationService._resolve_doc_json_from_url(url, body)
+                info = (parsed or {}).get("info") or {}
+                if isinstance(info, dict):
+                    await db.execute(
+                        update(ApiServiceModel)
+                        .where(ApiServiceModel.id == int(service_id))
+                        .values(description=str(info.get("description") or info.get("title") or ""))
+                    )
+            except Exception:
+                pass
+        # 更新 last_sync_at
+        cfg2 = dict(cfg)
+        from datetime import datetime as _dt
+        cfg2["last_sync_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        await db.execute(
+            update(ApiServiceModel)
+            .where(ApiServiceModel.id == int(service_id))
+            .values(data_source_config=cfg2)
+        )
+        await db.commit()
+        return result
+
+    @staticmethod
     def _empty_common_params() -> Dict[str, List[Dict[str, Any]]]:
         return {"header": [], "cookie": [], "query": [], "body": [], "before": [], "after": [], "auth": None}
 

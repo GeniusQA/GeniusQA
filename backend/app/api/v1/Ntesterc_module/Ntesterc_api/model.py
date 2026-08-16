@@ -32,6 +32,7 @@ class ApiServiceModel(Base):
     department_id = Column(BigInteger, comment='所属部门ID（团队共享变量用）')
     sort = Column(Integer, default=0, comment='排序权重')
     common_params = Column(JSON, comment='全局参数：header/cookie/query/body')
+    data_source_config = Column(JSON, comment='绑定数据源配置：格式/URL/频率/高级设置')
 
 
 class ApiEnvironmentModel(Base):

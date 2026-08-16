@@ -204,6 +204,7 @@ async def api_service_list(
                 "source_addr": i.get("source_addr"),
                 "last_pull_status": i.get("last_pull_status"),
                 "common_params": i.get("common_params"),
+                "data_source_config": i.get("data_source_config"),
             }
             for i in data.get("content", [])
         ]
@@ -386,6 +387,36 @@ async def ws_test(
         body = await body_to_json(request)
         result = await ApiAutomationService.ws_test(db, body, current_user_id)
         return success_response(result, message="调试完成")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/save_data_source")
+async def save_data_source(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """保存服务绑定的数据源配置"""
+    try:
+        body = await body_to_json(request)
+        await ApiAutomationService.save_data_source(db, body, current_user_id)
+        return success_response({}, message="保存成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/sync_data_source")
+async def sync_data_source(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """立即同步绑定数据源"""
+    try:
+        body = await body_to_json(request)
+        result = await ApiAutomationService.sync_data_source(db, int(body.get("service_id") or 0), current_user_id)
+        return success_response(result, message="同步完成")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
 

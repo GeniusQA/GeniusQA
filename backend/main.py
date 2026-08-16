@@ -40,6 +40,12 @@ async def start_app(app: FastAPI):
 
     # 启动 APScheduler 定时任务调度器
     init_scheduler()
+    # 注册绑定数据源定时同步 job
+    try:
+        from app.api.v1.Ntesterc_module.Ntesterc_api.datasource_sync import register_datasource_sync_job
+        register_datasource_sync_job()
+    except Exception:
+        pass
 
     # 恢复性能测试待触发定时任务（MemoryJobStore 重启后清空）
     await load_perf_pending_jobs()

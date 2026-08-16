@@ -78,13 +78,15 @@
 							<div class="md-section">
 								<div class="md-section-head">
 									<span class="md-section-title">绑定数据源</span>
-									<el-button link type="primary" size="small" @click="openImportDialog">+ 添加数据源</el-button>
+									<el-button link type="primary" size="small" @click="openBindDs">{{ bindDsExisting?.url ? '编辑数据源' : '+ 添加数据源' }}</el-button>
 								</div>
 								<div v-if="moduleSource.source_type" class="md-source-row">
 									<span class="md-source-tag">{{ sourceTypeLabel(moduleSource.source_type) }}</span>
 									<span class="md-source-addr">{{ moduleSource.source_addr || '（未配置地址）' }}</span>
+									<span v-if="bindDsExisting?.frequency" class="md-source-freq">每 {{ freqLabel(bindDsExisting.frequency) }}</span>
+									<el-button link type="primary" size="small" @click="syncBoundDs" :loading="dsSyncing">立即导入</el-button>
 								</div>
-								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」从 OpenAPI/Swagger、Postman、cURL 等格式导入接口</div>
+								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」配置数据源（支持定时自动同步更新接口）</div>
 							</div>
 						</el-tab-pane>
 						<el-tab-pane label="模块变量" name="vars">
@@ -509,6 +511,15 @@
 			@imported="onPreviewImported"
 		/>
 
+		<!-- 绑定数据源弹窗 -->
+		<BindDataSourceDialog
+			v-model="bindDsVisible"
+			:service-id="props.serviceId"
+			:module-name="selectedModule?.name || ''"
+			:existing="bindDsExisting"
+			@saved="onBindDsSaved"
+		/>
+
 		<!-- 模块变量批量编辑 -->
 		<BatchEditDialog v-model="moduleVarsBulkVisible" :target="'module_vars'" :initial-text="moduleVarsBulkText" @apply="applyModuleVarsBulk" />
 
@@ -561,6 +572,7 @@ import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
 import BatchEditDialog from './components/BatchEditDialog.vue';
+import BindDataSourceDialog from './components/BindDataSourceDialog.vue';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
@@ -791,6 +803,40 @@ const saveDirConfig = async () => {
 	}
 };
 
+const bindDsVisible = ref(false);
+const bindDsExisting = ref<Record<string, any> | null>(null);
+const dsSyncing = ref(false);
+
+const freqLabel = (v: string) =>
+	v === '30m' ? '30 分钟' : v === '1h' ? '1 小时' : v === '3h' ? '3 小时' : v === '6h' ? '6 小时' : v === '12h' ? '12 小时' : v === '24h' ? '每天' : (v || '-');
+
+const openBindDs = () => {
+	bindDsExisting.value = moduleSource.value.source_type ? { ...(moduleSource.value.data_source_config || {}), url: moduleSource.value.source_addr } : null;
+	bindDsVisible.value = true;
+};
+
+const onBindDsSaved = () => {
+	loadModuleDetail(selectedModule.value);
+	loadTree();
+};
+
+const syncBoundDs = async () => {
+	if (!selectedModule.value) return;
+	dsSyncing.value = true;
+	try {
+		const r: any = await useApiAutomationApi().syncDataSource({ service_id: Number(selectedModule.value.api_service_id) });
+		if (r?.code === 200) {
+			ElMessage.success(`同步完成：导入 ${r.data?.imported || 0} 个接口`);
+			loadModuleDetail(selectedModule.value);
+			loadTree();
+		} else {
+			ElMessage.error(r?.message || '同步失败');
+		}
+	} catch (e: any) {
+		ElMessage.error(e?.message || '同步失败');
+	} finally { dsSyncing.value = false; }
+};
+
 const selectedModule = ref<any>(null);
 const moduleDetailTab = ref('overview');
 const moduleVars = ref<{ key: string; remote: string; local: string }[]>([]);
@@ -826,7 +872,12 @@ const loadModuleDetail = async (data: any) => {
 		const list = r?.data || [];
 		const svc = list.find((s: any) => Number(s.id) === Number(data.api_service_id));
 		if (svc) {
-			moduleSource.value = { source_type: svc.source_type || '', source_addr: svc.source_addr || '' };
+			moduleSource.value = {
+				source_type: svc.source_type || '',
+				source_addr: svc.source_addr || '',
+				data_source_config: svc.data_source_config || null,
+			};
+			bindDsExisting.value = svc.data_source_config && svc.data_source_config.url ? { ...svc.data_source_config } : null;
 			const cp = svc.common_params;
 			const vars = cp && typeof cp === 'object' && Array.isArray((cp as any).vars) ? (cp as any).vars : [];
 			moduleVars.value = vars.map((v: any) => ({ key: String(v.key || ''), remote: String(v.remote ?? v.value ?? ''), local: String(v.local ?? '') }));
@@ -1539,4 +1590,5 @@ onMounted(() => {
 .dot-blue { background: #409eff; }
 .dd-empty { font-size: 12px; color: var(--el-text-color-secondary); text-align: center; padding: 30px 0; }
 .dd-op-wrap { max-height: 480px; overflow: auto; }
+.md-source-freq { font-size: 12px; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); border-radius: 4px; padding: 2px 8px; }
 </style>
