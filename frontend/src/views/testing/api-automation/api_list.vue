@@ -37,7 +37,7 @@
 						<el-option
 							v-for="u in userOptions"
 							:key="u.id"
-							:label="u.username"
+							:label="u.nickname || u.username"
 							:value="u.id"
 						/>
 					</el-select>
@@ -140,7 +140,7 @@
 						<el-option
 							v-for="u in userOptions"
 							:key="u.id"
-							:label="u.username"
+							:label="u.nickname || u.username"
 							:value="u.id"
 						/>
 					</el-select>
@@ -240,7 +240,7 @@ const loadFilterOptions = async () => {
 						const uid = Number(m.user_id ?? m.id ?? 0);
 						if (uid && !seen.has(uid)) {
 							seen.add(uid);
-							members.push({ id: uid, username: m.username || String(uid) });
+							members.push({ id: uid, username: m.username || String(uid), nickname: m.nickname || m.username || String(uid) });
 						}
 					}
 				}
@@ -301,7 +301,7 @@ const loadList = async () => {
 		tableData.value = list.map((item: any) => ({
 			...item,
 			project_name: item.project_name || item.api_project?.name || projectOptions.value.find((p: any) => p.id === item.api_project_id)?.name || '-',
-			manager_name: item.manager_name || userOptions.value.find((u: any) => u.id === item.manager)?.username || (item.manager ? String(item.manager) : '-'),
+			manager_name: item.manager_name || userOptions.value.find((u: any) => u.id === item.manager)?.nickname || u?.username || (item.manager ? String(item.manager) : '-'),
 		}));
 		total.value = typeof raw?.total === 'number' ? raw.total : list.length;
 	} finally {
