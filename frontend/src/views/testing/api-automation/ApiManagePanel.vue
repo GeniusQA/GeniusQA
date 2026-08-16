@@ -37,6 +37,7 @@
 								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
 					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
+								<el-icon v-else-if="data.type===5" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
 								<span v-if="(data.type===2||data.type===3) && data.protocol !== 'websocket' && data.protocol !== 'webhook'" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
 								<span v-if="data.type===2 && data.protocol==='websocket'" class="proto-badge proto-ws">WS</span>
@@ -1077,7 +1078,7 @@ const onNodeClick = async (data: any) => {
 		await loadModuleDetail(data);
 		return;
 	}
-	if (data.type === 1) {
+	if (data.type === 1 || data.type === 5) {
 		apiTabs.value = [];
 		dmModel.value = null;
 		selectedModule.value = null;
@@ -1479,7 +1480,7 @@ const handleAddCommand = (cmd: string) => {
 		return;
 	}
 	if (cmd === 'add_module') {
-		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
+		menuForm.value = { name: '', type: 5, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
 		menuDialogVisible.value = true;
 		return;
@@ -1525,7 +1526,7 @@ const confirmMenu = async () => {
 		// 模块 = 服务（项目）下的顶层目录分组（对齐 Apifox：模块不创建新服务）
 		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 1, api_service_id: props.serviceId, protocol: 'http' });
+			await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
 			ElMessage.success('模块已创建');
 			menuDialogVisible.value = false;
 			loadTree();
