@@ -32,7 +32,7 @@
 						</template>
 					</el-dropdown>
 					<el-button link size="small" @click="treeCheckClear">清空</el-button>
-					<el-button type="danger" size="small" @click="treeBatchDelete">删除选中</el-button>
+					<el-button type="danger" size="small" :loading="treeDeleting" @click="treeBatchDelete">{{ treeDeleting ? `删除中 ${treeDeleteProgress}/${treeCheckedKeys.length}` : '删除选中' }}</el-button>
 				</div>
 				<el-tree
 					ref="treeRef"
@@ -689,7 +689,10 @@ const buildTreeTypeMap = () => {
 
 const onTreeCheck = () => {
 	const keys = treeRef.value?.getCheckedKeys() || [];
-	treeCheckedKeys.value = keys.filter((k: any) => Number(treeTypeMap.value[String(k)]) !== 0);
+	treeCheckedKeys.value = keys.filter((k: any) => {
+		const t = Number(treeTypeMap.value[String(k)]);
+		return t !== 0 && t !== 5;
+	});
 };
 
 const treeCheckAllByMode = (mode: string) => {
@@ -698,7 +701,7 @@ const treeCheckAllByMode = (mode: string) => {
 	const walk = (nodes: any[]) => {
 		for (const n of nodes || []) {
 			const t = Number(n.type);
-			const ok = mode === 'all' ? t !== 0 : mode === 'dir' ? (t === 1 || t === 5) : (t === 2 || t === 3);
+			const ok = mode === 'all' ? (t !== 0 && t !== 5) : mode === 'dir' ? (t === 1) : (t === 2 || t === 3);
 			if (ok) keys.push(n.id);
 			walk(n.children || []);
 		}
@@ -713,6 +716,9 @@ const treeCheckClear = () => {
 	treeCheckedKeys.value = [];
 };
 
+const treeDeleting = ref(false);
+const treeDeleteProgress = ref(0);
+
 const treeBatchDelete = async () => {
 	if (!treeCheckedKeys.value.length) return;
 	try {
@@ -723,14 +729,20 @@ const treeBatchDelete = async () => {
 		);
 	} catch { return; }
 	const ids = [...treeCheckedKeys.value].map((k) => Number(k));
+	treeDeleting.value = true;
+	treeDeleteProgress.value = 0;
 	try {
-		for (const id of ids) {
-			await del_menu({ id });
+		for (let i = 0; i < ids.length; i++) {
+			await del_menu({ id: ids[i] });
+			treeDeleteProgress.value = i + 1;
 		}
 		ElMessage.success(`已删除 ${ids.length} 个节点`);
 		treeCheckedKeys.value = [];
+		treeDeleting.value = false;
+		treeDeleteProgress.value = 0;
 		await loadTree();
 	} catch (e: any) {
+		treeDeleting.value = false;
 		ElMessage.error(e?.message || '删除失败');
 	}
 };
