@@ -198,6 +198,9 @@
 							<div class="dir-doc-head">
 								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
+								<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block; margin-left: 8px">
+									<el-button size="small">上传 MD</el-button>
+								</el-upload>
 								<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
 									<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
 									<template #dropdown>
@@ -938,6 +941,22 @@ const insertDocBlock = (type: string) => {
 		formula: '$$\nE = mc^2\n$$\n',
 	};
 	mdEditorRef.value?.insert(() => ({ targetValue: snippets[type] || '' }));
+};
+
+const onImportMd = (file: any) => {
+	const raw = file?.raw as File;
+	if (!raw) return;
+	const reader = new FileReader();
+	reader.onload = () => {
+		dirDocContent.value = String(reader.result || '');
+		const fname = raw.name.replace(/\.(md|markdown)$/i, '');
+		if (fname) dirDocTitle.value = fname;
+		ElMessage.success('MD 文件已导入');
+		nextTick(() => {
+			try { mdEditorRef.value?.togglePreview?.(); } catch {}
+		});
+	};
+	reader.readAsText(raw);
 };
 
 const onDocUploadImg = async (files: File[], callback: (urls: string[]) => void) => {
