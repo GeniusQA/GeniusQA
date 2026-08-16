@@ -4237,6 +4237,137 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    async def _call_platform_llm(db: AsyncSession, query: str) -> str:
+        """复用平台 AI 助手配置（Dify）调用 LLM，返回文本"""
+        from app.api.v1.Ntesterc_module.Ntesterc_assistant.model import AIAssistantConfigModel
+        from app.api.v1.Ntesterc_module.Ntesterc_assistant.service import DifyService
+        from app.api.v1.Ntesterc_module.Ntesterc_assistant.schema import DifyChatRequest
+        cfg_row = (
+            await db.execute(
+                select(AIAssistantConfigModel)
+                .where(AIAssistantConfigModel.is_active == True)
+                .order_by(AIAssistantConfigModel.id.asc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if cfg_row is None:
+            raise ValueError("未配置 AI 助手（请先在「AI 管理」配置 Dify 模型）")
+        resp = await DifyService.chat_with_dify(cfg_row, DifyChatRequest(query=query, user="system"))
+        return resp.answer or ""
+
+    @staticmethod
+    async def generate_dir_doc(db: AsyncSession, menu_id: int, user_id: int) -> Dict[str, Any]:
+        """遍历目录下所有接口，AI 生成 Markdown 接口文档并保存到目录 document"""
+        import json as _json
+        menu = (
+            await db.execute(
+                select(ApiMenuModel).where(ApiMenuModel.id == int(menu_id), ApiMenuModel.enabled_flag == 1)
+            )
+        ).scalar_one_or_none()
+        if menu is None:
+            raise ValueError("目录不存在")
+        # 收集子树菜单 id
+        ids = [int(menu_id)]
+        frontier = [int(menu_id)]
+        while frontier:
+            children = (
+                await db.execute(
+                    select(ApiMenuModel.id).where(
+                        ApiMenuModel.enabled_flag == 1,
+                        ApiMenuModel.pid.in_(frontier),
+                    )
+                )
+            ).scalars().all()
+            frontier = list(children)
+            ids.extend(frontier)
+        api_menus = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.id.in_(ids),
+                    ApiMenuModel.type == 2,
+                    ApiMenuModel.enabled_flag == 1,
+                )
+            )
+        ).scalars().all()
+        apis = []
+        for am in api_menus:
+            row = (
+                await db.execute(select(ApiModel).where(ApiModel.id == int(am.api_id)))
+            ).scalars().first() if am.api_id else None
+            req = row.req if row and isinstance(row.req, dict) else {}
+            apis.append({
+                "name": am.name,
+                "method": str((req.get("method") or "GET")).upper(),
+                "url": row.url if row else (req.get("url") or ""),
+                "params": req.get("params") or [],
+                "body": req.get("body") or {},
+            })
+        if not apis:
+            raise ValueError("该目录下暂无接口")
+        prompt = (
+            "以下是某个目录下的接口列表（JSON）。请生成一份结构化的 Markdown 接口文档："
+            "包含「接口总览」（表格：名称/方法/路径）、每个接口的小节（请求参数、请求体、响应说明、调用示例）。"
+            "直接输出 Markdown 正文，不要用代码围栏包裹整个文档：\n"
+            + _json.dumps(apis, ensure_ascii=False)
+        )
+        md = await ApiAutomationService._call_platform_llm(db, prompt)
+        if not md:
+            raise ValueError("AI 生成失败：模型返回为空")
+        cp = menu.common_params or {}
+        if isinstance(cp, str):
+            try:
+                cp = _json.loads(cp)
+            except Exception:
+                cp = {}
+        if not isinstance(cp, dict):
+            cp = {}
+        cp["document"] = {"title": menu.name, "content": md}
+        await db.execute(
+            update(ApiMenuModel)
+            .where(ApiMenuModel.id == int(menu_id))
+            .values(common_params=_json.dumps(cp, ensure_ascii=False), updated_by=user_id)
+        )
+        await db.commit()
+        return {"title": menu.name, "content": md}
+
+    @staticmethod
+    async def generate_logo(db: AsyncSession, api_service_id: int, user_id: int) -> Dict[str, Any]:
+        """AI 生成服务 Logo（SVG），保存到服务 common_params.logo_svg"""
+        import json as _json
+        svc = (
+            await db.execute(
+                select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id), ApiServiceModel.enabled_flag == 1)
+            )
+        ).scalar_one_or_none()
+        if svc is None:
+            raise ValueError("服务不存在")
+        prompt = (
+            f"请为一个名为「{svc.name}」的 API 服务生成一个简洁现代的 SVG logo："
+            "圆形图标、渐变配色、抽象几何图形或首字母组合，尺寸 64x64。"
+            "只输出纯 SVG 代码（<svg>...</svg>），不要任何解释或代码围栏。"
+        )
+        out = await ApiAutomationService._call_platform_llm(db, prompt)
+        import re as _re
+        m = _re.search(r"<svg[\s\S]*?</svg>", out)
+        svg = m.group(0) if m else out
+        cp = svc.common_params or {}
+        if isinstance(cp, str):
+            try:
+                cp = _json.loads(cp)
+            except Exception:
+                cp = {}
+        if not isinstance(cp, dict):
+            cp = {}
+        cp["logo_svg"] = svg
+        await db.execute(
+            update(ApiServiceModel)
+            .where(ApiServiceModel.id == int(api_service_id))
+            .values(common_params=_json.dumps(cp, ensure_ascii=False), updated_by=user_id)
+        )
+        await db.commit()
+        return {"logo_svg": svg}
+
+    @staticmethod
     async def _remove_env_front_url_protocol(db: AsyncSession, svc_id: int, protocol: str) -> None:
         """移除所有环境中该服务的指定协议前置 URL 行（删除 WS 接口时联动清理）。"""
         import json as _json

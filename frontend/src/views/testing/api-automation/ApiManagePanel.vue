@@ -214,6 +214,7 @@
 										</el-dropdown-menu>
 									</template>
 								</el-dropdown>
+								<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 								<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
 							</div>
 							<MdEditor
@@ -942,6 +943,32 @@ const insertDocBlock = (type: string) => {
 		formula: '$$\nE = mc^2\n$$\n',
 	};
 	mdEditorRef.value?.insert(() => ({ targetValue: snippets[type] || '' }));
+};
+
+const dirDocGenerating = ref(false);
+const generateDirDoc = async () => {
+	if (!selectedDir.value) return;
+	try {
+		await ElMessageBox.confirm('将遍历该目录下所有接口，用 AI 自动生成 Markdown 接口文档（可能覆盖现有文档内容），确定？', 'AI 生成文档', { type: 'info' });
+	} catch { return; }
+	dirDocGenerating.value = true;
+	try {
+		const r: any = await useApiAutomationApi().generate_dir_doc({ menu_id: Number(selectedDir.value.id) });
+		if (r?.code === 200 && r.data) {
+			dirDocTitle.value = r.data.title || selectedDir.value.name;
+			dirDocContent.value = r.data.content || '';
+			ElMessage.success('文档已生成');
+			nextTick(() => {
+				try { mdEditorRef.value?.togglePreview?.(); } catch {}
+			});
+		} else {
+			ElMessage.error(r?.message || '生成失败');
+		}
+	} catch (e: any) {
+		ElMessage.error(e?.message || '生成失败');
+	} finally {
+		dirDocGenerating.value = false;
+	}
 };
 
 const scrollDocToTop = () => {

@@ -852,6 +852,36 @@ async def import_data_model_json(
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
 
+@router.post("/generate_dir_doc")
+async def generate_dir_doc(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """遍历目录下所有接口，AI 生成 Markdown 接口文档"""
+    try:
+        body = await body_to_json(request)
+        data = await ApiAutomationService.generate_dir_doc(db, int(body.get("menu_id") or 0), current_user_id)
+        return success_response(data, message="文档生成成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/generate_logo")
+async def generate_logo(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """AI 生成服务 Logo（SVG）"""
+    try:
+        body = await body_to_json(request)
+        data = await ApiAutomationService.generate_logo(db, int(body.get("api_service_id") or 0), current_user_id)
+        return success_response(data, message="Logo 生成成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/import_curl")
 async def import_curl(
     request: Request,

@@ -8,6 +8,7 @@
 					返回接口列表
 				</el-button>
 				<span class="service-name">{{ serviceName }}</span>
+				<el-button v-if="serviceId" link type="primary" size="small" :loading="logoGenerating" style="margin-left: 4px" @click="generateLogo">AI 生成 Logo</el-button>
 			</div>
 			<div class="header-right">
 				<el-select
@@ -107,6 +108,24 @@ const props = defineProps<{
 	sourceType?: string;
 	sourceAddr?: string;
 }>();
+
+const logoGenerating = ref(false);
+const generateLogo = async () => {
+	logoGenerating.value = true;
+	try {
+		const r: any = await apiAutomationApi.generate_logo({ api_service_id: Number(serviceId) });
+		if (r?.code === 200) {
+			ElMessage.success('Logo 已生成');
+			emit('refresh');
+		} else {
+			ElMessage.error(r?.message || '生成失败');
+		}
+	} catch (e: any) {
+		ElMessage.error(e?.message || '生成失败');
+	} finally {
+		logoGenerating.value = false;
+	}
+};
 
 const emit = defineEmits<{
 	(e: 'back'): void;
