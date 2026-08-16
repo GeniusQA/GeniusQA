@@ -42,8 +42,7 @@
 						</el-select>
 						<div class="ipv-label" style="margin-top: 10px">目标目录</div>
 						<el-select v-model="targetPid" size="small" style="width: 100%">
-							<el-option label="根目录" :value="0" />
-							<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
+														<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
 						</el-select>
 					</template>
 					<div class="ipv-switch-row">

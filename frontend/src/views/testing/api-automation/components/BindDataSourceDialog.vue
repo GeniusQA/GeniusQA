@@ -72,8 +72,7 @@
 					<el-tab-pane label="接口" name="api">
 						<el-form-item label="导入到目录">
 							<el-select v-model="form.pid" size="small" style="width: 240px" clearable>
-								<el-option label="根目录" :value="0" />
-								<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
+																<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
 							</el-select>
 						</el-form-item>
 						<el-form-item label="匹配到相同接口时">
@@ -149,8 +148,7 @@
 			<el-form label-width="110px">
 				<el-form-item label="导入到分组">
 					<el-select v-model="idKeyPid" size="small" style="width: 100%" clearable>
-						<el-option label="根目录" :value="0" />
-						<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
+												<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
 					</el-select>
 				</el-form-item>
 				<el-form-item label="接口唯一标识">
