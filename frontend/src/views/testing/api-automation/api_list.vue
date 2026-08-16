@@ -227,10 +227,26 @@ const userOptions = ref<any[]>([]);
 const businessOptions = ref<any[]>([]);
 
 const loadFilterOptions = async () => {
+	// 负责人下拉：项目成员并集（未加入任何项目的用户不显示）
 	try {
-		const res: any = await getUserList({ page: 1, page_size: 100 });
-		const raw = res?.data;
-		userOptions.value = Array.isArray(raw?.items) ? raw.items : (Array.isArray(raw) ? raw : []);
+		const projectApi = useProjectApi();
+		const seen = new Set<number>();
+		const members: any[] = [];
+		for (const p of projectOptions.value || []) {
+			try {
+				const mr: any = await projectApi.getMemberList(p.id);
+				if (mr?.code === 200 && Array.isArray(mr.data)) {
+					for (const m of mr.data) {
+						const uid = Number(m.user_id ?? m.id ?? 0);
+						if (uid && !seen.has(uid)) {
+							seen.add(uid);
+							members.push({ id: uid, username: m.username || String(uid) });
+						}
+					}
+				}
+			} catch {}
+		}
+		userOptions.value = members;
 	} catch {
 		userOptions.value = [];
 	}
