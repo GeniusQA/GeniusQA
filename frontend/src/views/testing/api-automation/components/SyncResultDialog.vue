@@ -51,7 +51,7 @@ const rows = computed(() => {
 	const num = (v: any) => Number(v || 0);
 	return [
 		{ name: '接口/文档', added: num(r.imported), updated: num(r.updated), unchanged: num(r.unchanged) },
-		{ name: '目录', added: num(r.folders), updated: 0, unchanged: 0 },
+		{ name: '目录', added: num(r.folders), updated: 0, unchanged: num(r.folders_unchanged) },
 		{ name: '数据模型', added: num(r.models), updated: 0, unchanged: num(r.models_unchanged) },
 		{ name: '环境', added: 0, updated: 0, unchanged: 0 },
 		{ name: '场景用例', added: 0, updated: 0, unchanged: 0 },
