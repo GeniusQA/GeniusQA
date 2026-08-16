@@ -17,7 +17,7 @@
 			</el-form-item>
 			<el-form-item label="数据源格式" required>
 				<el-radio-group v-model="form.data_source_type">
-					<el-radio-button value="swagger">OpenAPI (Swagger)</el-radio-button>
+					<el-radio-button value="swagger">OpenAPI/Swagger</el-radio-button>
 					<el-radio-button value="apifox">Apifox</el-radio-button>
 				</el-radio-group>
 			</el-form-item>
