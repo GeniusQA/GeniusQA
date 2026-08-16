@@ -1584,7 +1584,10 @@ const folderOptions = computed(() => {
 			if (n.type === 0) {
 				mods.push({ id: 'svc_' + n.api_service_id, path: n.name, api_service_id: n.api_service_id })
 				walk(n.children || [], n.name)
-			} else if (n.type === 1) {
+			} else if (n.type === 5) {
+				mods.push({ id: n.id, path: n.name, api_service_id: n.api_service_id })
+				walk(n.children || [], n.name)
+			} else if (n.type === 1 && n.name !== '数据模型') {
 				const p = prefix ? prefix + ' / ' + n.name : n.name
 				dirs.push({ id: n.id, path: p })
 				walk(n.children || [], p)
@@ -1614,7 +1617,8 @@ const handleAddCommand = (cmd: string) => {
 		menuDialogVisible.value = true;
 		return;
 	}
-	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: 0, editId: 0, mode: 'add', protocol: 'http' };
+	const _first = folderOptions.value.mods[0]?.id ?? folderOptions.value.dirs[0]?.id ?? 0;
+	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: _first, editId: 0, mode: 'add', protocol: 'http' };
 	menuDialogTitle.value = cmd === 'add_folder' ? '添加目录' : '添加接口';
 	menuDialogVisible.value = true;
 };
