@@ -289,9 +289,14 @@ const loadDirs = async () => {
 		const walk = (nodes: any[], prefix: string) => {
 			for (const n of nodes || []) {
 				if (n.type === 1) {
-					const p = prefix ? prefix + ' / ' + n.name : n.name;
-					dirs.push({ id: n.id, path: p, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
-					walk(n.children || [], p);
+					if ((n.pid || 0) === 0) {
+						// 根目录（Yasta Pay / 接口）：不单独列出，作为「根目录」默认项隐含，继续遍历其子目录
+						walk(n.children || [], '');
+					} else {
+						const p = prefix ? prefix + ' / ' + n.name : n.name;
+						dirs.push({ id: n.id, path: p, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
+						walk(n.children || [], p);
+					}
 				} else if (n.type === 0) {
 					walk(n.children || [], n.name);
 				}
