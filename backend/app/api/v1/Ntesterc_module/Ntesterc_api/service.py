@@ -2035,6 +2035,10 @@ class ApiAutomationService:
             svc_map.setdefault(int(n.get("api_service_id") or 0), []).append(n)
         tree: List[Dict[str, Any]] = []
         for svc in svc_rows_all:
+            children = svc_map.get(int(svc.id), []) or []
+            # type=5 模块节点提升到顶层：模块与服务平级展示（无子模块逻辑，模块都是平级）
+            mods = [n for n in children if int(n.get("type") or 0) == 5]
+            rest = [n for n in children if int(n.get("type") or 0) != 5]
             tree.append(
                 {
                     "id": f"svc_{svc.id}",
@@ -2043,9 +2047,10 @@ class ApiAutomationService:
                     "type": 0,  # 0 = 模块（服务）节点
                     "api_id": None,
                     "api_service_id": svc.id,
-                    "children": svc_map.get(int(svc.id), []),
+                    "children": rest,
                 }
             )
+            tree.extend(mods)
         return tree
 
     @staticmethod
