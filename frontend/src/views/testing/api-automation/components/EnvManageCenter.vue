@@ -202,9 +202,10 @@ const toggleProto = (menuId: any, proto: string, checked: any) => {
 const protoLabel = (p: any) => (p === 'websocket' ? 'WS' : p === 'socketio' ? 'Socket.IO' : 'HTTP');
 
 const moduleName = (menuId: any): string => {
-	const m = frontUrlMenuOptions.value.find((o: any) => String(o.id) === String(menuId));
-	if (m) return m.name;
 	const s = String(menuId ?? '');
+	const rawId = s.startsWith('svc_') ? s.replace('svc_', '') : s;
+	const m = frontUrlMenuOptions.value.find((o: any) => String(o.id) === rawId);
+	if (m) return m.name;
 	if (s.startsWith('svc_')) return '模块 ' + s.replace('svc_', '');
 	return s;
 };

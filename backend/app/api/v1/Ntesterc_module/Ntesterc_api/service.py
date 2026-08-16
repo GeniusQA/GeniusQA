@@ -814,9 +814,7 @@ class ApiAutomationService:
         )
         db.add(svc)
         await db.flush()
-        # 服务 = 纯容器：不自动生成目录（「接口」根目录/「数据模型」由「添加模块」时生成）
-        # 服务创建联动：所有环境前置 URL 默认生成一条空 http 行
-        await ApiAutomationService._sync_env_front_urls(db, [f"svc_{svc.id}"])
+        # 服务 = 纯容器：不生成目录、不生成环境前置 URL 行（环境行只由模块生成）
         await db.commit()
 
     @staticmethod
