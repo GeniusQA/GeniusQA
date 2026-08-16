@@ -77,13 +77,14 @@
 							</el-select>
 						</el-form-item>
 						<el-form-item label="匹配到相同接口时">
-							<span class="bd-hint">（根据 Method & Path）</span>
+							<span class="bd-hint">（根据 <a class="bd-link" @click="openIdKeyDialog">{{ idKeyLabel(form.match_id_key) }}</a>）</span>
 						</el-form-item>
 						<el-form-item label=" ">
-							<el-radio-group v-model="form.match_mode">
-								<el-radio value="overwrite">覆盖已有接口</el-radio>
-								<el-radio value="move">更新接口所在目录</el-radio>
-							</el-radio-group>
+							<el-select v-model="form.match_mode" size="small" style="width: 240px">
+								<el-option label="覆盖已有接口" value="overwrite" />
+								<el-option label="智能合并" value="smart_merge" />
+								<el-option label="不导入" value="skip" />
+							</el-select>
 						</el-form-item>
 						<div class="bd-switch-row">
 							<span class="bd-switch-label">接口路径加上 basePath</span>
@@ -123,7 +124,14 @@
 							<el-switch v-model="form.gen_case" size="small" />
 						</div>
 						<div class="bd-switch-row">
-							<span class="bd-switch-label">将文件里的 Info 导入</span>
+							<span class="bd-switch-label">将文件里的 Info 导入
+								<el-tooltip placement="top" :width="360">
+									<template #content>
+										<div class="bd-info-tip">文件里的 OpenAPI Info（summary、description、termsOfService、contact、license、version）导入并覆盖当前项目中的对应内容。</div>
+									</template>
+									<el-icon class="bd-info-icon"><InfoFilled /></el-icon>
+								</el-tooltip>
+							</span>
 							<el-switch v-model="form.import_info" size="small" />
 						</div>
 					</el-tab-pane>
@@ -133,6 +141,33 @@
 				</el-tabs>
 			</template>
 		</el-form>
+
+		<!-- 编辑分组的接口唯一标识 -->
+		<el-dialog v-model="idKeyVisible" title="编辑分组的接口唯一标识" width="480px" append-to-body destroy-on-close>
+			<el-form label-width="110px">
+				<el-form-item label="导入到分组">
+					<el-select v-model="idKeyPid" size="small" style="width: 100%" clearable>
+						<el-option label="根目录" :value="0" />
+						<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
+					</el-select>
+				</el-form-item>
+				<el-form-item label="接口唯一标识">
+					<el-select v-model="idKeyValue" size="small" style="width: 100%">
+						<el-option label="继承父级" value="inherit" />
+						<el-option label="Method & Path" value="method_path" />
+						<el-option label="OperationId" value="operation_id" />
+						<el-option label="Query 参数" value="query" />
+						<el-option label="Body 参数" value="body" />
+						<el-option label="Header 参数" value="header" />
+					</el-select>
+				</el-form-item>
+			</el-form>
+			<template #footer>
+				<el-button @click="idKeyVisible = false">取消</el-button>
+				<el-button type="primary" @click="saveIdKey">保存</el-button>
+			</template>
+		</el-dialog>
+
 		<template #footer>
 			<div style="display: flex; align-items: center; gap: 8px">
 				<el-button :loading="syncing" @click="doSync" style="margin-right: auto">立即导入</el-button>
@@ -145,7 +180,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ArrowRight } from '@element-plus/icons-vue';
+import { ArrowRight, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { api_tree, useApiAutomationApi } from '/@/api/v1/testing/apiAutomation';
 
@@ -182,6 +217,42 @@ watch(
 watch(inner, (v) => emit('update:modelValue', v));
 
 const advOpen = ref(false);
+const idKeyVisible = ref(false);
+const idKeyPid = ref(0);
+const idKeyValue = ref('method_path');
+
+const idKeyLabel = (v: string) =>
+	v === 'inherit' ? '继承父级' : v === 'operation_id' ? 'OperationId' : v === 'query' ? 'Query 参数' : v === 'body' ? 'Body 参数' : v === 'header' ? 'Header 参数' : 'Method & Path';
+
+const openIdKeyDialog = () => {
+	idKeyPid.value = form.value.pid || 0;
+	idKeyValue.value = form.value.match_id_key || 'method_path';
+	idKeyVisible.value = true;
+};
+
+const saveIdKey = async () => {
+	const finalKey = idKeyValue.value === 'inherit' ? 'method_path' : idKeyValue.value;
+	form.value.match_id_key = finalKey;
+	// 写入分组（目录）的 common_params.id_key（合并，不覆盖其他配置）
+	let targetPid = idKeyPid.value || form.value.pid || 0;
+	if (!targetPid) {
+		const root = dirList.value.find((d: any) => d.pid === 0);
+		targetPid = root?.id || 0;
+	}
+	try {
+		if (targetPid) {
+			const { edit_menu } = await import('/@/api/v1/testing/apiAutomation');
+			const dir = dirList.value.find((d: any) => d.id === targetPid);
+			let cp: Record<string, any> = {};
+			try { cp = dir?.common_params ? JSON.parse(dir.common_params) : {}; } catch { cp = {}; }
+			if (!cp || typeof cp !== 'object') cp = {};
+			cp.id_key = finalKey;
+			await edit_menu({ id: targetPid, name: dir?.name || '', common_params: JSON.stringify(cp) } as any);
+		}
+	} catch { /* 静默 */ }
+	idKeyVisible.value = false;
+	ElMessage.success('接口唯一标识已更新');
+};
 const advTab = ref('api');
 const dirList = ref<any[]>([]);
 const saving = ref(false);
@@ -196,6 +267,7 @@ const defaultForm = () => ({
 	basic_auth: { enabled: false, username: '', password: '' },
 	pid: 0,
 	match_mode: 'overwrite',
+	match_id_key: 'method_path',
 	base_path_enabled: false,
 	base_path: '',
 	delete_missing: false,
@@ -218,7 +290,7 @@ const loadDirs = async () => {
 			for (const n of nodes || []) {
 				if (n.type === 1) {
 					const p = prefix ? prefix + ' / ' + n.name : n.name;
-					dirs.push({ id: n.id, path: p });
+					dirs.push({ id: n.id, path: p, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
 					walk(n.children || [], p);
 				} else if (n.type === 0) {
 					walk(n.children || [], n.name);
@@ -241,6 +313,7 @@ const buildConfig = () => {
 		basic_auth: f.basic_auth.enabled ? { username: f.basic_auth.username.trim(), password: f.basic_auth.password } : null,
 		pid: f.pid || 0,
 		match_mode: f.match_mode,
+		match_id_key: f.match_id_key,
 		base_path: f.base_path_enabled ? f.base_path.trim() : '',
 		delete_missing: f.delete_missing,
 		import_security: f.import_security,
@@ -300,4 +373,7 @@ const doSync = async () => {
 .bd-cond-label { font-size: 12px; color: var(--el-text-color-secondary); margin: 10px 0 4px; }
 .bd-radio-col { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .bd-empty { font-size: 12px; color: var(--el-text-color-secondary); text-align: center; padding: 30px 0; }
+.bd-link { color: #7c3aed; cursor: pointer; }
+.bd-info-icon { margin-left: 4px; color: var(--el-text-color-secondary); cursor: help; vertical-align: middle; }
+.bd-info-tip { font-size: 12px; line-height: 1.7; color: var(--el-text-color-regular); }
 </style>

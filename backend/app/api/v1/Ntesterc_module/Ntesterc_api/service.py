@@ -965,6 +965,9 @@ class ApiAutomationService:
             body["basic_auth"] = cfg["basic_auth"]
         # 自动生成接口用例（对齐 Apifox：默认开启）
         body["gen_case"] = bool(cfg.get("gen_case") if cfg.get("gen_case") is not None else True)
+        # 冲突策略与接口唯一标识
+        body["match_mode"] = str(cfg.get("match_mode") or "overwrite")
+        body["match_id_key"] = str(cfg.get("match_id_key") or "method_path")
         if cfg.get("pid"):
             try:
                 body["pid"] = int(cfg["pid"])
@@ -3358,6 +3361,8 @@ class ApiAutomationService:
         target_pid = int(body.get("pid") or 0)
         created_api_ids: List[int] = []
         gen_case = bool(body.get("gen_case"))
+        match_mode = str(body.get("match_mode") or "overwrite")
+        match_id_key = str(body.get("match_id_key") or "method_path")
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
@@ -3522,9 +3527,22 @@ class ApiAutomationService:
                 api_desc = str(operation.get("description") or "")
 
                 target_method = int(req.get("method") or 2)
-                target_api = ApiAutomationService._find_api_by_path_and_method(
-                    existing_apis, api_path, target_method
-                )
+                if match_id_key == "operation_id":
+                    target_api = None
+                    _op_id = str(operation.get("operationId") or "")
+                    if _op_id:
+                        for _ex in existing_apis:
+                            _doc = _ex.document if isinstance(_ex.document, dict) else {}
+                            if str(_doc.get("operationId") or "") == _op_id:
+                                target_api = _ex
+                                break
+                else:
+                    target_api = ApiAutomationService._find_api_by_path_and_method(
+                        existing_apis, api_path, target_method
+                    )
+                # 不导入：已存在接口跳过
+                if target_api is not None and match_mode == "skip":
+                    continue
 
                 if target_api:
                     keep_url = ApiAutomationService._prefer_existing_url(
@@ -3541,17 +3559,20 @@ class ApiAutomationService:
                         req["after"] = old_req.get("after")
                     if old_req.get("config"):
                         req["config"] = old_req.get("config")
+                    _upd_values: Dict[str, Any] = {
+                        "url": keep_url,
+                        "req": req,
+                        "updated_by": user_id,
+                    }
+                    if match_mode != "smart_merge":
+                        # 智能合并：保留已修改的 Mock/中文名/说明/请求示例/响应示例等
+                        _upd_values["document"] = operation
+                        _upd_values["name"] = api_name
+                        _upd_values["description"] = api_desc
                     await db.execute(
                         update(ApiModel)
                         .where(ApiModel.id == target_api.id, ApiModel.enabled_flag == 1)
-                        .values(
-                            url=keep_url,
-                            req=req,
-                            document=operation,
-                            name=api_name,
-                            description=api_desc,
-                            updated_by=user_id,
-                        )
+                        .values(**_upd_values)
                     )
                     api_id = int(target_api.id)
                     updated_count += 1
