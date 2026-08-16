@@ -816,6 +816,32 @@ class ApiAutomationService:
         await db.flush()
         # 模块创建自动生成根目录（固定名"接口"，不可删除/重命名）
         await ApiAutomationService._ensure_service_root_menu(db, svc.id, user_id, "接口")
+        # 同时默认生成「数据模型」目录（对齐 Apifox：模块默认含数据模型）
+        _dm = (
+            await db.execute(
+                select(ApiMenuModel).where(
+                    ApiMenuModel.api_service_id == svc.id,
+                    ApiMenuModel.enabled_flag == 1,
+                    ApiMenuModel.pid == 0,
+                    ApiMenuModel.type == 1,
+                    ApiMenuModel.name == "数据模型",
+                )
+            )
+        ).scalars().first()
+        if _dm is None:
+            db.add(
+                ApiMenuModel(
+                    name="数据模型",
+                    type=1,
+                    api_id=None,
+                    api_service_id=svc.id,
+                    pid=0,
+                    status=1,
+                    created_by=user_id,
+                    updated_by=user_id,
+                )
+            )
+            await db.flush()
         # 模块（服务）创建联动：所有环境前置 URL 默认生成一条空行
         await ApiAutomationService._sync_env_front_urls(db, [f"svc_{svc.id}"])
         await db.commit()
