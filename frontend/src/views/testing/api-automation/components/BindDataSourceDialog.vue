@@ -192,6 +192,7 @@ const props = defineProps<{
 	serviceId: number;
 	moduleName: string;
 	existing?: Record<string, any> | null;
+	moduleId?: number;
 }>();
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void; (e: 'syncOk', result: any): void }>();
@@ -358,7 +359,7 @@ const doSave = async () => {
 	if (!validate()) return;
 	saving.value = true;
 	try {
-		await useApiAutomationApi().saveDataSource({ service_id: props.serviceId, config: buildConfig() });
+		await useApiAutomationApi().saveDataSource({ service_id: props.serviceId, module_id: props.moduleId || 0, config: buildConfig() });
 		ElMessage.success('数据源已保存');
 		inner.value = false;
 		emit('saved');
@@ -384,7 +385,7 @@ const doSync = async () => {
 	syncing.value = true;
 	try {
 		// 立即导入：用表单配置临时拉取（不保存数据源，只有点「保存」才写库）
-		const r: any = await useApiAutomationApi().syncDataSource({ service_id: props.serviceId, config: buildConfig() });
+		const r: any = await useApiAutomationApi().syncDataSource({ service_id: props.serviceId, module_id: props.moduleId || 0, config: buildConfig() });
 		if (r?.code === 200) {
 			emit('syncOk', r.data || { imported: 0, updated: 0, folders: 0, models: 0 });
 		} else {

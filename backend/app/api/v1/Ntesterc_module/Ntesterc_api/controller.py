@@ -416,7 +416,11 @@ async def sync_data_source(
     """立即同步绑定数据源"""
     try:
         body = await body_to_json(request)
-        result = await ApiAutomationService.sync_data_source(db, int(body.get("service_id") or 0), current_user_id, body.get("config"))
+        _cfg = body.get("config")
+        if isinstance(_cfg, dict):
+            _cfg = dict(_cfg)
+            _cfg["__module_id"] = body.get("module_id")
+        result = await ApiAutomationService.sync_data_source(db, int(body.get("service_id") or 0), current_user_id, _cfg)
         return success_response(result, message="同步完成")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")

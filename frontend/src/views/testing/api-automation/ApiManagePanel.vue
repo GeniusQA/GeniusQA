@@ -569,6 +569,7 @@
 		<BindDataSourceDialog
 			v-model="bindDsVisible"
 			:service-id="props.serviceId"
+			:module-id="selectedModule?.id || 0"
 			:module-name="selectedModule?.name || ''"
 			:existing="bindDsExisting"
 			@saved="onBindDsSaved"
@@ -991,7 +992,7 @@ const syncBoundDs = async () => {
 	if (!selectedModule.value) return;
 	dsSyncing.value = true;
 	try {
-		const r: any = await useApiAutomationApi().syncDataSource({ service_id: Number(selectedModule.value.api_service_id) });
+		const r: any = await useApiAutomationApi().syncDataSource({ service_id: Number(selectedModule.value.api_service_id), module_id: Number(selectedModule.value.id || 0) });
 		if (r?.code === 200) {
 			syncResult.value = r.data || null;
 			syncResultVisible.value = true;
@@ -1150,12 +1151,16 @@ const loadModuleDetail = async (data: any) => {
 		const list = r?.data || [];
 		const svc = list.find((s: any) => Number(s.id) === Number(data.api_service_id));
 		if (svc) {
+			// 模块级数据源：type=5 模块读模块 common_params；兼容服务级
+			let dsCp: any = {};
+			try { dsCp = data.common_params ? JSON.parse(data.common_params) : {}; } catch { dsCp = {}; }
+			const dsCfg = (dsCp && typeof dsCp === 'object' && dsCp.data_source_config && typeof dsCp.data_source_config === 'object') ? dsCp.data_source_config : (svc.data_source_config || null);
 			moduleSource.value = {
-				source_type: svc.source_type || '',
-				source_addr: svc.source_addr || '',
-				data_source_config: svc.data_source_config || null,
+				source_type: (dsCfg && dsCfg.data_source_type) || svc.source_type || '',
+				source_addr: (dsCfg && dsCfg.url) || svc.source_addr || '',
+				data_source_config: dsCfg || null,
 			};
-			bindDsExisting.value = svc.data_source_config && svc.data_source_config.url ? { ...svc.data_source_config } : null;
+			bindDsExisting.value = dsCfg && dsCfg.url ? { ...dsCfg } : null;
 			const cp = svc.common_params;
 			const vars = cp && typeof cp === 'object' && Array.isArray((cp as any).vars) ? (cp as any).vars : [];
 			moduleVars.value = vars.map((v: any) => ({ key: String(v.key || ''), remote: String(v.remote ?? v.value ?? ''), local: String(v.local ?? '') }));

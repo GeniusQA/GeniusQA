@@ -895,11 +895,31 @@ class ApiAutomationService:
         if url:
             values["source_addr"] = url
         values["data_source_config"] = cfg
-        await db.execute(
-            update(ApiServiceModel)
-            .where(ApiServiceModel.id == service_id, ApiServiceModel.enabled_flag == 1)
-            .values(**values)
-        )
+        module_id = int(body.get("module_id") or 0)
+        if module_id:
+            # 模块级：数据源配置存到模块菜单 common_params（模块间相互隔离）
+            menu = (
+                await db.execute(
+                    select(ApiMenuModel).where(ApiMenuModel.id == module_id, ApiMenuModel.enabled_flag == 1)
+                )
+            ).scalar_one_or_none()
+            if not menu:
+                raise ValueError("模块不存在")
+            cp = menu.common_params or {}
+            if not isinstance(cp, dict):
+                cp = {}
+            cp["data_source_config"] = cfg
+            await db.execute(
+                update(ApiMenuModel)
+                .where(ApiMenuModel.id == module_id)
+                .values(common_params=cp, updated_by=user_id)
+            )
+        else:
+            await db.execute(
+                update(ApiServiceModel)
+                .where(ApiServiceModel.id == service_id, ApiServiceModel.enabled_flag == 1)
+                .values(**values)
+            )
         await db.commit()
 
     @staticmethod
@@ -942,9 +962,20 @@ class ApiAutomationService:
         ).scalar_one_or_none()
         if not svc:
             raise ValueError("服务不存在")
-        cfg = temp_config if isinstance(temp_config, dict) and temp_config else (svc.data_source_config or {})
+        module_id = int(temp_config.get("__module_id") or 0) if isinstance(temp_config, dict) else 0
+        cfg = temp_config if isinstance(temp_config, dict) and temp_config else None
+        if cfg is None and module_id:
+            menu = (
+                await db.execute(
+                    select(ApiMenuModel).where(ApiMenuModel.id == module_id, ApiMenuModel.enabled_flag == 1)
+                )
+            ).scalar_one_or_none()
+            cp = (menu.common_params or {}) if menu else {}
+            cfg = (cp.get("data_source_config") if isinstance(cp, dict) else None)
+        if cfg is None:
+            cfg = svc.data_source_config or {}
         if not isinstance(cfg, dict) or not cfg:
-            raise ValueError("该服务未绑定数据源")
+            raise ValueError("该服务/模块未绑定数据源")
         ds_type = str(cfg.get("data_source_type") or "").strip()
         url = str(cfg.get("url") or "").strip()
         if ds_type in ("apidoc", "knife4j", "yapi"):
@@ -1022,11 +1053,18 @@ class ApiAutomationService:
             cfg2 = dict(cfg)
             from datetime import datetime as _dt
             cfg2["last_sync_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-            await db.execute(
-                update(ApiServiceModel)
-                .where(ApiServiceModel.id == int(service_id))
-                .values(data_source_config=cfg2)
-            )
+            if module_id:
+                await db.execute(
+                    update(ApiMenuModel)
+                    .where(ApiMenuModel.id == module_id)
+                    .values(common_params={"data_source_config": cfg2})
+                )
+            else:
+                await db.execute(
+                    update(ApiServiceModel)
+                    .where(ApiServiceModel.id == int(service_id))
+                    .values(data_source_config=cfg2)
+                )
         await db.commit()
         return result
 
