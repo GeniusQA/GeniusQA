@@ -107,7 +107,10 @@ const rows = computed(() => {
 }
 .sync-table td:nth-child(2),
 .sync-table td:nth-child(3),
-.sync-table td:nth-child(4) {
+.sync-table td:nth-child(4),
+.sync-table th:nth-child(2),
+.sync-table th:nth-child(3),
+.sync-table th:nth-child(4) {
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
