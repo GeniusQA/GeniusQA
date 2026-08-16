@@ -7,7 +7,6 @@
 				<div class="tree-actions">
 					<el-input v-model="treeFilter" placeholder="搜索接口" clearable size="small" style="flex:1" />
 					<el-dropdown @command="handleAddCommand" style="margin-left:6px">
-						<el-button type="primary" size="small">添加<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
 						<template #dropdown>
 							<el-dropdown-menu>
 								<el-dropdown-item command="add_module">添加模块</el-dropdown-item>
@@ -19,12 +18,20 @@
 						</template>
 					</el-dropdown>
 				</div>
+				<div v-if="treeCheckedKeys.length" class="tree-batch-bar">
+					<span class="batch-count">已选 {{ treeCheckedKeys.length }} 项</span>
+					<el-button link type="primary" size="small" @click="treeCheckAll">全选</el-button>
+					<el-button link size="small" @click="treeCheckClear">清空</el-button>
+					<el-button type="danger" size="small" @click="treeBatchDelete">删除选中</el-button>
+				</div>
 				<el-tree
 					ref="treeRef"
 					:data="treeData"
 					:props="{ children: 'children', label: 'name' }"
 					node-key="id"
 					:filter-node-method="filterNode"
+					show-checkbox
+					@check="onTreeCheck"
 					draggable
 					:allow-drop="allowDrop"
 					class="api-tree"
@@ -653,11 +660,74 @@ const treeFilter = ref('');
 watch(treeFilter, (v) => treeRef.value?.filter(v));
 const filterNode = (val: string, data: any) => !val || data.name?.includes(val);
 
+// ---- 树多选/全选批量删除 ----
+const treeCheckedKeys = ref<(string | number)[]>([]);
+const treeTypeMap = ref<Record<string, number>>({});
+
+const buildTreeTypeMap = () => {
+	const map: Record<string, number> = {};
+	const walk = (nodes: any[]) => {
+		for (const n of nodes || []) {
+			map[String(n.id)] = Number(n.type);
+			walk(n.children || []);
+		}
+	};
+	walk(treeData.value);
+	treeTypeMap.value = map;
+};
+
+const onTreeCheck = () => {
+	const keys = treeRef.value?.getCheckedKeys() || [];
+	treeCheckedKeys.value = keys.filter((k: any) => Number(treeTypeMap.value[String(k)]) !== 0);
+};
+
+const treeCheckAll = () => {
+	const keys: (string | number)[] = [];
+	const walk = (nodes: any[]) => {
+		for (const n of nodes || []) {
+			if (Number(n.type) !== 0) keys.push(n.id);
+			walk(n.children || []);
+		}
+	};
+	walk(treeData.value);
+	treeRef.value?.setCheckedKeys(keys);
+	treeCheckedKeys.value = keys;
+};
+
+const treeCheckClear = () => {
+	treeRef.value?.setCheckedKeys([]);
+	treeCheckedKeys.value = [];
+};
+
+const treeBatchDelete = async () => {
+	if (!treeCheckedKeys.value.length) return;
+	try {
+		await ElMessageBox.confirm(
+			`将删除选中的 ${treeCheckedKeys.value.length} 个节点（目录会级联删除其下接口），确定？`,
+			'批量删除确认',
+			{ type: 'warning' },
+		);
+	} catch { return; }
+	const ids = [...treeCheckedKeys.value].map((k) => Number(k));
+	try {
+		for (const id of ids) {
+			await del_menu({ id });
+		}
+		ElMessage.success(`已删除 ${ids.length} 个节点`);
+		treeCheckedKeys.value = [];
+		await loadTree();
+	} catch (e: any) {
+		ElMessage.error(e?.message || '删除失败');
+	}
+};
+
 const loadTree = async () => {
 	try {
 		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
 		treeData.value = r?.data || [];
 	} catch { treeData.value = []; }
+	buildTreeTypeMap();
+	treeCheckedKeys.value = [];
 	// 保持当前选中高亮；无任何选中且无接口 tab 时，默认选中第一个模块展示模块详情
 	await nextTick();
 	if (dmModel.value) {
@@ -1794,4 +1864,6 @@ onMounted(() => {
 .dm-json :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 12px; line-height: 1.5; }
 .dm-hint { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 6px; }
 .icon-dm { color: #8b5cf6; }
+.tree-batch-bar { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: #fef0f0; border-radius: 4px; margin-bottom: 4px; }
+.batch-count { font-size: 12px; color: var(--el-color-danger); }
 </style>
