@@ -143,8 +143,21 @@
 					<el-tabs v-model="dirDetailTab" class="dir-detail-tabs">
 						<el-tab-pane label="目录设置" name="settings">
 							<div class="dd-section">
-								<div class="dd-section-title">功能说明</div>
-								<div class="dd-desc">「根目录」主要用来对模块内的所有接口进行设置：目录级前置/后置操作、Auth 鉴权，以及接口唯一标识（导入数据时用于匹配对应接口），目录下的接口默认继承这些设置。</div>
+								<div class="dd-section-title">基本信息</div>
+								<div class="dd-row">
+									<div class="dd-row-text">
+										<div class="dd-row-label">目录名称</div>
+										<div class="dd-row-desc">修改目录在树中的展示名称</div>
+									</div>
+									<el-input v-model="dirName" size="small" style="width: 220px" />
+								</div>
+								<div class="dd-row" style="margin-top: 8px">
+									<div class="dd-row-text">
+										<div class="dd-row-label">目录 ID</div>
+										<div class="dd-row-desc">目录唯一标识（只读）</div>
+									</div>
+									<el-input :model-value="String(selectedDir?.id ?? '')" size="small" disabled style="width: 220px" />
+								</div>
 							</div>
 							<div class="dd-section">
 								<div class="dd-section-title">可见性</div>
@@ -167,6 +180,7 @@
 										<div class="dd-row-desc">导入数据的时候用来匹配对应的接口</div>
 									</div>
 									<el-select v-model="dirConfig.id_key" style="width: 220px">
+										<el-option label="继承父级" value="inherit" />
 										<el-option label="Method & Path" value="method_path" />
 										<el-option label="OperationId" value="operation_id" />
 										<el-option label="Query 参数" value="query" />
@@ -871,6 +885,7 @@ const dirTitleText = computed(() => {
 });
 const dirDetailTab = ref('settings');
 const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
+const dirName = ref('');
 const dirChecked = ref<number[]>([]);
 const dirBefore = ref<any[]>([]);
 const dirAfter = ref<any[]>([]);
@@ -956,7 +971,7 @@ const saveDirConfig = async () => {
 		cp.before = dirBefore.value;
 		cp.after = dirAfter.value;
 		cp.auth = dirAuth.value;
-		await edit_menu({ id: selectedDir.value.id, name: selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
+		await edit_menu({ id: selectedDir.value.id, name: dirName.value || selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
 		ElMessage.success('目录设置已保存');
 		await loadTree();
 	} catch (e: any) {
@@ -1233,6 +1248,7 @@ const onNodeClick = async (data: any) => {
 			visibility: cp.visibility || 'shared',
 			id_key: cp.id_key || 'method_path',
 		};
+		dirName.value = data.name || '';
 		dirBefore.value = Array.isArray(cp.before) ? cp.before : [];
 		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
 		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
