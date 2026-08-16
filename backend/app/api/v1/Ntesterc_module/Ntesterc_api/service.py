@@ -3593,6 +3593,29 @@ class ApiAutomationService:
         selected = body.get("selected")
         if isinstance(selected, list) and selected:
             doc_json = ApiAutomationService._filter_doc_by_selected(doc_json, selected)
+        # 数据格式校验（对齐 Apifox「数据格式错误」）
+        if isinstance(doc_json, dict):
+            if source_type == "swagger":
+                _has_ver = isinstance(doc_json.get("openapi"), str) or isinstance(doc_json.get("swagger"), str)
+                _has_paths = isinstance(doc_json.get("paths"), dict)
+                if not (_has_ver and _has_paths):
+                    raise ValueError(
+                        "数据格式错误：当前内容可以读取，但未识别到 OpenAPI/Swagger 文档所需的结构。"
+                        "请确认文件中包含 openapi 或 swagger、paths 等字段。"
+                    )
+            elif source_type == "postman":
+                _has_item = isinstance(doc_json.get("item"), list) or isinstance((doc_json.get("info") or {}).get("schema"), str)
+                if not _has_item:
+                    raise ValueError(
+                        "数据格式错误：当前内容可以读取，但未识别到 Postman Collection 所需的结构。"
+                        "请确认文件中包含 info 与 item 字段（Collection v2.1）。"
+                    )
+            elif source_type == "apifox":
+                if not (ApiAutomationService._is_apifox_project_export(doc_json) or isinstance(doc_json.get("paths"), dict)):
+                    raise ValueError(
+                        "数据格式错误：当前内容可以读取，但未识别到 Apifox 导出文档所需的结构。"
+                        "请确认文件中包含 openapi、paths 或 Apifox 项目导出字段。"
+                    )
         if body.get("preview"):
             return {"preview": ApiAutomationService._preview_doc(doc_json), "mode": "preview"}
 
