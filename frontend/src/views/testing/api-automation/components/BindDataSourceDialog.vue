@@ -1,5 +1,5 @@
 <template>
-	<el-dialog v-model="inner" title="绑定数据源" width="640px" destroy-on-close class="bind-ds-dialog" append-to-body>
+	<el-dialog v-model="inner" :title="isEdit ? '编辑数据源' : '绑定数据源'" width="640px" destroy-on-close class="bind-ds-dialog" append-to-body>
 		<el-form label-width="110px" class="bd-form">
 			<el-form-item label="模块" required>
 				<el-input :model-value="moduleName" size="small" style="width: 240px" disabled />
