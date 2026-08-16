@@ -913,7 +913,11 @@ class ApiAutomationService:
             ba = body.get("basic_auth")
             if isinstance(ba, dict) and ba.get("username"):
                 auth_tuple = (str(ba.get("username")), str(ba.get("password") or ""))
-            resp = requests.get(url, headers=headers, timeout=20, auth=auth_tuple)
+            import asyncio
+            loop = asyncio.get_running_loop()
+            resp = await loop.run_in_executor(
+                None, lambda: requests.get(url, headers=headers, timeout=20, auth=auth_tuple)
+            )
             resp.raise_for_status()
             text = resp.text.lstrip("\ufeff").strip()
             try:
@@ -3508,7 +3512,10 @@ class ApiAutomationService:
                     except Exception:
                         return None
 
-                resp = requests.get(doc_url, headers=headers, timeout=20, auth=auth_tuple)
+                loop = asyncio.get_running_loop()
+                resp = await loop.run_in_executor(
+                    None, lambda: requests.get(doc_url, headers=headers, timeout=20, auth=auth_tuple)
+                )
                 resp.raise_for_status()
                 parsed_json = try_parse_json_response(resp)
                 if parsed_json is not None:
@@ -3534,7 +3541,9 @@ class ApiAutomationService:
                                 ])
                             for c in candidates:
                                 try:
-                                    rr = requests.get(c, headers=headers, timeout=20)
+                                    rr = await loop.run_in_executor(
+                                        None, lambda: requests.get(c, headers=headers, timeout=20)
+                                    )
                                     if rr.status_code >= 400:
                                         continue
                                     cand_json = try_parse_json_response(rr)
