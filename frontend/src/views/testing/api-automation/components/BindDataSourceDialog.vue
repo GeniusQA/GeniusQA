@@ -279,6 +279,9 @@ const defaultForm = () => ({
 	has_sec_strategy: 'scheme',
 	no_sec_strategy: 'inherit',
 	import_info: true,
+	import_models: true,
+	model_match_mode: 'overwrite',
+	model_pid: 0,
 });
 const form = ref(defaultForm());
 
@@ -329,6 +332,9 @@ const buildConfig = () => {
 		has_sec_strategy: f.has_sec_strategy,
 		no_sec_strategy: f.no_sec_strategy,
 		import_info: f.import_info,
+		import_models: f.import_models,
+		model_match_mode: f.model_match_mode,
+		model_pid: f.model_pid || 0,
 	};
 };
 

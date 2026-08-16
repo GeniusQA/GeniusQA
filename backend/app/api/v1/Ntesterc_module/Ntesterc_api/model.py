@@ -58,6 +58,23 @@ class ApiVariableModel(Base):
     department_id = Column(BigInteger, comment='团队内共享：所属部门ID')
 
 
+class ApiDataModel(Base):
+    """数据模型（OpenAPI components/schemas 导入）"""
+    __tablename__ = "api_automation_data_models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键')
+    name = Column(String(255), comment='模型名称')
+    schema = Column(JSON, comment='模型 schema')
+    api_service_id = Column(Integer, comment='所属服务')
+    pid = Column(Integer, default=0, comment='所属目录菜单 id')
+    menu_id = Column(Integer, comment='菜单节点 id')
+    created_by = Column(Integer, comment='创建人')
+    updated_by = Column(Integer, comment='更新人')
+    created_at = Column(DateTime, default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), comment='更新时间')
+    enabled_flag = Column(Integer, default=1, comment='删除标记：1正常 0删除')
+
+
 class ApiModel(Base):
     """API接口模型"""
     __tablename__ = 'api_automation_apis'

@@ -967,6 +967,8 @@ class ApiAutomationService:
         body["match_mode"] = str(cfg.get("match_mode") or "overwrite")
         body["match_id_key"] = str(cfg.get("match_id_key") or "method_path")
         body["update_location"] = bool(cfg.get("update_location"))
+        body["import_models"] = bool(cfg.get("import_models") if cfg.get("import_models") is not None else True)
+        body["model_match_mode"] = str(cfg.get("model_match_mode") or "overwrite")
         if cfg.get("pid"):
             try:
                 body["pid"] = int(cfg["pid"])
@@ -2866,6 +2868,87 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    async def _import_data_models(
+        db: AsyncSession,
+        doc_json: Any,
+        api_service_id: int,
+        user_id: int,
+        model_match_mode: str = "overwrite",
+        model_pid: int = 0,
+    ) -> int:
+        """导入 OpenAPI components/schemas 为数据模型（含冲突策略）"""
+        if not isinstance(doc_json, dict):
+            return 0
+        comp = doc_json.get("components") or {}
+        schemas = comp.get("schemas") if isinstance(comp, dict) else None
+        if not isinstance(schemas, dict) or not schemas:
+            return 0
+        # 目标目录：指定或服务根下的「数据模型」目录
+        target_pid = model_pid
+        if not target_pid:
+            dm_dir = (
+                await db.execute(
+                    select(ApiMenuModel).where(
+                        ApiMenuModel.api_service_id == int(api_service_id),
+                        ApiMenuModel.pid == 0,
+                        ApiMenuModel.enabled_flag == 1,
+                        ApiMenuModel.type == 1,
+                        ApiMenuModel.name == "数据模型",
+                    )
+                )
+            ).scalars().first()
+            if dm_dir is not None:
+                target_pid = int(dm_dir.id)
+        imported = 0
+        for name, schema in schemas.items():
+            if not isinstance(schema, dict):
+                continue
+            existing = (
+                await db.execute(
+                    select(ApiDataModel).where(
+                        ApiDataModel.api_service_id == int(api_service_id),
+                        ApiDataModel.enabled_flag == 1,
+                        ApiDataModel.name == str(name),
+                    )
+                )
+            ).scalars().first()
+            if existing is not None:
+                if model_match_mode == "skip":
+                    continue
+                if model_match_mode != "smart_merge":
+                    existing.schema = schema
+                    existing.updated_by = user_id
+                imported += 1
+                continue
+            model = ApiDataModel(
+                name=str(name),
+                schema=schema,
+                api_service_id=int(api_service_id),
+                pid=target_pid,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+            db.add(model)
+            await db.flush()
+            # 菜单节点（type=4 数据模型）
+            menu = ApiMenuModel(
+                name=str(name),
+                pid=target_pid,
+                type=4,
+                api_service_id=int(api_service_id),
+                status=1,
+                api_id=None,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+            db.add(menu)
+            await db.flush()
+            model.menu_id = int(menu.id)
+            imported += 1
+        await db.commit()
+        return imported
+
+    @staticmethod
     def _apply_openapi_auth(req: Dict[str, Any], scheme: Dict[str, Any]) -> None:
         """OpenAPI Security Scheme -> 平台 Auth 配置映射"""
         if not isinstance(scheme, dict):
@@ -3365,6 +3448,9 @@ class ApiAutomationService:
         name_rule = str(body.get("name_rule") or "operation_id")
         import_info = bool(body.get("import_info"))
         update_location = bool(body.get("update_location"))
+        import_models = bool(body.get("import_models") if body.get("import_models") is not None else True)
+        model_match_mode = str(body.get("model_match_mode") or "overwrite")
+        model_pid = int(body.get("model_pid") or 0)
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
@@ -3810,6 +3896,14 @@ class ApiAutomationService:
                 pass
             await db.commit()
 
+        _model_count = 0
+        if import_models:
+            try:
+                _model_count = await ApiAutomationService._import_data_models(
+                    db, doc_json, api_service_id, user_id, model_match_mode, model_pid
+                )
+            except Exception:
+                _model_count = 0
         if import_info:
             try:
                 _info = doc_json.get("info") if isinstance(doc_json, dict) else None
@@ -3829,6 +3923,7 @@ class ApiAutomationService:
             "imported": imported_count,
             "updated": updated_count,
             "folders": len(folder_names),
+            "models": _model_count,
         }
 
     @staticmethod

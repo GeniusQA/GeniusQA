@@ -83,6 +83,23 @@
 						<el-switch v-model="globalAuth" />
 					</div>
 					<div class="ipv-switch-row">
+						<span class="ipv-switch-label">导入数据模型（OpenAPI schemas）</span>
+						<el-switch v-model="importModels" />
+					</div>
+					<template v-if="importModels">
+						<div class="ipv-label" style="margin-top: 6px">匹配到同名数据模型时</div>
+						<el-select v-model="modelMatchMode" size="small" style="width: 100%">
+							<el-option label="覆盖已有数据模型" value="overwrite" />
+							<el-option label="智能合并" value="smart_merge" />
+							<el-option label="不导入" value="skip" />
+						</el-select>
+						<div class="ipv-label" style="margin-top: 6px">目标目录（数据模型）</div>
+						<el-select v-model="modelPid" size="small" style="width: 100%" clearable>
+							<el-option label="数据模型（根）" :value="0" />
+							<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
+						</el-select>
+					</template>
+					<div class="ipv-switch-row">
 						<span class="ipv-switch-label">将文件里的 Info 导入</span>
 						<el-switch v-model="importInfo" />
 					</div>
@@ -148,6 +165,9 @@ watch(
 			matchIdKey.value = 'method_path';
 			nameRule.value = 'operation_id';
 			importInfo.value = true;
+			importModels.value = true;
+			modelMatchMode.value = 'overwrite';
+			modelPid.value = 0;
 			selectedSvc.value = Number(props.serviceId) || 0;
 			loadSvcList();
 			loadDirs();
@@ -176,6 +196,9 @@ const matchMode = ref('overwrite');
 const matchIdKey = ref('method_path');
 const nameRule = ref('operation_id');
 const importInfo = ref(true);
+const importModels = ref(true);
+const modelMatchMode = ref('overwrite');
+const modelPid = ref(0);
 
 const idKeyLabel = (v: string) =>
 	v === 'operation_id' ? 'OperationId' : v === 'query' ? 'Query 参数' : v === 'body' ? 'Body 参数' : v === 'header' ? 'Header 参数' : 'Method & Path';
@@ -277,6 +300,9 @@ const doImport = async () => {
 			match_id_key: matchIdKey.value,
 			name_rule: nameRule.value,
 			import_info: importInfo.value,
+			import_models: importModels.value,
+			model_match_mode: modelMatchMode.value,
+			model_pid: modelPid.value,
 		});
 		if (r?.code === 200) {
 			ElMessage.success('导入成功');
