@@ -339,7 +339,7 @@
 						</el-tab-pane>
 					</el-tabs>
 				</div>
-				<div v-else-if="dmModel && !apiTabs.length" class="dm-detail">
+				<div v-if="dmModel && !apiTabs.length && !selectedModule && !selectedDir" class="dm-detail">
 					<div class="dm-header">
 						<span class="dm-title">数据模型</span>
 						<div style="flex:1"></div>
@@ -367,7 +367,7 @@
 						<el-button type="primary" :loading="dmCreating" @click="createDmFromJson">生成并保存</el-button>
 					</template>
 				</el-dialog>
-				<div v-else-if="!apiTabs.length" class="detail-empty">
+				<div v-if="!apiTabs.length && !selectedModule && !selectedDir && !dmModel" class="detail-empty">
 					<el-icon style="font-size:40px;color:#dcdfe6"><Document /></el-icon>
 					<p>点击左侧接口查看详情</p>
 				</div>
