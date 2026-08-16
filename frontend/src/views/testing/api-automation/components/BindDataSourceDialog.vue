@@ -194,7 +194,7 @@ const props = defineProps<{
 	existing?: Record<string, any> | null;
 }>();
 
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void }>();
+const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void; (e: 'syncOk', result: any): void }>();
 
 const inner = ref(false);
 watch(
@@ -379,9 +379,7 @@ const doSync = async () => {
 		await useApiAutomationApi().saveDataSource({ service_id: props.serviceId, config: buildConfig() });
 		const r: any = await useApiAutomationApi().syncDataSource({ service_id: props.serviceId });
 		if (r?.code === 200) {
-			ElMessage.success(`同步完成：导入 ${r.data?.imported || 0} 个接口`);
-			inner.value = false;
-			emit('saved');
+			emit('syncOk', r.data || { imported: 0, updated: 0, folders: 0, models: 0 });
 		} else {
 			ElMessage.error(r?.message || '同步失败');
 		}

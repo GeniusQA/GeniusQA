@@ -552,7 +552,9 @@
 			:module-name="selectedModule?.name || ''"
 			:existing="bindDsExisting"
 			@saved="onBindDsSaved"
+			@sync-ok="onDsSyncOk"
 		/>
+		<SyncResultDialog v-model="syncResultVisible" :result="syncResult" />
 
 		<!-- 模块变量批量编辑 -->
 		<BatchEditDialog v-model="moduleVarsBulkVisible" :target="'module_vars'" :initial-text="moduleVarsBulkText" @apply="applyModuleVarsBulk" />
@@ -607,6 +609,7 @@ import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
 import BatchEditDialog from './components/BatchEditDialog.vue';
 import BindDataSourceDialog from './components/BindDataSourceDialog.vue';
+import SyncResultDialog from './components/SyncResultDialog.vue';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
@@ -854,6 +857,12 @@ const saveDirConfig = async () => {
 
 const bindDsVisible = ref(false);
 const bindDsExisting = ref<Record<string, any> | null>(null);
+const syncResult = ref<Record<string, any> | null>(null);
+const syncResultVisible = ref(false);
+const onDsSyncOk = (result: any) => {
+	syncResult.value = result || null;
+	syncResultVisible.value = true;
+};
 const dsSyncing = ref(false);
 
 const freqLabel = (v: string) =>
@@ -880,7 +889,8 @@ const syncBoundDs = async () => {
 	try {
 		const r: any = await useApiAutomationApi().syncDataSource({ service_id: Number(selectedModule.value.api_service_id) });
 		if (r?.code === 200) {
-			ElMessage.success(`同步完成：导入 ${r.data?.imported || 0} 个接口`);
+			syncResult.value = r.data || null;
+			syncResultVisible.value = true;
 			loadModuleDetail(selectedModule.value);
 			loadTree();
 		} else {
