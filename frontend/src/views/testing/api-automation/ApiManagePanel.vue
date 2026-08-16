@@ -1522,9 +1522,11 @@ const handleNodeCommand = (cmd: string, data: any) => {
 
 const confirmMenu = async () => {
 	if (menuForm.value.mode === 'add_module') {
+		// 模块 = 服务（项目）下的顶层目录分组（对齐 Apifox：模块不创建新服务）
+		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			await add_api_service({ name: menuForm.value.name, api_project_id: props.serviceId || 0 });
-			ElMessage.success('模块已创建（自动生成"接口"根目录）');
+			await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 1, api_service_id: props.serviceId, protocol: 'http' });
+			ElMessage.success('模块已创建');
 			menuDialogVisible.value = false;
 			loadTree();
 		} catch (e: any) {
