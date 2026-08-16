@@ -52,7 +52,7 @@
 					<template #default="{ data }">
 						<div class="tree-node">
 							<div class="node-left">
-								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
+								<el-icon v-if="data.type===0" class="icon-folder" style="color:#2563eb"><Coin /></el-icon>
 								<el-icon v-else-if="data.type===1" :class="data.name==='数据模型' ? 'icon-dm' : 'icon-folder'"><Box v-if="data.name==='数据模型'" /><FolderOpened v-else /></el-icon>
 					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
 								<el-icon v-else-if="data.type===5" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
@@ -621,7 +621,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, Box, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
@@ -1692,11 +1692,11 @@ const copyApi = async (data: any) => {
 const deleteNode = async (data: any) => {
 	if (data.type === 0) {
 		try {
-			await ElMessageBox.confirm(`确定删除模块「${data.name}」？所属根目录、子目录、接口将一并删除！`, '删除模块', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+			await ElMessageBox.confirm(`确定删除服务「${data.name}」（=项目，蓝色图标）？服务列表也会一并删除，其下模块、目录、接口将级联删除！`, '删除服务', { type: 'error', confirmButtonText: '删除服务', cancelButtonText: '取消' });
 		} catch { return; }
 		try {
 			await del_api_service({ id: Number(data.api_service_id) });
-			ElMessage.success('模块已删除');
+			ElMessage.success('服务已删除');
 			loadTree();
 		} catch (e: any) {
 			ElMessage.error(e?.message || '删除失败');
