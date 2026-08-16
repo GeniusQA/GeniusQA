@@ -294,28 +294,30 @@ const loadDirs = async () => {
 		const raw = r?.data;
 		const tree = Array.isArray(raw) ? raw : [];
 		const dirs: any[] = [];
-		const walk = (nodes: any[], rootName: string) => {
+		let rootDirId: any = 0;
+		const walk = (nodes: any[], rootName: string, depth: number) => {
 			for (const n of nodes || []) {
 				if (n.type === 0) {
-					walk(n.children || [], n.name);
+					walk(n.children || [], n.name, 0);
 					continue;
 				}
-				if ((n.type === 1 || n.type === 5) && Number(n.pid) === 0) {
-					// 根目录（「接口」）：默认选项，文案=模块名；继续遍历其子目录
-					if (!dirs.length) dirs.push({ id: n.id, path: rootName || n.name, pid: 0, common_params: n.common_params || null, name: n.name });
-					walk(n.children || [], rootName);
+				if (n.type === 1 && Number(n.pid) === 0 && n.name === '接口') {
+					// 「接口」根目录：不列出（隐含在模块默认项），但继续遍历其子目录
+					rootDirId = n.id;
+					walk(n.children || [], rootName, 1);
 					continue;
 				}
 				if (n.type === 1 || n.type === 5) {
-					dirs.push({ id: n.id, path: n.name, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
-					walk(n.children || [], rootName);
+					const p = (depth > 0 ? '　'.repeat(depth) : '') + n.name;
+					dirs.push({ id: n.id, path: p });
+					walk(n.children || [], rootName, depth + 1);
 				}
 			}
 		};
-		walk(tree, '');
-		if (!dirs.length) dirs.push({ id: 0, path: '根目录', pid: 0, common_params: null, name: '根目录' });
+		walk(tree, '', 0);
+		dirs.unshift({ id: rootDirId || 0, path: rootDirName || '根目录' });
 		dirList.value = dirs;
-		if (!form.value.pid && dirs.length) form.value.pid = dirs[0].id;
+		if (!form.value.pid && dirList.value.length) form.value.pid = dirList.value[0].id;
 	} catch { dirList.value = []; }
 };
 
