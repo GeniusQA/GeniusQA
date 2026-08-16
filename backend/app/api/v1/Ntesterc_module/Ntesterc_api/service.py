@@ -2707,7 +2707,7 @@ class ApiAutomationService:
                         ApiMenuModel.name == key,
                     )
                 )
-            ).scalar_one_or_none()
+            ).scalars().first()
             if row:
                 folder_cache[key] = int(row.id)
                 return int(row.id)
