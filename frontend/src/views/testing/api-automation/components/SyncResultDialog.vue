@@ -10,6 +10,12 @@
 					<th>类型</th>
 					<th>新增</th>
 					<th>修改</th>
+					<th>
+						没有变化
+						<el-tooltip content="接口或数据模型导入前后没有变化" placement="top">
+							<el-icon class="th-info"><QuestionFilled /></el-icon>
+						</el-tooltip>
+					</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -17,6 +23,7 @@
 					<td>{{ row.name }}</td>
 					<td>{{ row.added || 0 }}</td>
 					<td>{{ row.updated || 0 }}</td>
+					<td>{{ row.unchanged || 0 }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -28,7 +35,7 @@
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue';
-import { CircleCheckFilled } from '@element-plus/icons-vue';
+import { CircleCheckFilled, QuestionFilled } from '@element-plus/icons-vue';
 
 const props = defineProps<{
 	modelValue: boolean;
@@ -46,17 +53,17 @@ const rows = computed(() => {
 	const r = props.result || {};
 	const num = (v: any) => Number(v || 0);
 	return [
-		{ name: '接口/文档', added: num(r.imported), updated: num(r.updated) },
-		{ name: '目录', added: num(r.folders), updated: 0 },
-		{ name: '数据模型', added: num(r.models), updated: 0 },
-		{ name: '环境', added: 0, updated: 0 },
-		{ name: '场景用例', added: 0, updated: 0 },
-		{ name: '测试套件', added: 0, updated: 0 },
-		{ name: '快捷请求', added: 0, updated: 0 },
-		{ name: '响应组件', added: 0, updated: 0 },
-		{ name: '鉴权组件', added: 0, updated: 0 },
-		{ name: '其他组件', added: 0, updated: 0 },
-		{ name: '测试数据', added: 0, updated: 0 },
+		{ name: '接口/文档', added: num(r.imported), updated: num(r.updated), unchanged: num(r.unchanged) },
+		{ name: '目录', added: num(r.folders), updated: 0, unchanged: 0 },
+		{ name: '数据模型', added: num(r.models), updated: 0, unchanged: num(r.models_unchanged) },
+		{ name: '环境', added: 0, updated: 0, unchanged: 0 },
+		{ name: '场景用例', added: 0, updated: 0, unchanged: 0 },
+		{ name: '测试套件', added: 0, updated: 0, unchanged: 0 },
+		{ name: '快捷请求', added: 0, updated: 0, unchanged: 0 },
+		{ name: '响应组件', added: 0, updated: 0, unchanged: 0 },
+		{ name: '鉴权组件', added: 0, updated: 0, unchanged: 0 },
+		{ name: '其他组件', added: 0, updated: 0, unchanged: 0 },
+		{ name: '测试数据', added: 0, updated: 0, unchanged: 0 },
 	];
 });
 </script>
@@ -98,8 +105,10 @@ const rows = computed(() => {
 	color: var(--el-text-color-primary);
 }
 .sync-table td:nth-child(2),
-.sync-table td:nth-child(3) {
+.sync-table td:nth-child(3),
+.sync-table td:nth-child(4) {
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
+.th-info { font-size: 13px; color: var(--el-text-color-secondary); margin-left: 4px; vertical-align: middle; cursor: pointer; }
 </style>

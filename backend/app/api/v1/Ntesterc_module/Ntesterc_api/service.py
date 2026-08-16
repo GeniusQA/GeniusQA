@@ -2414,6 +2414,8 @@ class ApiAutomationService:
 
         imported_count = 0
         updated_count = 0
+        unchanged_count = 0
+        unchanged_count = 0
         folder_count = 0
         existing_apis = list(
             (
@@ -2497,20 +2499,25 @@ class ApiAutomationService:
                     req["assert"] = old_req.get("assert")
                 if old_req.get("config"):
                     req["config"] = old_req.get("config")
-                await db.execute(
-                    update(ApiModel)
-                    .where(ApiModel.id == target_api.id, ApiModel.enabled_flag == 1)
-                    .values(
-                        url=keep_url,
-                        req=req,
-                        document=api_obj,
-                        name=display_name,
-                        description=api_desc,
-                        updated_by=user_id,
+                _same = json.dumps(req, sort_keys=True, ensure_ascii=False) == json.dumps(old_req or {}, sort_keys=True, ensure_ascii=False)
+                if _same:
+                    api_id = int(target_api.id)
+                    unchanged_count += 1
+                else:
+                    await db.execute(
+                        update(ApiModel)
+                        .where(ApiModel.id == target_api.id, ApiModel.enabled_flag == 1)
+                        .values(
+                            url=keep_url,
+                            req=req,
+                            document=api_obj,
+                            name=display_name,
+                            description=api_desc,
+                            updated_by=user_id,
+                        )
                     )
-                )
-                api_id = int(target_api.id)
-                updated_count += 1
+                    api_id = int(target_api.id)
+                    updated_count += 1
             else:
                 api_row = ApiModel(
                     api_service_id=api_service_id,
@@ -2622,7 +2629,7 @@ class ApiAutomationService:
             .values(last_pull_status=1)
         )
         await db.commit()
-        return {"imported": imported_count, "updated": updated_count, "folders": folder_count}
+        return {"imported": imported_count, "updated": updated_count, "unchanged": unchanged_count, "folders": folder_count}
 
     @staticmethod
     async def _pull_apifox_project_and_import(
@@ -2721,6 +2728,7 @@ class ApiAutomationService:
 
         imported_count = 0
         updated_count = 0
+        unchanged_count = 0
         folder_names = set()
         existing_apis = list(
             (
@@ -2890,7 +2898,7 @@ class ApiAutomationService:
             )
 
         await db.commit()
-        return {"imported": imported_count, "updated": updated_count, "folders": len(folder_names)}
+        return {"imported": imported_count, "updated": updated_count, "unchanged": unchanged_count, "folders": len(folder_names)}
 
     @staticmethod
     @staticmethod
@@ -3805,6 +3813,7 @@ class ApiAutomationService:
 
         imported_count = 0
         updated_count = 0
+        unchanged_count = 0
         folder_names = set()
         existing_apis = list(
             (
@@ -4148,6 +4157,7 @@ class ApiAutomationService:
             "source_type": source_type,
             "imported": imported_count,
             "updated": updated_count,
+            "unchanged": unchanged_count,
             "folders": len(folder_names),
             "models": _model_count,
         }
@@ -7097,6 +7107,7 @@ class ApiAutomationService:
 
         imported_count = 0
         updated_count = 0
+        unchanged_count = 0
         folder_names = set()
         service_apis = list(
             (
@@ -7253,7 +7264,7 @@ class ApiAutomationService:
                     except Exception:
                         continue
         await db.commit()
-        return {"imported": imported_count, "updated": updated_count, "folders": len(folder_names)}
+        return {"imported": imported_count, "updated": updated_count, "unchanged": unchanged_count, "folders": len(folder_names)}
 
     @staticmethod
     async def service_api_update(db: AsyncSession, body: Dict[str, Any]) -> None:
