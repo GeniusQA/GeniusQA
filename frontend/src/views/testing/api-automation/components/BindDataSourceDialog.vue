@@ -296,7 +296,7 @@ const loadDirs = async () => {
 		const dirs: any[] = [];
 		const walk = (nodes: any[], prefix: string) => {
 			for (const n of nodes || []) {
-				if (n.type === 1) {
+				if (n.type === 1 || n.type === 5) {
 					if ((n.pid || 0) === 0) {
 						// 根目录（Yasta Pay / 接口）：不单独列出，作为「根目录」默认项隐含，继续遍历其子目录
 						walk(n.children || [], '');

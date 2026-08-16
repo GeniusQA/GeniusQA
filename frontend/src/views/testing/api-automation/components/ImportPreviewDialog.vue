@@ -275,7 +275,7 @@ const loadDirs = async () => {
 		const dirs: any[] = [];
 		const walk = (nodes: any[], prefix: string) => {
 			for (const n of nodes || []) {
-				if (n.type === 1) {
+				if (n.type === 1 || n.type === 5) {
 					const p = prefix ? prefix + ' / ' + n.name : n.name;
 					dirs.push({ id: n.id, path: p });
 					walk(n.children || [], p);
