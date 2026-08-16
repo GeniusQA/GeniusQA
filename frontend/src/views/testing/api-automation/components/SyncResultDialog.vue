@@ -31,15 +31,15 @@ import { computed, ref, watch } from 'vue';
 import { CircleCheckFilled } from '@element-plus/icons-vue';
 
 const props = defineProps<{
-	visible: boolean;
+	modelValue: boolean;
 	result?: Record<string, any> | null;
 }>();
 
-const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>();
+const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>();
 
 const inner = computed({
-	get: () => props.visible,
-	set: (v: boolean) => emit('update:visible', v),
+	get: () => props.modelValue,
+	set: (v: boolean) => emit('update:modelValue', v),
 });
 
 const rows = computed(() => {
