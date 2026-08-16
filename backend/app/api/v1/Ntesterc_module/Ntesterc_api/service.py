@@ -3363,6 +3363,8 @@ class ApiAutomationService:
         gen_case = bool(body.get("gen_case"))
         match_mode = str(body.get("match_mode") or "overwrite")
         match_id_key = str(body.get("match_id_key") or "method_path")
+        name_rule = str(body.get("name_rule") or "operation_id")
+        import_info = bool(body.get("import_info"))
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
@@ -3523,7 +3525,14 @@ class ApiAutomationService:
                     folder_id = target_pid
 
                 req = ApiAutomationService._build_req_from_openapi(api_path, method, operation)
-                api_name = str(operation.get("summary") or operation.get("operationId") or f"{method.upper()} {api_path}")
+                if operation.get("summary"):
+                    api_name = str(operation.get("summary"))
+                elif name_rule == "path":
+                    api_name = f"{method.upper()} {api_path}"
+                elif name_rule == "description":
+                    api_name = str(operation.get("description") or operation.get("operationId") or f"{method.upper()} {api_path}")
+                else:
+                    api_name = str(operation.get("operationId") or f"{method.upper()} {api_path}")
                 api_desc = str(operation.get("description") or "")
 
                 target_method = int(req.get("method") or 2)
@@ -3782,6 +3791,19 @@ class ApiAutomationService:
                 pass
             await db.commit()
 
+        if import_info:
+            try:
+                _info = doc_json.get("info") if isinstance(doc_json, dict) else None
+                if isinstance(_info, dict):
+                    _desc = str(_info.get("description") or _info.get("title") or "")
+                    if _desc:
+                        await db.execute(
+                            update(ApiServiceModel)
+                            .where(ApiServiceModel.id == int(api_service_id), ApiServiceModel.enabled_flag == 1)
+                            .values(description=_desc, updated_by=user_id)
+                        )
+            except Exception:
+                pass
         await db.commit()
         return {
             "source_type": source_type,

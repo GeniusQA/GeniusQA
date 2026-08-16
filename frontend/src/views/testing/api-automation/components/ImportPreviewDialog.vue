@@ -46,6 +46,26 @@
 							<el-option v-for="d in dirList" :key="d.id" :label="d.path" :value="d.id" />
 						</el-select>
 					</template>
+					<div class="ipv-label" style="margin-top: 8px">匹配到相同接口时（根据 {{ idKeyLabel(matchIdKey) }}）</div>
+					<el-select v-model="matchMode" size="small" style="width: 100%">
+						<el-option label="覆盖已有接口" value="overwrite" />
+						<el-option label="智能合并" value="smart_merge" />
+						<el-option label="不导入" value="skip" />
+					</el-select>
+					<div class="ipv-label" style="margin-top: 8px">接口唯一标识</div>
+					<el-select v-model="matchIdKey" size="small" style="width: 100%">
+						<el-option label="Method & Path" value="method_path" />
+						<el-option label="OperationId" value="operation_id" />
+						<el-option label="Query 参数" value="query" />
+						<el-option label="Body 参数" value="body" />
+						<el-option label="Header 参数" value="header" />
+					</el-select>
+					<div class="ipv-label" style="margin-top: 8px">接口 Summary 为空时使用</div>
+					<el-select v-model="nameRule" size="small" style="width: 100%">
+						<el-option label="使用 operationId" value="operation_id" />
+						<el-option label="使用 path" value="path" />
+						<el-option label="从 description 提取" value="description" />
+					</el-select>
 					<div class="ipv-switch-row">
 						<span class="ipv-switch-label">为每个接口自动生成一个调试用例</span>
 						<el-switch v-model="genCase" />
@@ -61,6 +81,10 @@
 					<div class="ipv-switch-row">
 						<span class="ipv-switch-label">将目录 Auth 设置为 OpenAPI 的全局 Security</span>
 						<el-switch v-model="globalAuth" />
+					</div>
+					<div class="ipv-switch-row">
+						<span class="ipv-switch-label">将文件里的 Info 导入</span>
+						<el-switch v-model="importInfo" />
 					</div>
 					<template v-if="importSecurity">
 						<div class="ipv-label" style="margin-top: 10px">当导入的接口有设置 Security 时</div>
@@ -120,6 +144,10 @@ watch(
 			globalAuth.value = true;
 			hasSecStrategy.value = 'inherit';
 			noSecStrategy.value = 'inherit';
+			matchMode.value = 'overwrite';
+			matchIdKey.value = 'method_path';
+			nameRule.value = 'operation_id';
+			importInfo.value = true;
 			selectedSvc.value = Number(props.serviceId) || 0;
 			loadSvcList();
 			loadDirs();
@@ -144,6 +172,13 @@ const importSecurity = ref(true);
 const globalAuth = ref(true);
 const hasSecStrategy = ref('inherit');
 const noSecStrategy = ref('inherit');
+const matchMode = ref('overwrite');
+const matchIdKey = ref('method_path');
+const nameRule = ref('operation_id');
+const importInfo = ref(true);
+
+const idKeyLabel = (v: string) =>
+	v === 'operation_id' ? 'OperationId' : v === 'query' ? 'Query 参数' : v === 'body' ? 'Body 参数' : v === 'header' ? 'Header 参数' : 'Method & Path';
 const dirList = ref<any[]>([]);
 const svcList = ref<any[]>([]);
 const selectedSvc = ref<number>(0);
@@ -238,6 +273,10 @@ const doImport = async () => {
 			global_auth: globalAuth.value,
 			has_sec_strategy: hasSecStrategy.value,
 			no_sec_strategy: noSecStrategy.value,
+			match_mode: matchMode.value,
+			match_id_key: matchIdKey.value,
+			name_rule: nameRule.value,
+			import_info: importInfo.value,
 		});
 		if (r?.code === 200) {
 			ElMessage.success('导入成功');
