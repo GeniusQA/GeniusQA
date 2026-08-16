@@ -198,13 +198,8 @@
 							<div class="dir-doc-head">
 								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
-								<el-radio-group v-model="dirDocMode" size="small" style="margin-left: 8px">
-									<el-radio-button value="edit">编辑</el-radio-button>
-									<el-radio-button value="preview">预览</el-radio-button>
-								</el-radio-group>
 							</div>
-							<el-input v-if="dirDocMode === 'edit'" v-model="dirDocContent" type="textarea" :rows="18" class="dir-doc-textarea" placeholder="请输入内容（支持 Markdown）" />
-							<div v-else class="dir-doc-preview markdown-body" v-html="dirDocHtml"></div>
+							<MdEditor v-model="dirDocContent" :toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'table', 'revoke', 'next', '=', 'preview']" placeholder="请输入内容" style="height: 420px" />
 						</el-tab-pane>
 					<el-tab-pane label="全部接口" name="apis">
 							<div class="dd-apis">
@@ -668,6 +663,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
+import { MdEditor } from 'md-editor-v3';
+import 'md-editor-v3/lib/style.css';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
