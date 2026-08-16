@@ -1369,6 +1369,12 @@ const onNodeClick = async (data: any) => {
 			dirDocContent.value = '';
 		}
 		dirDocMode.value = 'edit';
+		// 已有文档内容：进入页面自动展示预览（对齐 Apifox），点编辑可切回
+		if (dirDocContent.value) {
+			nextTick(() => {
+				try { mdEditorRef.value?.togglePreview?.(); } catch {}
+			});
+		}
 		dirBefore.value = Array.isArray(cp.before) ? cp.before : [];
 		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
 		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
