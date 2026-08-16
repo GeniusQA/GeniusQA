@@ -909,10 +909,11 @@ class ApiAutomationService:
             if not isinstance(cp, dict):
                 cp = {}
             cp["data_source_config"] = cfg
+            import json as _json
             await db.execute(
                 update(ApiMenuModel)
                 .where(ApiMenuModel.id == module_id)
-                .values(common_params=cp, updated_by=user_id)
+                .values(common_params=_json.dumps(cp, ensure_ascii=False), updated_by=user_id)
             )
         else:
             await db.execute(
@@ -1054,10 +1055,11 @@ class ApiAutomationService:
             from datetime import datetime as _dt
             cfg2["last_sync_at"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
             if module_id:
+                import json as _json2
                 await db.execute(
                     update(ApiMenuModel)
                     .where(ApiMenuModel.id == module_id)
-                    .values(common_params={"data_source_config": cfg2})
+                    .values(common_params=_json2.dumps({"data_source_config": cfg2}, ensure_ascii=False))
                 )
             else:
                 await db.execute(
