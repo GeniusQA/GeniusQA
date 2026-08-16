@@ -321,7 +321,7 @@ const loadDirs = async () => {
 		// 只展示当前关联模块，不匹配其他模块的目录
 		const cur = tree.find((n: any) => Number(n.id) === Number(props.moduleId || 0));
 		if (cur) walkMod(cur);
-		if (!dirs.length) dirs.push({ id: 0, path: props.moduleName || '根目录', pid: 0, common_params: null, name: props.moduleName || '根目录' });
+		if (!dirs.length) dirs.push({ id: 0, path: props.moduleName || '', pid: 0, common_params: null, name: props.moduleName || '' });
 		dirList.value = dirs;
 		if (!form.value.pid && dirList.value.length) form.value.pid = dirList.value[0].id;
 	} catch { dirList.value = []; }

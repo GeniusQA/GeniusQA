@@ -296,7 +296,7 @@ const loadDirs = async () => {
 			dirs.push({ id: ifaceRootId, path: mod.name });
 		};
 		for (const m of tree) walkMod(m);
-		if (!dirs.length) dirs.push({ id: 0, path: '根目录' });
+		if (!dirs.length) dirs.push({ id: 0, path: '' });
 		dirList.value = dirs;
 		if (!targetPid.value && dirList.value.length) targetPid.value = dirList.value[0].id;
 	} catch {
