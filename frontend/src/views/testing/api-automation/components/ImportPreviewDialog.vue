@@ -274,12 +274,10 @@ const loadDirs = async () => {
 				const dirs: any[] = [];
 		// 树顶层为模块（type=5）：每个模块一个默认项（模块名→其「接口」根目录 id）+ 其子目录
 		const walkMod = (mod: any) => {
-			let ifaceRootId: any = mod.id;
 			const walkDir = (nodes: any[], depth: number) => {
 				for (const n of nodes || []) {
 					if (n.type === 1 && Number(n.pid) === Number(mod.id) && n.name === '接口') {
-						ifaceRootId = n.id;
-						walkDir(n.children || [], 1);
+							walkDir(n.children || [], 1);
 						continue;
 					}
 					if (n.type === 1 && n.name === '数据模型') {
@@ -292,7 +290,7 @@ const loadDirs = async () => {
 				}
 			};
 			walkDir(mod.children || [], 1);
-			dirs.push({ id: ifaceRootId, path: mod.name });
+			dirs.push({ id: mod.id, path: mod.name });
 		};
 		for (const m of tree) walkMod(m);
 		if (!dirs.length) dirs.push({ id: 0, path: '' });

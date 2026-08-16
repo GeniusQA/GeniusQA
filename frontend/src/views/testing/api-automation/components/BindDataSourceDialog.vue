@@ -295,12 +295,10 @@ const loadDirs = async () => {
 				const dirs: any[] = [];
 		// 树顶层为模块（type=5）：模块默认项=模块名（值=模块「接口」根目录 id），子目录缩进展示，「接口」根不列出
 		const walkMod = (mod: any) => {
-			let ifaceRootId: any = mod.id;
 			const walkDir = (nodes: any[], depth: number) => {
 				for (const n of nodes || []) {
 					if (n.type === 1 && Number(n.pid) === Number(mod.id) && n.name === '接口') {
-						ifaceRootId = n.id;
-						walkDir(n.children || [], 1);
+							walkDir(n.children || [], 1);
 						continue;
 					}
 					if (n.type === 1 && n.name === '数据模型') {
@@ -314,7 +312,7 @@ const loadDirs = async () => {
 				}
 			};
 			walkDir(mod.children || [], 1);
-			dirs.push({ id: ifaceRootId, path: mod.name, pid: 0, common_params: mod.common_params || null, name: mod.name });
+			dirs.push({ id: mod.id, path: mod.name, pid: 0, common_params: mod.common_params || null, name: mod.name });
 		};
 		// 只展示当前关联模块，不匹配其他模块的目录
 		const cur = tree.find((n: any) => Number(n.id) === Number(props.moduleId || 0));

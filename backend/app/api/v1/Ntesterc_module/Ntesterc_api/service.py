@@ -1500,29 +1500,20 @@ class ApiAutomationService:
             )
         ).scalars().all()
         api_ids = [int(m.api_id) for m in menus if m.api_id]
-        # 2. 软删接口
+        # 2. 硬删除接口
         if api_ids:
-            await db.execute(
-                update(ApiModel)
-                .where(ApiModel.id.in_(api_ids))
-                .values(enabled_flag=0, updated_by=user_id)
-            )
-        # 3. 软删所有菜单（含根目录）
+            await db.execute(delete(ApiModel).where(ApiModel.id.in_(api_ids)))
+        # 3. 硬删除所有菜单（含根目录）
+        await db.execute(delete(ApiMenuModel).where(ApiMenuModel.api_service_id == sid))
+        # 4. 硬删除模块
         await db.execute(
-            update(ApiMenuModel)
-            .where(ApiMenuModel.api_service_id == sid, ApiMenuModel.enabled_flag == 1)
-            .values(enabled_flag=0, updated_by=user_id)
-        )
-        # 4. 软删模块
-        await db.execute(
-            update(ApiServiceModel)
-            .where(
+            delete(ApiServiceModel).where(
                 ApiServiceModel.id == sid,
-                ApiServiceModel.enabled_flag == 1,
                 ApiServiceModel.created_by == user_id,
             )
-            .values(enabled_flag=0, updated_by=user_id)
         )
+        # 数据模型物理删除
+        await db.execute(delete(ApiDataModel).where(ApiDataModel.api_service_id == sid))
         # 模块（服务）删除联动：所有环境移除该模块前置 URL 行
         await ApiAutomationService._sync_env_front_urls(db, [f"svc_{sid}"], remove=True)
         await db.commit()
@@ -3049,15 +3040,9 @@ class ApiAutomationService:
         ).scalar_one_or_none()
         if not row:
             return
-        row.enabled_flag = 0
-        await db.flush()
         if row.menu_id:
-            menu = (
-                await db.execute(select(ApiMenuModel).where(ApiMenuModel.id == row.menu_id))
-            ).scalar_one_or_none()
-            if menu:
-                menu.enabled_flag = 0
-                await db.flush()
+            await db.execute(delete(ApiMenuModel).where(ApiMenuModel.id == row.menu_id))
+        await db.execute(delete(ApiDataModel).where(ApiDataModel.id == row.id))
         await db.commit()
 
     @staticmethod
@@ -3691,6 +3676,26 @@ class ApiAutomationService:
             return {"preview": ApiAutomationService._preview_doc(doc_json), "mode": "preview"}
 
         target_pid = int(body.get("pid") or 0)
+        # pid 是模块节点（type=5）时，转换为该模块的「接口」子目录（默认导入到模块根目录）
+        if target_pid:
+            _pm = (
+                await db.execute(
+                    select(ApiMenuModel).where(ApiMenuModel.id == target_pid, ApiMenuModel.enabled_flag == 1)
+                )
+            ).scalar_one_or_none()
+            if _pm is not None and int(_pm.type) == 5:
+                _iface = (
+                    await db.execute(
+                        select(ApiMenuModel.id).where(
+                            ApiMenuModel.pid == target_pid,
+                            ApiMenuModel.enabled_flag == 1,
+                            ApiMenuModel.type == 1,
+                            ApiMenuModel.name == "接口",
+                        ).order_by(ApiMenuModel.id.asc()).limit(1)
+                    )
+                ).scalars().first()
+                if _iface:
+                    target_pid = int(_iface)
         # pid=0 默认落到服务根目录（对齐 Apifox：导入默认进模块根目录）
         if not target_pid:
             _root_menu = (
@@ -4436,6 +4441,7 @@ class ApiAutomationService:
             frontier = [ch.id for ch in children]
             to_del.extend(frontier)
         api_ids = []
+        mrows = []
         if to_del:
             mrows = (
                 await db.execute(
@@ -4443,16 +4449,7 @@ class ApiAutomationService:
                 )
             ).scalars().all()
             api_ids = [int(m.api_id) for m in mrows if m.api_id]
-            await db.execute(
-                update(ApiMenuModel)
-                .where(ApiMenuModel.id.in_(to_del))
-                .values(enabled_flag=0, updated_by=user_id)
-            )
-        if api_ids:
-            await db.execute(
-                update(ApiModel).where(ApiModel.id.in_(api_ids)).values(enabled_flag=0)
-            )
-        # 删除 websocket/socketio 接口时：服务下若无其他同协议接口，联动移除环境的 WS 行
+        # 删除 websocket/socketio 接口时：服务下若无其他同协议接口，联动移除环境的 WS 行（删除前检查）
         if to_del:
             for m in mrows:
                 if int(m.type) == 2 and m.api_id and int(m.api_service_id or 0):
@@ -4476,6 +4473,11 @@ class ApiAutomationService:
         mod_ids = [f"svc_{int(m.id)}" for m in mrows if int(m.type) in (0, 5)] if to_del else []
         if mod_ids:
             await ApiAutomationService._sync_env_front_urls(db, mod_ids, remove=True)
+        # 硬删除：菜单与接口物理删除
+        if to_del:
+            await db.execute(delete(ApiMenuModel).where(ApiMenuModel.id.in_(to_del)))
+        if api_ids:
+            await db.execute(delete(ApiModel).where(ApiModel.id.in_(api_ids)))
         await db.commit()
 
     @staticmethod
