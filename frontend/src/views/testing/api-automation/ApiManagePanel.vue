@@ -35,7 +35,7 @@
 						<div class="tree-node">
 							<div class="node-left">
 								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
-								<el-icon v-else-if="data.type===1" class="icon-folder"><FolderOpened /></el-icon>
+								<el-icon v-else-if="data.type===1" :class="data.name==='数据模型' ? 'icon-dm' : 'icon-folder'"><Box v-if="data.name==='数据模型'" /><FolderOpened v-else /></el-icon>
 					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
 								<el-icon v-else-if="data.type===5" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
@@ -1536,8 +1536,13 @@ const confirmMenu = async () => {
 		// 模块 = 服务（项目）下的模块分组节点；先有服务再有模块，不创建服务
 		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
-			ElMessage.success('模块已创建');
+			const rr: any = await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
+			const modId = rr?.data?.id;
+			if (modId) {
+				// 对齐 Apifox：添加模块同时默认生成「数据模型」入口
+				await add_menu({ name: '数据模型', pid: Number(modId), type: 1, api_service_id: props.serviceId, protocol: 'http' });
+			}
+			ElMessage.success('模块已创建（含数据模型）');
 			menuDialogVisible.value = false;
 			loadTree();
 		} catch (e: any) {

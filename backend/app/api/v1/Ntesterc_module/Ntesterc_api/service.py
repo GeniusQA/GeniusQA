@@ -3048,8 +3048,20 @@ class ApiAutomationService:
                     )
                 )
             ).scalars().first()
-            if dm_dir is not None:
-                target_pid = int(dm_dir.id)
+            if dm_dir is None:
+                dm_dir = ApiMenuModel(
+                    name="数据模型",
+                    type=1,
+                    api_id=None,
+                    api_service_id=int(api_service_id),
+                    pid=0,
+                    status=1,
+                    created_by=user_id,
+                    updated_by=user_id,
+                )
+                db.add(dm_dir)
+                await db.flush()
+            target_pid = int(dm_dir.id)
         imported = 0
         for name, schema in schemas.items():
             if not isinstance(schema, dict):
@@ -3644,8 +3656,6 @@ class ApiAutomationService:
         import_models = bool(body.get("import_models") if body.get("import_models") is not None else True)
         model_match_mode = str(body.get("model_match_mode") or "overwrite")
         model_pid = int(body.get("model_pid") or 0)
-        if not model_pid:
-            model_pid = target_pid
         servers_to_env = bool(body.get("servers_to_env"))
         import_security = bool(body.get("import_security"))
         global_auth = bool(body.get("global_auth"))
@@ -4238,7 +4248,7 @@ class ApiAutomationService:
                 _pid = int(_parent.pid or 0)
                 body["pid"] = _pid
         api_id = None
-        if int(body.get("type")) != 1:
+        if int(body.get("type")) in (2, 3):
             default_req = {
                 "params_id": None,
                 "body": {},
@@ -4289,6 +4299,7 @@ class ApiAutomationService:
                 db, int(body["api_service_id"]), _p
             )
         await db.commit()
+        return int(menu.id)
 
     @staticmethod
     async def edit_menu(db: AsyncSession, menu_id: int, name: str, user_id: int, common_params: Any = None) -> None:

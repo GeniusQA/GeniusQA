@@ -251,8 +251,8 @@ async def add_menu(
     """新增菜单"""
     try:
         body = await body_to_json(request)
-        await ApiAutomationService.add_menu(db, body, current_user_id)
-        return success_response({}, message="添加成功")
+        menu_id = await ApiAutomationService.add_menu(db, body, current_user_id)
+        return success_response({"id": menu_id}, message="添加成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
