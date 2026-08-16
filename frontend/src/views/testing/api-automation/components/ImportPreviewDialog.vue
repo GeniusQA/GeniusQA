@@ -272,30 +272,28 @@ const loadDirs = async () => {
 		const r: any = await api_tree({ search: { api_service_id: svcId } });
 		const raw = r?.data;
 		const tree = Array.isArray(raw) ? raw : [];
-		const dirs: any[] = [];
-		let rootDirId: any = 0;
-		const walk = (nodes: any[], rootName: string, depth: number) => {
-			for (const n of nodes || []) {
-				if (n.type === 0) {
-					rootDirName = n.name;
-					walk(n.children || [], n.name, 0);
-					continue;
+				const dirs: any[] = [];
+		// 树顶层为模块（type=5）：每个模块一个默认项（模块名→其「接口」根目录 id）+ 其子目录
+		const walkMod = (mod: any) => {
+			let ifaceRootId: any = mod.id;
+			const walkDir = (nodes: any[], depth: number) => {
+				for (const n of nodes || []) {
+					if (n.type === 1 && Number(n.pid) === Number(mod.id) && n.name === '接口') {
+						ifaceRootId = n.id;
+						walkDir(n.children || [], 1);
+						continue;
+					}
+					if (n.type === 1) {
+						dirs.push({ id: n.id, path: '　'.repeat(depth) + n.name });
+						walkDir(n.children || [], depth + 1);
+					}
 				}
-				if (n.type === 1 && Number(n.pid) === 0 && n.name === '接口') {
-					// 「接口」根目录：不列出（隐含在模块默认项），但继续遍历其子目录
-					rootDirId = n.id;
-					walk(n.children || [], rootName, 1);
-					continue;
-				}
-				if (n.type === 1 || n.type === 5) {
-					const p = (depth > 0 ? '　'.repeat(depth) : '') + n.name;
-					dirs.push({ id: n.id, path: p });
-					walk(n.children || [], rootName, depth + 1);
-				}
-			}
+			};
+			walkDir(mod.children || [], 1);
+			dirs.push({ id: ifaceRootId, path: mod.name });
 		};
-		walk(tree, '', 0);
-		dirs.unshift({ id: rootDirId || 0, path: rootDirName || '根目录' });
+		for (const m of tree) walkMod(m);
+		if (!dirs.length) dirs.push({ id: 0, path: '根目录' });
 		dirList.value = dirs;
 		if (!targetPid.value && dirList.value.length) targetPid.value = dirList.value[0].id;
 	} catch {

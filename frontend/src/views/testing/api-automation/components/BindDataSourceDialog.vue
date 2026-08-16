@@ -294,30 +294,33 @@ const loadDirs = async () => {
 		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
 		const raw = r?.data;
 		const tree = Array.isArray(raw) ? raw : [];
-		const dirs: any[] = [];
-		let rootDirId: any = 0;
-		const walk = (nodes: any[], rootName: string, depth: number) => {
-			for (const n of nodes || []) {
-				if (n.type === 0) {
-					rootDirName = n.name;
-					walk(n.children || [], n.name, 0);
-					continue;
+				const dirs: any[] = [];
+		// 树顶层为模块（type=5）：模块默认项=模块名（值=模块「接口」根目录 id），子目录缩进展示，「接口」根不列出
+		const walkMod = (mod: any) => {
+			let ifaceRootId: any = mod.id;
+			const walkDir = (nodes: any[], depth: number) => {
+				for (const n of nodes || []) {
+					if (n.type === 1 && Number(n.pid) === Number(mod.id) && n.name === '接口') {
+						ifaceRootId = n.id;
+						walkDir(n.children || [], 1);
+						continue;
+					}
+					if (n.type === 1) {
+						dirs.push({ id: n.id, path: '　'.repeat(depth) + n.name, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
+						walkDir(n.children || [], depth + 1);
+					}
 				}
-				if (n.type === 1 && Number(n.pid) === 0 && n.name === '接口') {
-					// 「接口」根目录：不列出（隐含在模块默认项），但继续遍历其子目录
-					rootDirId = n.id;
-					walk(n.children || [], rootName, 1);
-					continue;
-				}
-				if (n.type === 1 || n.type === 5) {
-					const p = (depth > 0 ? '　'.repeat(depth) : '') + n.name;
-					dirs.push({ id: n.id, path: p });
-					walk(n.children || [], rootName, depth + 1);
-				}
-			}
+			};
+			walkDir(mod.children || [], 1);
+			dirs.push({ id: ifaceRootId, path: mod.name, pid: 0, common_params: mod.common_params || null, name: mod.name });
 		};
-		walk(tree, '', 0);
-		dirs.unshift({ id: rootDirId || 0, path: rootDirName || '根目录' });
+		const cur = tree.find((n: any) => Number(n.id) === Number(props.moduleId || 0));
+		if (cur) walkMod(cur);
+		for (const m of tree) {
+			if (cur && Number(m.id) === Number(cur.id)) continue;
+			walkMod(m);
+		}
+		if (!dirs.length) dirs.push({ id: 0, path: props.moduleName || '根目录', pid: 0, common_params: null, name: props.moduleName || '根目录' });
 		dirList.value = dirs;
 		if (!form.value.pid && dirList.value.length) form.value.pid = dirList.value[0].id;
 	} catch { dirList.value = []; }
