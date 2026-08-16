@@ -2422,6 +2422,30 @@ class ApiAutomationService:
         unchanged_count = 0
         unchanged_count = 0
         folder_count = 0
+        # 匹配范围限定目标目录子树：导入到模块时只与该目录下的接口比对（否则会误把服务下其他目录的接口算作修改）
+        _sub_menu_ids = [int(target_pid)] if target_pid else []
+        _frontier = [int(target_pid)] if target_pid else []
+        while _frontier:
+            _children = (
+                await db.execute(
+                    select(ApiMenuModel.id).where(
+                        ApiMenuModel.enabled_flag == 1,
+                        ApiMenuModel.api_service_id == api_service_id,
+                        ApiMenuModel.pid.in_(_frontier),
+                    )
+                )
+            ).scalars().all()
+            _frontier = list(_children)
+            _sub_menu_ids.extend(_frontier)
+        _sub_api_rows = (
+            await db.execute(
+                select(ApiMenuModel.api_id).where(
+                    ApiMenuModel.id.in_(_sub_menu_ids) if _sub_menu_ids else text("1=0"),
+                    ApiMenuModel.api_id.isnot(None),
+                )
+            )
+        ).scalars().all()
+        _sub_api_ids = [int(r) for r in _sub_api_rows if r]
         existing_apis = list(
             (
                 await db.execute(
@@ -2429,6 +2453,7 @@ class ApiAutomationService:
                         ApiModel.enabled_flag == 1,
                         ApiModel.created_by == user_id,
                         ApiModel.api_service_id == api_service_id,
+                        ApiModel.id.in_(_sub_api_ids or [-1]),
                     )
                 )
             ).scalars().all()
