@@ -87,11 +87,13 @@ const rows = computed(() => {
 	color: var(--el-text-color-secondary);
 	font-weight: 500;
 	text-align: left;
+	vertical-align: middle;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--el-border-color-lighter);
 }
 .sync-table td {
 	padding: 8px 12px;
+	vertical-align: middle;
 	border-bottom: 1px solid var(--el-border-color-extra-light);
 	color: var(--el-text-color-primary);
 }
