@@ -567,7 +567,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, FolderOpened, Link, MoreFilled, Document, Grid, UploadFilled } from '@element-plus/icons-vue';
@@ -624,6 +624,19 @@ const loadTree = async () => {
 		const r: any = await api_tree({ search: { api_service_id: props.serviceId } });
 		treeData.value = r?.data || [];
 	} catch { treeData.value = []; }
+	// 保持当前选中高亮；无任何选中且无接口 tab 时，默认选中第一个模块展示模块详情
+	await nextTick();
+	if (selectedModule.value) {
+		treeRef.value?.setCurrentKey(selectedModule.value.id);
+	} else if (selectedDir.value) {
+		treeRef.value?.setCurrentKey(selectedDir.value.id);
+	} else if (!apiTabs.value.length) {
+		const firstMod = treeData.value.find((n: any) => n.type === 0);
+		if (firstMod) {
+			treeRef.value?.setCurrentKey(firstMod.id);
+			await loadModuleDetail(firstMod);
+		}
+	}
 };
 
 // ---- 接口 Tab ----
