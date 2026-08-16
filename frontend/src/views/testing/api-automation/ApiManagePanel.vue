@@ -21,7 +21,16 @@
 				</div>
 				<div v-if="treeCheckedKeys.length" class="tree-batch-bar">
 					<span class="batch-count">已选 {{ treeCheckedKeys.length }} 项</span>
-					<el-button link type="primary" size="small" @click="treeCheckAll">全选</el-button>
+					<el-dropdown @command="treeCheckAllByMode" size="small">
+						<el-button link type="primary" size="small">全选<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+						<template #dropdown>
+							<el-dropdown-menu>
+								<el-dropdown-item command="dir">全选目录</el-dropdown-item>
+								<el-dropdown-item command="api">全选接口</el-dropdown-item>
+								<el-dropdown-item command="all">全选全部</el-dropdown-item>
+							</el-dropdown-menu>
+						</template>
+					</el-dropdown>
 					<el-button link size="small" @click="treeCheckClear">清空</el-button>
 					<el-button type="danger" size="small" @click="treeBatchDelete">删除选中</el-button>
 				</div>
@@ -32,6 +41,7 @@
 					node-key="id"
 					:filter-node-method="filterNode"
 					show-checkbox
+					check-strictly
 					@check="onTreeCheck"
 					draggable
 					:allow-drop="allowDrop"
@@ -682,11 +692,14 @@ const onTreeCheck = () => {
 	treeCheckedKeys.value = keys.filter((k: any) => Number(treeTypeMap.value[String(k)]) !== 0);
 };
 
-const treeCheckAll = () => {
+const treeCheckAllByMode = (mode: string) => {
+	// dir=只选目录（1/5，不含模块与接口）；api=只选接口（2/3，不动目录/模块）；all=全部（除模块）
 	const keys: (string | number)[] = [];
 	const walk = (nodes: any[]) => {
 		for (const n of nodes || []) {
-			if (Number(n.type) !== 0) keys.push(n.id);
+			const t = Number(n.type);
+			const ok = mode === 'all' ? t !== 0 : mode === 'dir' ? (t === 1 || t === 5) : (t === 2 || t === 3);
+			if (ok) keys.push(n.id);
 			walk(n.children || []);
 		}
 	};
