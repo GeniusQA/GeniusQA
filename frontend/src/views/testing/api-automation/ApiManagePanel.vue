@@ -962,12 +962,14 @@ const onImportMd = (file: any) => {
 const onDocUploadImg = async (files: File[], callback: (urls: string[]) => void) => {
 	const urls: string[] = [];
 	for (const file of files) {
-		const dataUrl = await new Promise<string>((resolve) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(String(reader.result));
-			reader.readAsDataURL(file);
-		});
-		urls.push(dataUrl);
+		try {
+			const r: any = await useApiAutomationApi().upload_image(file);
+			if (r?.code === 200 && r.data?.url) {
+				urls.push(r.data.url);
+			}
+		} catch (e: any) {
+			ElMessage.error(e?.message || '图片上传失败');
+		}
 	}
 	callback(urls);
 };

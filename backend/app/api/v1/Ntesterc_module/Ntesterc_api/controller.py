@@ -66,6 +66,29 @@ EXT_SCRIPT_DIR = Path(r"D:\GeniusQA\backend\scripts_ext")
 EXT_SCRIPT_TMP = Path(r"D:\GeniusQA\backend\scripts_ext_tmp")
 
 
+@router.post("/upload_image")
+async def upload_image(
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+):
+    """通用图片上传：保存到 uploads/doc_images，返回可访问 URL 路径"""
+    import uuid as _uuid
+    try:
+        fname = (file.filename or "img").strip() or "img"
+        suffix = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ".png"
+        if suffix not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"):
+            suffix = ".png"
+        base_dir = Path(r"D:\GeniusQA\backend\uploads\doc_images")
+        base_dir.mkdir(parents=True, exist_ok=True)
+        new_name = f"{_uuid.uuid4().hex}{suffix}"
+        dest = base_dir / new_name
+        content = await file.read()
+        dest.write_bytes(content)
+        return success_response({"url": f"/uploads/doc_images/{new_name}"}, message="上传成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/upload_script_file")
 async def upload_script_file(
     file: UploadFile = File(...),

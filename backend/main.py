@@ -120,6 +120,10 @@ def create_app() -> FastAPI:
     init_middleware(app)  # 注册请求响应拦截
     init_cors(app)  # 初始化跨域
     init_mount(app)  # 挂载静态文件
+    # 通用上传目录静态服务（文档图片等）
+    _uploads_dir = Path(__file__).parent / "uploads"
+    _uploads_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
     # 托管前端 dist（SPA）：静态资源 + 客户端路由回退 index.html
     _fe_cfg = getattr(config, "FRONTEND_DIST", None)

@@ -30,6 +30,11 @@ export function useApiAutomationApi() {
     api_tree: (data: { search?: Record<string, any> } = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree', data),
     api_tree_list: (data: Record<string, any> = {}) => postApiAutomation('/v1/Ntesterc_api/api_tree_list', data),
     sort_menu: (data: { pid: number; ids: (number | string)[] }) => postApiAutomation('/v1/Ntesterc_api/sort_menu', data),
+    upload_image: (file: File) => {
+    	const fd = new FormData()
+    	fd.append('file', file)
+    	return request.post('/v1/Ntesterc_api/upload_image', fd)
+    },
     upload_script_file: (file: File) => {
     	const fd = new FormData()
     	fd.append('file', file)
