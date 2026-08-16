@@ -52,7 +52,7 @@
 					<template #default="{ data }">
 						<div class="tree-node">
 							<div class="node-left">
-								<el-icon v-if="data.type===0" class="icon-folder" style="color:#2563eb"><Coin /></el-icon>
+								<el-icon v-if="data.type===0" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===1" :class="data.name==='数据模型' ? 'icon-dm' : 'icon-folder'"><Box v-if="data.name==='数据模型'" /><FolderOpened v-else /></el-icon>
 					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
 								<el-icon v-else-if="data.type===5" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
@@ -1691,16 +1691,8 @@ const copyApi = async (data: any) => {
 
 const deleteNode = async (data: any) => {
 	if (data.type === 0) {
-		try {
-			await ElMessageBox.confirm(`确定删除服务「${data.name}」（=项目，蓝色图标）？服务列表也会一并删除，其下模块、目录、接口将级联删除！`, '删除服务', { type: 'error', confirmButtonText: '删除服务', cancelButtonText: '取消' });
-		} catch { return; }
-		try {
-			await del_api_service({ id: Number(data.api_service_id) });
-			ElMessage.success('服务已删除');
-			loadTree();
-		} catch (e: any) {
-			ElMessage.error(e?.message || '删除失败');
-		}
+		// 树顶级 = 模块；服务不参与树层级，删除服务请到服务管理
+		ElMessage.info('服务不参与树层级，请到服务管理列表删除');
 		return;
 	}
 	try {
