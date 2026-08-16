@@ -142,7 +142,7 @@
 					</div>
 					<el-tabs v-model="dirDetailTab" class="dir-detail-tabs">
 						<el-tab-pane label="目录设置" name="settings">
-							<div class="dd-section">
+							<div v-if="selectedDir && selectedDir.name !== '接口'" class="dd-section">
 								<div class="dd-section-title">基本信息</div>
 								<div class="dd-row">
 									<div class="dd-row-text">
@@ -158,6 +158,10 @@
 									</div>
 									<el-input :model-value="String(selectedDir?.id ?? '')" size="small" disabled style="width: 220px" />
 								</div>
+							</div>
+							<div v-else class="dd-section">
+								<div class="dd-section-title">功能说明</div>
+								<div class="dd-desc">「根目录」主要用来对模块内的所有接口进行设置：目录级前置/后置操作、Auth 鉴权，以及接口唯一标识（导入数据时用于匹配对应接口），目录下的接口默认继承这些设置。</div>
 							</div>
 							<div class="dd-section">
 								<div class="dd-section-title">可见性</div>
@@ -180,7 +184,7 @@
 										<div class="dd-row-desc">导入数据的时候用来匹配对应的接口</div>
 									</div>
 									<el-select v-model="dirConfig.id_key" style="width: 220px">
-										<el-option label="继承父级" value="inherit" />
+										<el-option v-if="selectedDir && selectedDir.name !== '接口'" label="继承父级" value="inherit" />
 										<el-option label="Method & Path" value="method_path" />
 										<el-option label="OperationId" value="operation_id" />
 										<el-option label="Query 参数" value="query" />
@@ -1002,7 +1006,8 @@ const saveDirConfig = async () => {
 		cp.before = dirBefore.value;
 		cp.after = dirAfter.value;
 		cp.auth = dirAuth.value;
-		await edit_menu({ id: selectedDir.value.id, name: dirName.value || selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
+		const _finalName = selectedDir.value.name === '接口' ? selectedDir.value.name : (dirName.value || selectedDir.value.name);
+		await edit_menu({ id: selectedDir.value.id, name: _finalName, common_params: JSON.stringify(cp) } as any);
 		ElMessage.success('目录设置已保存');
 		await loadTree();
 	} catch (e: any) {
