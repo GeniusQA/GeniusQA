@@ -5,14 +5,13 @@
 UI 自动化「录制」
 
 设计要点：
-- 直接驱动官方 Playwright codegen 子进程（有头）进行录制：
-  用户在 codegen 弹出的真实浏览器里操作，codegen 实时把脚本打印到 stdout，
-  Python 端累积后解析为步骤落库。codegen 必须使用系统 Edge/Chrome 等真实浏览器，
-  自带更智能的定位器推断（getByRole / getByText / getByTestId 等）。
-- 解析复用 _parse_codegen / _extract_locator（与 codegen 脚本导入共用一套逻辑），
-  落库复用 _build_case_from_parsed，并填充到 start() 时已经建好的用例与元素分组。
-- 同时保留 codegen（--output 生成的 spec）与 Selenium IDE .side 文件导入能力，
-  作为外部脚本的落地路径。
+- 复用 Playwright 启动一个「有头（可见）」浏览器，用户在弹出的浏览器里操作。
+- 通过 page.expose_function + page.add_init_script 注入采集脚本，
+  捕获 DOM 事件（click / change / submit / URL 变化）并实时回传 Python。
+- Python 端实时推断健壮定位器，去重后写入 ui_elements / ui_test_steps，
+  现有 PlaywrightTestEngine / SeleniumExecutionWrapper 可直接回放。
+- 同时提供 codegen（--output 生成的 spec）与 Selenium IDE .side 文件导入，
+  作为 Selenium 原生录制的落地路径。
 """
 import asyncio
 import json
@@ -33,12 +32,9 @@ os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.join(_backend_dir, ".p
 
 from fastapi import HTTPException
 from playwright.async_api import async_playwright
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.db.sqlalchemy import async_session_factory
-from ..Ntesterc_web.model import WebMenuModel, WebScriptModel
-from ..Ntesterc_web.service import WebManagementService
 from .crud import (
     UIElementCRUD,
     UIElementGroupCRUD,
@@ -199,11 +195,6 @@ class RecorderSession:
         self._lock = asyncio.Lock()
         self.started_event = asyncio.Event()
         self.start_error: Optional[str] = None
-        # codegen 子进程驱动相关
-        self.codegen_proc = None
-        self.codegen_lines: List[str] = []
-        self._finalized: bool = False
-        self._stdout_task = None
 
     # ---- 事件处理（来自页面注入脚本） ----------------------------------
     async def _handle(self, data: str):
@@ -371,34 +362,14 @@ class RecorderSession:
         browser_type = opts.get('browser_type', 'msedge')
         headless = bool(opts.get('headless', False))
         self.actual_headless = headless
-
-        # 后端运行于无桌面环境（session 0 / 非活动会话 / 非交互窗口站）时，
-        # 普通有头浏览器无法创建窗口会立即退出（exitCode=1002）。
-        # 两端处理：
-        #   1) 若后端确实没有可交互桌面 -> 直接强制无头，用系统 Edge 以 --headless=new
-        #      启动（仍是系统安装的 Edge，只是无头运行），避免窗口创建失败崩溃；
-        #   2) 若后端当前在本机交互桌面（有可见桌面）-> 尝试把浏览器派生到当前登录
-        #      用户的交互桌面，从而保留可见弹窗录制体验。
+        # 后端运行于无桌面环境（session 0 / SYSTEM）时，普通有头浏览器无法创建窗口
+        # 会立即退出。先尝试把浏览器派生到当前登录用户的交互桌面，从而保留弹窗；
+        # 若失败再回退到强制无头。
         try:
-            from .browser_path_config import is_headless_required
-            headless_required = is_headless_required()
-        except Exception:
-            headless_required = False
-
-        if headless_required and not headless:
-            logger.warning(
-                "后端运行于无桌面环境(session 0 / 非交互会话)，强制以无头方式启动系统 "
-                "浏览器（仍为系统安装的 Edge，仅无头运行，避免窗口创建失败）"
-            )
-            headless = True
-            self.actual_headless = True
-
-        if not headless_required and not headless:
-            # 仅在「有可见桌面」时尝试交互桌面弹出，避免无效尝试浪费时间
-            try:
-                from .browser_path_config import launch_interactive_browser
+            from .browser_path_config import is_headless_required, launch_interactive_browser
+            if is_headless_required() and not headless:
                 logger.warning(
-                    "后端运行于有桌面环境，尝试在交互桌面启动有头浏览器"
+                    "后端运行于无桌面环境(session 0/SYSTEM)，尝试在交互桌面启动有头浏览器"
                 )
                 try:
                     info = launch_interactive_browser(browser_type)
@@ -433,11 +404,13 @@ class RecorderSession:
                     return browser
                 except Exception as e:
                     logger.warning(
-                        f"交互桌面启动失败，回退到普通启动: {e}", exc_info=True
+                        f"交互桌面启动失败，回退到无头模式: {e}", exc_info=True
                     )
                     self.interactive_pid = None
-            except Exception:
-                pass
+                    headless = True
+                    self.actual_headless = True
+        except Exception:
+            pass
 
         launch_args = [
             '--disable-blink-features=AutomationControlled',
@@ -447,17 +420,15 @@ class RecorderSession:
         ]
         if headless:
             launch_args.append('--hide-scrollbars')
-            # 系统 Edge 在无头模式下使用 new headless，支持 CDP 注入且更稳定
-            launch_args.append('--headless=new')
 
         launcher_name, channel = self._BROWSER_MAP.get(browser_type, ('chromium', None))
         launcher = getattr(self.pw, launcher_name, self.pw.chromium)
         launch_kwargs: Dict[str, Any] = {'headless': headless, 'args': launch_args}
 
-        # 清理交互桌面启动失败时遗留的 profile 目录（避免锁冲突导致本次启动即崩）
+        # 启动前先回收上一次失败残留的浏览器子进程，避免句柄累积导致启动失败
         try:
-            from .browser_path_config import cleanup_interactive_profiles
-            cleanup_interactive_profiles()
+            from .browser_path_config import reap_stale_browser_processes
+            reap_stale_browser_processes()
         except Exception:
             pass
 
@@ -494,52 +465,6 @@ class RecorderSession:
                 f"{err}",
                 exc_info=True,
             )
-            # 即便 is_headless_required() 误判为非强制无头，这里也做通用兜底：
-            # 有头启动失败（典型为 exitCode=1002 / Target page, context or browser has been closed）
-            # 往往就是「无桌面会话无法创建窗口」导致。直接以无头模式重试一次，
-            # 仍使用系统安装的 Edge（channel 不变），只是无头运行。
-            if not self.actual_headless and not headless:
-                logger.warning(
-                    "有头启动失败，自动以无头模式重试系统浏览器（--headless=new）"
-                )
-                headless = True
-                self.actual_headless = True
-                launch_args = [
-                    '--disable-blink-features=AutomationControlled',
-                    '--no-sandbox',
-                    '--disable-gpu',
-                    '--disable-dev-shm-usage',
-                    '--hide-scrollbars',
-                    '--headless=new',
-                ]
-                launch_kwargs = {
-                    'headless': True,
-                    'args': launch_args,
-                    'env': launch_kwargs.get('env') or get_browser_launch_env(),
-                }
-                if channel:
-                    launch_kwargs['channel'] = channel
-                try:
-                    browser = await launcher.launch(**launch_kwargs)
-                    try:
-                        from .browser_path_config import register_active_browser
-                        register_active_browser(browser)
-                    except Exception:
-                        pass
-                    logger.info("无头模式重试启动成功")
-                    return browser
-                except Exception as e2:
-                    logger.error(f"无头模式重试仍然失败: {e2}", exc_info=True)
-                    # 继续走后续兜底逻辑
-
-            # 启动失败后在重试兜底前，回收本进程树内残留的浏览器子进程，
-            # 避免句柄/管道累积导致后续启动也失败（注意：必须在 launch 失败后才回收，
-            # 否则会误伤本次即将启动的浏览器，造成 Target page, context or browser has been closed）
-            try:
-                from .browser_path_config import reap_stale_browser_processes
-                reap_stale_browser_processes()
-            except Exception:
-                pass
             if custom_path and "Executable doesn't exist" in err:
                 raise RuntimeError(
                     f"自定义浏览器路径无法启动: {custom_path}，请检查是否选择了正确的可执行文件"
@@ -554,10 +479,6 @@ class RecorderSession:
                 from .browser_path_config import find_bundled_chromium
                 bundled = find_bundled_chromium()
                 if bundled and os.path.exists(bundled):
-                    # 同步最新的 headless 状态（前面判定无头时强制无头）
-                    launch_kwargs['headless'] = headless
-                    if headless and '--headless=new' not in launch_kwargs.get('args', []):
-                        launch_kwargs.setdefault('args', []).append('--headless=new')
                     launch_kwargs['executable_path'] = bundled
                     launch_kwargs.pop('channel', None)
                     logger.warning(
@@ -579,9 +500,6 @@ class RecorderSession:
                 try:
                     from .browser_path_config import _get_interactive_browser_executable
                     fallback_exe = _get_interactive_browser_executable(browser_type)
-                    launch_kwargs['headless'] = headless
-                    if headless and '--headless=new' not in launch_kwargs.get('args', []):
-                        launch_kwargs.setdefault('args', []).append('--headless=new')
                     launch_kwargs['executable_path'] = fallback_exe
                     launch_kwargs.pop('channel', None)
                     logger.warning(
@@ -603,129 +521,55 @@ class RecorderSession:
                 await asyncio.get_event_loop().run_in_executor(
                     None, self._install_browser, launcher_name
                 )
-                launch_kwargs['headless'] = headless
-                if headless and '--headless=new' not in launch_kwargs.get('args', []):
-                    launch_kwargs.setdefault('args', []).append('--headless=new')
                 return await launcher.launch(**launch_kwargs)
             raise
 
-    # ---- codegen 子进程驱动（官方 Playwright codegen 录制） ----------------
     async def run(self):
         opts = self.options
         try:
-            # codegen 必须 headed（CLI 无 --headless），无桌面环境无法弹出窗口
+            # 必须在 start() 之前重定向临时目录，否则 Playwright 的 Node 驱动进程
+            # 会缓存 C:\WINDOWS\TEMP，导致 user-data-dir 创建失败（Target page closed）
             try:
-                from .browser_path_config import is_headless_required
-                if is_headless_required():
-                    raise RuntimeError(
-                        "后端处于无桌面环境（session 0 / 非交互会话），codegen 录制必须 headed，"
-                        "无法在此环境运行。请在有桌面的服务器上启动后端后再录制。"
-                    )
-            except ImportError:
+                from .browser_path_config import ensure_browser_temp_env
+                ensure_browser_temp_env()
+            except Exception:
                 pass
+            self.pw = await async_playwright().start()
+            self.browser = await self._launch_browser(opts)
+            viewport = {
+                'width': int(opts.get('viewport_width', 1280)),
+                'height': int(opts.get('viewport_height', 720)),
+            }
+            ctx_kwargs: Dict[str, Any] = {'viewport': viewport}
+            if opts.get('color_scheme'):
+                ctx_kwargs['color_scheme'] = opts['color_scheme']
+            if opts.get('locale'):
+                ctx_kwargs['locale'] = opts['locale']
+            if opts.get('timezone'):
+                ctx_kwargs['timezone_id'] = opts['timezone']
+            if opts.get('user_agent'):
+                ctx_kwargs['user_agent'] = opts['user_agent']
+            self.context = await self.browser.new_context(**ctx_kwargs)
+            self.page = await self.context.new_page()
+            await self.page.expose_function('__geniusRecord', self._handle)
+            await self.page.add_init_script(RECORDER_JS)
+            self.page.on('close', lambda: asyncio.ensure_future(self._on_page_close()))
 
-            await self._start_codegen(opts)
+            url = opts.get('url') or 'about:blank'
+            await self.page.goto(url)
             self.running = True
             self.started_event.set()
+            logger.info(f"录制会话 {self.session_id} 浏览器已启动(headless={self.actual_headless})，目标: {url}")
 
-            # 短等待，检测 codegen 是否立即失败（如缺少浏览器/无法启动）
-            try:
-                await asyncio.wait_for(self.codegen_proc.wait(), timeout=5)
-                stderr = b''
-                try:
-                    if self.codegen_proc.stderr:
-                        stderr = await self.codegen_proc.stderr.read()
-                except Exception:
-                    pass
-                raise RuntimeError(
-                    "codegen 启动失败：" + (stderr or b'').decode('utf-8', 'replace')[:800]
-                )
-            except asyncio.TimeoutError:
-                pass  # 正常：codegen 持续运行，等待用户关闭浏览器或被停止
-
-            # 正常结束（用户关闭浏览器窗口 / 被 stop 终止）
-            await self.codegen_proc.wait()
-            await self._finalize_from_codegen()
+            # 保持会话，直到被停止或浏览器关闭
+            while self.running and self.browser and self.browser.is_connected():
+                await asyncio.sleep(1)
         except Exception as e:
             self.start_error = str(e)
             self.started_event.set()
             logger.error(f"录制会话 {self.session_id} 运行异常: {e}", exc_info=True)
         finally:
             await self._cleanup()
-
-    async def _read_stdout(self):
-        if not self.codegen_proc or not self.codegen_proc.stdout:
-            return
-        try:
-            async for line in self.codegen_proc.stdout:
-                self.codegen_lines.append(line.decode('utf-8', 'replace'))
-        except Exception as e:
-            logger.warning(f"读取 codegen stdout 失败: {e}")
-
-    async def _start_codegen(self, opts: Dict[str, Any]):
-        """启动官方 playwright codegen 子进程，实时把脚本打印到 stdout。"""
-        browser_type = opts.get('browser_type', 'msedge')
-        launcher_name, channel = self._BROWSER_MAP.get(browser_type, ('chromium', None))
-        cmd: List[str] = [
-            sys.executable, '-m', 'playwright', 'codegen',
-            '--target', 'playwright-test',
-            '--browser', launcher_name,
-        ]
-        if channel:
-            cmd += ['--channel', channel]
-        vw = int(opts.get('viewport_width', 1280))
-        vh = int(opts.get('viewport_height', 720))
-        cmd += ['--viewport-size', f'{vw}, {vh}']
-        if opts.get('locale'):
-            cmd += ['--lang', str(opts['locale'])]
-        if opts.get('timezone'):
-            cmd += ['--timezone', str(opts['timezone'])]
-        if opts.get('color_scheme'):
-            cmd += ['--color-scheme', str(opts['color_scheme'])]
-        url = opts.get('url')
-        if url:
-            cmd.append(str(url))
-
-        from .browser_path_config import get_browser_launch_env
-        env = dict(os.environ)
-        env.update(get_browser_launch_env())
-
-        logger.info(f"启动 codegen 录制子进程: {' '.join(cmd)}")
-        self.codegen_proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        self._stdout_task = asyncio.ensure_future(self._read_stdout())
-
-    async def _finalize_from_codegen(self):
-        """解析 codegen 累积的脚本并落入已建立的用例/元素分组。"""
-        async with self._lock:
-            if self._finalized:
-                return
-            self._finalized = True
-        try:
-            code = ''.join(self.codegen_lines)
-            if not code.strip():
-                logger.info(f"录制会话 {self.session_id} codegen 未生成任何脚本")
-                return
-            steps = _parse_codegen(code)
-            if not steps:
-                logger.info(f"录制会话 {self.session_id} codegen 脚本解析后无步骤")
-                return
-            async with async_session_factory() as db:
-                await _build_case_from_parsed(
-                    self.project_id, self.user_id,
-                    self.options.get('name') or f"录制用例_{self.session_id}",
-                    steps, 'codegen',
-                    test_case_id=self.test_case_id, group_id=self.group_id,
-                )
-        except Exception as e:
-            logger.error(f"codegen 录制结果落库失败: {e}", exc_info=True)
-
-    def get_codegen_script(self) -> str:
-        return ''.join(self.codegen_lines)
 
     async def _on_page_close(self):
         self.running = False
@@ -761,35 +605,15 @@ class RecorderSession:
                 await self.pw.stop()
         except Exception:
             pass
-        # 兜底确保 codegen 子进程被回收
-        if self.codegen_proc and self.codegen_proc.returncode is None:
-            try:
-                self.codegen_proc.kill()
-            except Exception:
-                pass
         self.running = False
 
     async def stop(self):
         self.running = False
-        # 终止 codegen 子进程（用户点击停止录制），结束后 stdout 收尾并落库
-        if self.codegen_proc and self.codegen_proc.returncode is None:
-            try:
-                self.codegen_proc.terminate()
-            except Exception:
-                pass
-            try:
-                await asyncio.wait_for(self.codegen_proc.wait(), timeout=10)
-            except asyncio.TimeoutError:
-                try:
-                    self.codegen_proc.kill()
-                except Exception:
-                    pass
-        if self._stdout_task:
-            try:
-                await self._stdout_task
-            except Exception:
-                pass
-        await self._finalize_from_codegen()
+        try:
+            if self.browser and self.browser.is_connected():
+                await self.browser.close()
+        except Exception:
+            pass
 
     async def set_assert_mode(self, mode: str):
         if self.page:
@@ -904,13 +728,6 @@ class RecorderManager:
             page_object_id = await self._create_page_object(session)
         except Exception as e:
             logger.error(f"录制生成页面对象失败: {e}", exc_info=True)
-        # 若指定了 Web 脚本目标，把录制步骤同步到脚本库
-        web_script_menu_id = None
-        if session.options.get('script_id') or session.options.get('script_menu_id'):
-            try:
-                web_script_menu_id = await self._save_steps_to_web_script(session)
-            except Exception as e:
-                logger.error(f"同步录制步骤到 Web 脚本失败: {e}", exc_info=True)
         # 稍等浏览器回收
         await asyncio.sleep(1)
         return {
@@ -918,108 +735,7 @@ class RecorderManager:
             'test_case_id': session.test_case_id,
             'steps_count': count,
             'page_object_id': page_object_id,
-            'web_script_menu_id': web_script_menu_id,
         }
-
-    async def _save_steps_to_web_script(self, session: 'RecorderSession') -> Optional[int]:
-        """把录制步骤转换后写入 Web 脚本库（追加到所选脚本，或在所选脚本库下新建脚本）。"""
-        script_id = session.options.get('script_id')
-        script_menu_id = session.options.get('script_menu_id')
-        if not script_id and not script_menu_id:
-            return None
-
-        async with async_session_factory() as db:
-            result = await db.execute(
-                select(UITestStepModel).where(
-                    UITestStepModel.test_case_id == session.test_case_id,
-                ).order_by(UITestStepModel.step_number)
-            )
-            steps = result.scalars().all()
-            if not steps:
-                return None
-
-            data: List[Dict[str, Any]] = []
-            for s in steps:
-                element: Optional[Dict[str, Any]] = None
-                if s.element_id:
-                    el = await db.get(UIElementModel, s.element_id)
-                    if el:
-                        custom_locators: List[Dict[str, str]] = [
-                            {"value": f"{el.locator_strategy}={el.locator_value}"}
-                        ]
-                        if el.backup_locators:
-                            for bl in el.backup_locators:
-                                if not isinstance(bl, dict):
-                                    continue
-                                strategy = bl.get('strategy')
-                                val = bl.get('value')
-                                if val and strategy and '=' not in str(val):
-                                    custom_locators.append({"value": f"{strategy}={val}"})
-                                elif val:
-                                    custom_locators.append({"value": str(val)})
-                        element = {"custom_locators": custom_locators}
-                if s.action_type == 'navigate':
-                    data.append({
-                        "action": "open_page",
-                        "fill_name": s.description or "打开",
-                        "action_detail": {"open_page": {"url": s.action_value or ""}},
-                    })
-                elif s.action_type == 'click':
-                    data.append({
-                        "action": "mouse_clicking",
-                        "fill_name": s.description or "点击",
-                        "action_detail": {"mouse_clicking": {"type": "single_click_left", "element": element or {}}},
-                    })
-                elif s.action_type == 'fill':
-                    data.append({
-                        "action": "input_operations",
-                        "fill_name": s.description or "输入",
-                        "action_detail": {"input_operations": {"input_content": s.action_value or "", "element": element or {}}},
-                    })
-                else:
-                    continue
-
-            if not data:
-                return None
-
-            ok, msg, new_script = await WebManagementService._analysis_element("recorded", session.user_id, 0, data)
-            if not ok:
-                raise Exception(msg)
-
-            target_menu_id: Optional[int] = None
-            if script_id:
-                target_menu_id = int(script_id)
-            else:
-                name = session.options.get('name') or f"录制脚本_{session.session_id}"
-                created = await WebManagementService.create_web_menu(
-                    db,
-                    name=name,
-                    pid=int(script_menu_id),
-                    type=2,
-                    user_id=session.user_id,
-                )
-                target_menu_id = created["id"]
-
-            res = await db.execute(
-                select(WebScriptModel).where(
-                    WebScriptModel.menu_id == target_menu_id,
-                    WebScriptModel.enabled_flag == 1,
-                )
-            )
-            row = res.scalar_one_or_none()
-            if row:
-                existing = row.script or []
-                row.script = existing + new_script
-                row.last_updated_by = session.user_id
-            else:
-                row = WebScriptModel(
-                    script=new_script,
-                    menu_id=target_menu_id,
-                    created_by=session.user_id,
-                )
-                db.add(row)
-            await db.commit()
-            return target_menu_id
 
     async def _create_page_object(self, session: 'RecorderSession') -> Optional[int]:
         """把录制分组下的元素关联生成一个页面对象（ui_page_objects）。"""
@@ -1073,13 +789,6 @@ class RecorderManager:
                 'count': len(steps),
                 'paused': session.paused,
             }
-
-    def get_codegen_script(self, session_id: int) -> str:
-        """返回 codegen 实时累积的脚本文本（供前端实时展示）。"""
-        session = self.sessions.get(session_id)
-        if not session:
-            return ''
-        return session.get_codegen_script()
 
 
 RECORDER_MANAGER = RecorderManager()
@@ -1216,33 +925,29 @@ def _split_side_target(target: str):
 
 
 async def _build_case_from_parsed(project_id: int, user_id: int, name: str,
-                                  steps: List[Dict[str, Any]], source: str,
-                                  test_case_id: Optional[int] = None,
-                                  group_id: Optional[int] = None) -> Dict[str, Any]:
+                                  steps: List[Dict[str, Any]], source: str) -> Dict[str, Any]:
     async with async_session_factory() as db:
-        if group_id is None:
-            group = UIElementGroupModel(
-                ui_project_id=project_id,
-                name=f"导入元素_{source}_{int(time.time() * 1000)}",
-                description=f"从 {source} 导入",
-                order_num=0,
-                created_by=user_id,
-            )
-            db.add(group)
-            await db.flush()
-            group_id = group.id
+        group = UIElementGroupModel(
+            ui_project_id=project_id,
+            name=f"导入元素_{source}_{int(time.time() * 1000)}",
+            description=f"从 {source} 导入",
+            order_num=0,
+            created_by=user_id,
+        )
+        db.add(group)
+        await db.flush()
+        group_id = group.id
 
-        if test_case_id is None:
-            tc = UITestCaseModel(
-                ui_project_id=project_id,
-                name=name or f"导入用例_{source}_{time.strftime('%Y%m%d_%H%M%S')}",
-                description=f"从 {source} 导入生成的测试用例",
-                priority='medium',
-                created_by=user_id,
-            )
-            db.add(tc)
-            await db.flush()
-            test_case_id = tc.id
+        tc = UITestCaseModel(
+            ui_project_id=project_id,
+            name=name or f"导入用例_{source}_{time.strftime('%Y%m%d_%H%M%S')}",
+            description=f"从 {source} 导入生成的测试用例",
+            priority='medium',
+            created_by=user_id,
+        )
+        db.add(tc)
+        await db.flush()
+        tc_id = tc.id
 
         el_crud = UIElementCRUD(db)
         element_cache: Dict[tuple, int] = {}
@@ -1277,7 +982,7 @@ async def _build_case_from_parsed(project_id: int, user_id: int, name: str,
                     element_cache[key] = element_id
 
             step = UITestStepModel(
-                test_case_id=test_case_id,
+                test_case_id=tc_id,
                 step_number=step_no,
                 action_type=st['action_type'],
                 element_id=element_id,
@@ -1292,4 +997,4 @@ async def _build_case_from_parsed(project_id: int, user_id: int, name: str,
             await db.add(step)
 
         await db.commit()
-        return {'test_case_id': test_case_id, 'steps_count': step_no}
+        return {'test_case_id': tc_id, 'steps_count': step_no}

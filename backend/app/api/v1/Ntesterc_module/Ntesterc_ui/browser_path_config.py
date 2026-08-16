@@ -12,11 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-try:
-    import win32api  # type: ignore
-except Exception:  # pragma: no cover - 非 Windows 或缺失 pywin32
-    win32api = None
-
 from app.core.logger import logger
 
 
@@ -150,41 +145,6 @@ def get_browser_launch_env() -> Dict[str, str]:
     return dict(os.environ)
 
 
-def _current_session_id() -> Optional[int]:
-    """返回当前进程所在的 Windows 会话 ID（session id），失败返回 None。"""
-    try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        sid = ctypes.c_ulong()
-        if kernel32.ProcessIdToSessionId(
-            kernel32.GetCurrentProcessId(), ctypes.byref(sid)
-        ):
-            return sid.value
-    except Exception:
-        pass
-    return None
-
-
-def _active_console_session_id() -> Optional[int]:
-    """返回当前有用户登录的活动控制台会话 ID；无用户登录返回 None。"""
-    try:
-        import win32ts  # type: ignore
-        return win32ts.WTSGetActiveConsoleSessionId()
-    except Exception:
-        try:
-            import ctypes
-            kernel32 = ctypes.windll.kernel32
-            # WTSGetActiveConsoleSessionId 是 kernel32 导出函数
-            fn = kernel32.WTSGetActiveConsoleSessionId
-            fn.restype = ctypes.c_ulong
-            fn.argtypes = []
-            val = fn()
-            return None if val == 0xFFFFFFFF else val
-        except Exception:
-            pass
-    return None
-
-
 def is_headless_required() -> bool:
     """判断当前后端进程是否必须强制使用无头（headless）浏览器。
 
@@ -195,33 +155,26 @@ def is_headless_required() -> bool:
 
     判定条件（满足任一即强制无头）：
     1. Windows 且当前进程位于 session 0（服务会话，最可靠）；
-    2. 存在活动控制台会话，但当前进程所在会话 != 活动控制台会话
-       （即后端跑在无桌面的非交互会话，如 session 0 而用户登录在 session 1）；
-    3. 运行身份为 SYSTEM / LocalService / NetworkService；
-    4. 无法访问交互桌面（winsta0\\default），即使用户已登录。
+    2. 运行身份为 SYSTEM / LocalService / NetworkService。
 
     其余情况（如开发者在本机交互桌面内运行后端）返回 False，尊重前端的
     headless 开关，保留「可见浏览器」的录制体验。
     """
     if sys.platform != "win32":
         return False
-
-    cur_sid = _current_session_id()
-    active_sid = _active_console_session_id()
-
-    # 1) 当前进程在 session 0（最可靠的「无桌面」信号）
-    if cur_sid == 0:
-        return True
-
-    # 2) 有活动用户会话，但后端不在那个会话里 → 后端没有可交互桌面
-    if active_sid is not None and cur_sid is not None and active_sid != cur_sid:
-        return True
-
-    # 3) 没有活动控制台会话（如纯服务环境）
-    if active_sid is None:
-        return True
-
-    # 4) 服务身份兜底
+    # 1) session 0 判定
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        sid = ctypes.c_ulong()
+        if kernel32.ProcessIdToSessionId(
+            kernel32.GetCurrentProcessId(), ctypes.byref(sid)
+        ):
+            if sid.value == 0:
+                return True
+    except Exception:
+        pass
+    # 2) 服务身份兜底
     try:
         import getpass
         if getpass.getuser().upper() in (
@@ -230,21 +183,6 @@ def is_headless_required() -> bool:
             return True
     except Exception:
         pass
-
-    # 5) 是否真能访问交互桌面 winsta0\default
-    try:
-        import win32con
-        import win32security
-        desk = win32security.GetProcessWindowStation()
-        name = win32security.GetUserObjectInformation(
-            desk, win32con.UOI_NAME
-        )
-        if name and "WinSta0" not in str(name):
-            # 不在交互窗口站（如 Service-0x0-3e7$），没有可见桌面
-            return True
-    except Exception:
-        pass
-
     return False
 
 
@@ -310,19 +248,15 @@ def find_bundled_chromium() -> Optional[str]:
     )
 
     found = []
-    # Playwright 1.60+ 的 Chromium 安装目录改为 chrome-win64（64 位），
-    # 旧版为 chrome-win；两者都要兼容。
-    chromium_subdirs = ("chrome-win64", "chrome-win", "chrome-linux", "chromium-win")
     for root in roots:
         if not os.path.isdir(root):
             continue
         for name in sorted(os.listdir(root), reverse=True):
             if name.startswith("chromium-"):
-                for sub in chromium_subdirs:
+                for sub in ("chrome-win64", "chrome-win"):
                     exe = os.path.join(root, name, sub, "chrome.exe")
                     if os.path.exists(exe):
                         found.append(exe)
-                        break
 
     if not found:
         # 也尝试更宽松的查找（firefox/webkit 不在范围内，仅 chromium）
@@ -331,11 +265,10 @@ def find_bundled_chromium() -> Optional[str]:
                 continue
             for name in sorted(os.listdir(root), reverse=True):
                 if name.startswith("chromium"):
-                    for sub in chromium_subdirs:
+                    for sub in ("chrome-win64", "chrome-win", "chrome-linux", "chromium-win"):
                         exe = os.path.join(root, name, sub, "chrome.exe")
                         if os.path.exists(exe):
                             found.append(exe)
-                            break
     return found[0] if found else None
 
 
@@ -476,35 +409,6 @@ def unregister_active_browser(browser, pid: Optional[int] = None) -> None:
         pass
 
 
-def cleanup_interactive_profiles() -> int:
-    """清理交互桌面浏览器启动失败时遗留的 profile 目录。
-
-    ``launch_interactive_browser`` 会在 ``.pw_tmp`` 下创建
-    ``interactive_profile_<port>`` 目录。若当时派生失败/超时，这些目录不会被
-    回收，残留的 ``SingletonLock`` 等文件会让后续同名启动直接失败、浏览器进程
-    随即退出（报 Target page, context or browser has been closed）。本函数在每次
-    启动浏览器前清理这些残留目录。
-    """
-    try:
-        tmp = ensure_browser_temp_env()
-        removed = 0
-        for name in os.listdir(tmp):
-            if name.startswith("interactive_profile_"):
-                path = os.path.join(tmp, name)
-                try:
-                    import shutil
-                    shutil.rmtree(path, ignore_errors=True)
-                    removed += 1
-                except Exception:
-                    pass
-        if removed:
-            logger.info(f"已清理 {removed} 个交互浏览器残留 profile 目录")
-        return removed
-    except Exception as e:
-        logger.warning(f"清理交互浏览器残留 profile 失败: {e}")
-        return 0
-
-
 def reap_stale_browser_processes(extra_names=None) -> int:
     """回收当前进程树内泄漏的浏览器子进程（依赖 wmic/taskkill，无需第三方库）。
 
@@ -514,11 +418,23 @@ def reap_stale_browser_processes(extra_names=None) -> int:
     names = set(_BROWSER_PROC_NAMES)
     if extra_names:
         names.update(extra_names)
+    # 注意：不能用 subprocess.run(timeout=...) —— 超时后 run() 内部会 kill 然后无限 wait，
+    # SYSTEM/服务会话下 wmic 杀不掉会永久卡住（实测踩坑）。用 Popen + 有限等待。
     try:
-        out = _subprocess.run(
+        _proc = _subprocess.Popen(
             "wmic process get Name,ProcessId,ParentProcessId",
-            shell=True, capture_output=True, text=True, timeout=15,
-        ).stdout
+            shell=True, stdout=_subprocess.PIPE, stderr=_subprocess.PIPE, text=True,
+        )
+        try:
+            out, _ = _proc.communicate(timeout=8)
+        except _subprocess.TimeoutExpired:
+            _proc.kill()
+            try:
+                out, _ = _proc.communicate(timeout=2)
+            except Exception:
+                out = ""
+            logger.warning("wmic 枚举进程超时(8s)，跳过残留浏览器回收")
+            return 0
     except Exception as e:
         logger.warning(f"枚举进程失败，跳过残留浏览器回收: {e}")
         return 0
@@ -553,16 +469,57 @@ def reap_stale_browser_processes(extra_names=None) -> int:
     killed = 0
     for pid in doomed:
         try:
-            _subprocess.run(
+            _proc = _subprocess.Popen(
                 f"taskkill /F /PID {pid}",
-                shell=True, capture_output=True, text=True, timeout=10,
+                shell=True, stdout=_subprocess.PIPE, stderr=_subprocess.PIPE, text=True,
             )
+            try:
+                _proc.communicate(timeout=5)
+            except _subprocess.TimeoutExpired:
+                _proc.kill()
+                try:
+                    _proc.communicate(timeout=1)
+                except Exception:
+                    pass
             killed += 1
         except Exception:
             pass
     if killed:
         logger.info(f"已回收 {killed} 个泄漏的浏览器子进程")
     return killed
+
+
+def kill_playwright_driver_children() -> None:
+    """清理本进程树内残留的 playwright node 驱动子进程（start() 超时/取消后用）。"""
+    try:
+        out = _subprocess.run(
+            "wmic process get Name,ProcessId,ParentProcessId",
+            shell=True, capture_output=True, text=True, timeout=10,
+        ).stdout
+    except Exception as e:
+        logger.warning(f"枚举进程失败，跳过驱动清理: {e}")
+        return
+    children: dict = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            try:
+                children.setdefault(int(parts[-1]), []).append(int(parts[-2]))
+            except ValueError:
+                pass
+    stack, doomed = [os.getpid()], []
+    while stack:
+        for pid in children.pop(stack.pop(), []):
+            stack.append(pid)
+            doomed.append(pid)
+    for pid in doomed:
+        try:
+            _subprocess.run(
+                f"taskkill /F /PID {pid}",
+                shell=True, capture_output=True, text=True, timeout=5,
+            )
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

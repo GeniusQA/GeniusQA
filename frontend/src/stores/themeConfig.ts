@@ -100,9 +100,9 @@ export const useThemeConfig = defineStore('themeConfig', {
 			// 是否开启色弱模式
 			isInvert: false,
 			// 是否开启水印
-			isWartermark: true,
+			isWatermark: true,
 			// 水印文案
-			wartermarkText: 'GeniusQA',
+			watermarkText: 'GeniusQA',
 
 			/**
 			 * 其它设置

@@ -27,13 +27,10 @@
 
     <!-- 测试用例列表 -->
     <el-table
-      ref="tableRef"
       :data="testCaseList"
       v-loading="loading"
       border
       stripe
-      highlight-current-row
-      :row-class-name="rowClassName"
       style="margin-top: 15px"
       @selection-change="handleSelectionChange"
     >
@@ -193,11 +190,11 @@
             选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
-        <el-form-item label="执行模式">
-          <el-radio-group v-model="executeForm.runMode">
-            <el-radio label="formal">正式执行（无头，后台运行）</el-radio>
-            <el-radio label="debug">调试执行（有头，显示窗口）</el-radio>
-          </el-radio-group>
+        <el-form-item label="无头模式">
+          <el-switch v-model="executeForm.headless" />
+          <span style="margin-left: 10px; color: #909399; font-size: 12px">
+            无头模式下浏览器不显示界面
+          </span>
         </el-form-item>
         <el-form-item label="超时时间(ms)">
           <el-input-number v-model="executeForm.timeout" :min="5000" :max="300000" :step="5000" style="width: 100%" />
@@ -247,11 +244,11 @@
             选择浏览器类型后系统会自动匹配系统浏览器；如需指定特殊渠道可在此选择
           </div>
         </el-form-item>
-        <el-form-item label="执行模式">
-          <el-radio-group v-model="batchExecuteForm.runMode">
-            <el-radio label="formal">正式执行（无头，后台运行）</el-radio>
-            <el-radio label="debug">调试执行（有头，显示窗口）</el-radio>
-          </el-radio-group>
+        <el-form-item label="无头模式">
+          <el-switch v-model="batchExecuteForm.headless" />
+          <span style="margin-left: 10px; color: #909399; font-size: 12px">
+            无头模式下浏览器不显示界面
+          </span>
         </el-form-item>
         <el-form-item label="并行执行">
           <el-switch v-model="batchExecuteForm.parallel" />
@@ -337,7 +334,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { Plus, VideoPlay, Refresh, Search, CopyDocument, Download, Delete } from '@element-plus/icons-vue'
 import { useUiAutomationApi } from '/@/api/v1/testing/uiAutomation'
@@ -349,7 +346,6 @@ const { uiTestCaseApi, uiTestStepApi } = useUiAutomationApi()
 
 const props = defineProps<{
   uiProjectId: number
-  highlightCaseId?: number
 }>()
 
 // 搜索
@@ -360,29 +356,6 @@ const searchPriority = ref('')
 const testCaseList = ref([])
 const loading = ref(false)
 const selectedTestCases = ref([])
-const tableRef = ref()
-
-// 高亮定位
-const rowClassName = ({ row }: { row: any }) => {
-  if (props.highlightCaseId && row.id === props.highlightCaseId) {
-    return 'highlight-row'
-  }
-  return ''
-}
-
-const highlightCase = () => {
-  if (!props.highlightCaseId || !tableRef.value) return
-  const row = testCaseList.value.find((item: any) => item.id === props.highlightCaseId)
-  if (row) {
-    tableRef.value.setCurrentRow(row)
-    nextTick(() => {
-      const rowEl = tableRef.value?.$el.querySelector('.highlight-row')
-      if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    })
-  }
-}
-
-watch(() => props.highlightCaseId, highlightCase)
 
 // 分页
 const pagination = reactive({
@@ -431,7 +404,7 @@ const executeForm = reactive({
   engine_type: 'playwright',
   browser_type: 'msedge',
   channel: '',
-  runMode: 'formal' as 'formal' | 'debug',
+  headless: true,
   timeout: 30000
 })
 
@@ -491,7 +464,6 @@ const loadTestCaseList = async () => {
     const res = await uiTestCaseApi.list(params)
     testCaseList.value = res.data.items || []
     pagination.total = res.data.total || 0
-    nextTick(highlightCase)
   } catch (error) {
     ElMessage.error('加载测试用例列表失败')
     console.error(error)
@@ -621,10 +593,8 @@ const handleExecute = async (row: any) => {
 const handleExecuteSubmit = async () => {
   executeLoading.value = true
   try {
-    const payload: any = { ...executeForm }
-    payload.headless = payload.runMode === 'formal'
-    delete payload.runMode
-    if (!payload.channel) delete payload.channel
+    const payload = { ...executeForm }
+    if (!payload.channel) delete (payload as any).channel
     const res = await uiTestCaseApi.execute(currentExecuteTestCaseId.value, payload)
     currentExecutionId.value = res.data.execution_id
     ElMessage.success('测试用例开始执行')
@@ -657,7 +627,7 @@ const batchExecuteForm = reactive({
   engine_type: 'playwright',
   browser_type: 'msedge',
   channel: '',
-  runMode: 'formal' as 'formal' | 'debug',
+  headless: true,
   parallel: false,
   max_workers: 1,
   timeout: 30000
@@ -671,10 +641,8 @@ const handleBatchExecuteSubmit = async () => {
     const test_case_ids = selectedTestCases.value.map((item: any) => item.id)
     
     // 调用批量执行API
-    const payload: any = { ...batchExecuteForm }
-    payload.headless = payload.runMode === 'formal'
-    delete payload.runMode
-    if (!payload.channel) delete payload.channel
+    const payload = { ...batchExecuteForm }
+    if (!payload.channel) delete (payload as any).channel
     const res = await uiTestCaseApi.batchExecute({
       ui_project_id: props.uiProjectId,
       test_case_ids,
@@ -814,10 +782,6 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .test-case-manage {
-  :deep(.el-table .highlight-row) {
-    background-color: #e6f7ff;
-  }
-
   .toolbar {
     display: flex;
     gap: 10px;

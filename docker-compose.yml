@@ -61,6 +61,7 @@ services:
       - MYSQL_DATABASE_URI=mysql+asyncmy://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
       # APScheduler JobStore / Alembic 等同步引擎使用（与 asyncmy 成对）
       - MYSQL_DATABASE_URI_SYNC=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
+      # Celery 已被 APScheduler 替代，以下环境变量保留给 celery_app.py 兼容层使用（如需启用 Celery Worker，取消注释）
       # - CELERY_BROKER_URL=redis://redis:6379/5
       # - CELERY_RESULT_BACKEND=redis://redis:6379/5
       # - CELERY_BEAT_DB_URL=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
@@ -86,8 +87,6 @@ services:
       - REDIS_URI=redis://redis:6379/4
       - MYSQL_DATABASE_URI=mysql+asyncmy://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
       - MYSQL_DATABASE_URI_SYNC=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-      # - CELERY_BROKER_URL=redis://redis:6379/5
-      # - CELERY_RESULT_BACKEND=redis://redis:6379/5
     depends_on:
       mysql:
         condition: service_healthy
@@ -100,54 +99,6 @@ services:
     volumes:
       - ./backend/logs:/app/logs
       - ./backend/files:/app/files
-
-  # Celery Worker
-  # celery-worker:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: deploy/Dockerfile
-  #   container_name: N-Tester-celery-worker
-  #   restart: always
-  #   command: celery -A celery_app.celery worker --loglevel=INFO -c 10
-  #   environment:
-  #     - REDIS_URI=redis://redis:6379/4
-  #     - MYSQL_DATABASE_URI=mysql+asyncmy://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-  #     - MYSQL_DATABASE_URI_SYNC=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-  #     - CELERY_BROKER_URL=redis://redis:6379/5
-  #     - CELERY_RESULT_BACKEND=redis://redis:6379/5
-  #   depends_on:
-  #     - redis
-  #     - mysql
-  #     - backend
-  #   networks:
-  #     - N-Tester-network
-  #   volumes:
-  #     - ./backend/logs:/app/logs
-  #     - ./backend/files:/app/files
-
-  # Celery Beat
-  # celery-beat:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: deploy/Dockerfile
-  #   container_name: N-Tester-celery-beat
-  #   restart: always
-  #   command: celery -A celery_app.celery beat -S app.api.v1.Ntesterc_module.Ntesterc_task_scheduler.celery_worker.scheduler.schedulers:DatabaseScheduler -l INFO
-  #   environment:
-  #     - REDIS_URI=redis://redis:6379/4
-  #     - MYSQL_DATABASE_URI=mysql+asyncmy://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-  #     - MYSQL_DATABASE_URI_SYNC=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-  #     - CELERY_BROKER_URL=redis://redis:6379/5
-  #     - CELERY_RESULT_BACKEND=redis://redis:6379/5
-  #     - CELERY_BEAT_DB_URL=mysql+pymysql://${MYSQL_USER:-admin}:${MYSQL_PASSWORD:-admin123456}@mysql:3306/${MYSQL_DATABASE:-ntester}?charset=UTF8MB4
-  #   depends_on:
-  #     - redis
-  #     - mysql
-  #     - backend
-  #   networks:
-  #     - N-Tester-network
-  #   volumes:
-  #     - ./backend/logs:/app/logs
 
   # 前端服务
   frontend:

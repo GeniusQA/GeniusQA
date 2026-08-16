@@ -151,12 +151,17 @@ static/api_results/
 static/media/playwright/
 static/upload/
 backend/app/static/api_results/
+backend/app/static/media/playwright/
 backend/static/upload/
 backend/static/uploads/
 
 # ==================== Local runtime data (never commit) ====================
 .n-tester/
 .pw_tmp/
+backend/.pw_tmp/
+backend/.playwright/
+backend/playwright-browsers/
+backend/playwright-browsers /
 uploads/
 uploads/knowledge/
 uploads/skills/

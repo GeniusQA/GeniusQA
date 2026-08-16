@@ -104,7 +104,7 @@ export function useUiAutomationApi() {
   const uiBrowserApi = {
     check: (browserType: string) => request.get('/v1/Ntesterc_ui/browsers/check', { params: { browser_type: browserType } }),
     checkAll: () => request.get('/v1/Ntesterc_ui/browsers/check-all'),
-    checkPlaywright: (browserType: string, headless = true) => request.get('/v1/Ntesterc_ui/browsers/check-playwright', { params: { browser_type: browserType, headless } }),
+    checkPlaywright: (browserType: string, headless = true) => request.get('/v1/Ntesterc_ui/browsers/check-playwright', { params: { browser_type: browserType, headless }, timeout: 15000 }),
     getCustomPaths: () => request.get('/v1/Ntesterc_ui/browsers/custom-paths'),
     saveCustomPath: (data: any) => request.post('/v1/Ntesterc_ui/browsers/custom-paths', data),
     deleteCustomPath: (browserType: string) => request.delete(`/v1/Ntesterc_ui/browsers/custom-paths/${browserType}`),
@@ -121,8 +121,7 @@ export function useUiAutomationApi() {
     pick: (sessionId: number) => request.post(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
     getPick: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/pick`),
     importCodegen: (data: any) => request.post('/v1/Ntesterc_ui/record/import-codegen', data),
-    importSide: (data: any) => request.post('/v1/Ntesterc_ui/record/import-side', data),
-    codegenScript: (sessionId: number) => request.get(`/v1/Ntesterc_ui/record/${sessionId}/codegen-script`)
+    importSide: (data: any) => request.post('/v1/Ntesterc_ui/record/import-side', data)
   }
 
   return {

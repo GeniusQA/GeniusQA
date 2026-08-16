@@ -13,20 +13,10 @@
             <el-form-item label="用例名称">
               <el-input v-model="form.name" placeholder="留空自动命名" />
             </el-form-item>
-            <el-form-item label="所属脚本库" required>
-              <el-select v-model="form.scriptMenuId" placeholder="选择脚本库" clearable filterable style="width:100%">
-                <el-option v-for="n in scriptLibraryOptions" :key="n.id" :label="n.name" :value="n.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="所属脚本" required>
-              <el-select v-model="form.scriptId" placeholder="选择脚本" clearable filterable :disabled="!form.scriptMenuId" style="width:100%">
-                <el-option v-for="n in scriptOptions" :key="n.id" :label="n.name" :value="n.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="起始 URL" required>
+            <el-form-item label="起始 URL">
               <el-input v-model="form.url" placeholder="https://example.com" />
             </el-form-item>
-            <el-form-item label="浏览器" required>
+            <el-form-item label="浏览器">
               <el-select v-model="form.browserType" style="width:100%">
                 <el-option label="Microsoft Edge" value="edge" />
                 <el-option label="Google Chrome" value="chrome" />
@@ -51,18 +41,23 @@
             <el-form-item label="时区">
               <el-input v-model="form.timezone" placeholder="如 Asia/Shanghai" clearable />
             </el-form-item>
+            <el-form-item label="无头模式">
+              <el-switch v-model="form.headless" active-text="开启" inactive-text="关闭" />
+              <span class="hint">后台服务/无桌面环境建议开启</span>
+            </el-form-item>
           </el-form>
 
           <el-divider />
 
           <div class="actions">
-            <el-button type="info" :disabled="!canStart" @click="saveRecorderConfig">
-              <el-icon><FolderChecked /></el-icon> 保存配置
-            </el-button>
-            <el-button v-if="!running" type="primary" :disabled="!canStart" @click="openEnvCheck">
+            <el-button v-if="!running" type="primary" :disabled="!form.projectId" @click="openEnvCheck">
               <el-icon><VideoCamera /></el-icon> 开始录制
             </el-button>
             <template v-else>
+              <el-button :type="paused ? 'success' : 'warning'" @click="togglePause">
+                <el-icon><component :is="paused ? CaretRight : VideoPause" /></el-icon>
+                {{ paused ? '继续录制' : '暂停录制' }}
+              </el-button>
               <el-button type="danger" @click="stopRecord">
                 <el-icon><VideoCameraFilled /></el-icon> 停止录制
               </el-button>
@@ -70,16 +65,34 @@
           </div>
 
           <template v-if="running">
-            <el-alert type="info" :closable="false" show-icon title="录制说明"
-              description="正在使用 Playwright 官方 codegen 录制：在弹出的浏览器中操作即可，脚本会实时生成；关闭浏览器窗口或点击“停止录制”后，步骤自动落库。断言请使用 codegen 内置的记录断言功能（点击目标元素旁的断言图标）。" />
-            <el-button v-if="form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
-              在新标签页打开目标页
+            <el-divider>断言 / 拾取工具栏</el-divider>
+            <div class="assert-bar">
+              <el-button size="small" @click="setAssert('visible')">断言-可见性</el-button>
+              <el-button size="small" @click="setAssert('text')">断言-文本</el-button>
+              <el-button size="small" @click="setAssert('value')">断言-值</el-button>
+              <el-button size="small" @click="startPick">拾取定位器</el-button>
+            </div>
+            <el-alert
+              v-if="pickResult"
+              type="success"
+              :closable="true"
+              show-icon
+              :title="'已拾取定位器'"
+              :description="pickText"
+              style="margin-top:10px"
+            />
+            <el-alert type="info" :closable="false" show-icon title="提示"
+              :description="form.headless
+                ? '无头模式：浏览器在后台运行，不会弹出窗口。点击下方“打开被录页面”可在新标签页查看目标页面，但当前标签页的操作不会被录制。'
+                : '在弹出的浏览器中操作后，点击下方断言/拾取按钮，再点击页面元素即可捕获。录制步骤会实时显示到右侧。'" />
+            <el-button v-if="form.headless && form.url" size="small" type="info" style="margin-top:10px" @click="openRecordedPage">
+              打开被录页面
             </el-button>
           </template>
         </el-card>
 
         <el-card shadow="never" header="导入已有脚本" style="margin-top:16px">
-          <el-tabs v-if="engine === 'all'" v-model="importTab">
+          <el-tabs v-model="importTab">
             <el-tab-pane label="Playwright Codegen" name="codegen">
               <el-input v-model="importCode" type="textarea" :rows="5"
                 placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
@@ -93,18 +106,6 @@
                 :disabled="!form.projectId || !importSide" @click="doImport('side')">导入为用例</el-button>
             </el-tab-pane>
           </el-tabs>
-          <div v-else-if="engine === 'playwright'">
-            <el-input v-model="importCode" type="textarea" :rows="5"
-              placeholder="粘贴 npx playwright codegen 生成的测试代码（JS/Python）" />
-            <el-button type="primary" size="small" style="margin-top:8px"
-              :disabled="!form.projectId || !importCode" @click="doImport('codegen')">导入为用例</el-button>
-          </div>
-          <div v-else-if="engine === 'selenium'">
-            <el-input v-model="importSide" type="textarea" :rows="5"
-              placeholder="粘贴 Selenium IDE 导出的 .side 文件内容（JSON）" />
-            <el-button type="primary" size="small" style="margin-top:8px"
-              :disabled="!form.projectId || !importSide" @click="doImport('side')">导入为用例</el-button>
-          </div>
         </el-card>
       </el-col>
 
@@ -136,17 +137,6 @@
             </el-timeline-item>
           </el-timeline>
         </el-card>
-
-        <el-card shadow="never" style="margin-top:16px">
-          <template #header>
-            <div class="card-header">
-              <span>Codegen 实时脚本</span>
-              <el-tag v-if="running" type="success" effect="plain" size="small">录制中</el-tag>
-            </div>
-          </template>
-          <el-empty v-if="!codegenScript" description="尚未生成脚本，请在弹出的浏览器中操作" />
-          <pre v-else class="codegen-pre">{{ codegenScript }}</pre>
-        </el-card>
       </el-col>
     </el-row>
 
@@ -160,6 +150,15 @@
     >
       <div class="env-check-intro">
         开始录制前将自动检查后端服务、所选浏览器及目标 URL 是否就绪。
+        <el-alert
+          v-if="!form.headless"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-top:10px"
+          title="无头模式建议"
+          description="当前关闭无头模式。若后端以后台服务/SYSTEM 身份运行，可能无法弹出浏览器窗口，建议开启无头模式。"
+        />
       </div>
       <el-divider />
       <div class="env-check-list">
@@ -187,31 +186,20 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { VideoCamera, VideoCameraFilled, Loading, CircleCheck, CircleClose, FolderChecked } from '@element-plus/icons-vue'
+import { VideoCamera, VideoCameraFilled, VideoPause, CaretRight, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { uiRecordApi, uiProjectApi, uiBrowserApi } from '/@/api/v1/testing/uiAutomation'
-import { useWebManagementApi } from '/@/api/v1/testing/webManagement'
-
-const route = useRoute()
-const router = useRouter()
-const { web_menu, menu_script_list } = useWebManagementApi()
-
-// 根据入口参数决定当前是 Playwright 还是 Selenium 录制模式
-const engine = computed(() => {
-  const e = String(route.query.engine || 'all')
-  return ['playwright', 'selenium', 'all'].includes(e) ? e : 'all'
-})
 
 const projects = ref<any[]>([])
 const running = ref(false)
 const paused = ref(false)
 const sessionId = ref<number | null>(null)
 const steps = ref<any[]>([])
-const codegenScript = ref('')
+const pickResult = ref<any>(null)
+const importTab = ref('codegen')
 const importCode = ref('')
 const importSide = ref('')
-const importTab = ref(engine.value === 'selenium' ? 'side' : 'codegen')
 let pollTimer: any = null
 
 const form = reactive({
@@ -224,62 +212,11 @@ const form = reactive({
   colorScheme: '',
   locale: '',
   timezone: '',
-  scriptMenuId: null as number | null,
-  scriptId: null as number | null,
+  headless: false,
 })
 
-const RECORDER_CONFIG_KEY = 'ui-recorder-config'
-const CONFIG_FIELDS: (keyof typeof form)[] = [
-  'projectId', 'url', 'browserType', 'viewportWidth', 'viewportHeight',
-  'colorScheme', 'locale', 'timezone', 'scriptMenuId', 'scriptId',
-]
-
-/** 从项目列表中选出最近更新/创建的项目作为默认项 */
-function findLatestProject(list: any[]): any | null {
-  if (!list?.length) return null
-  const ts = (p: any) => {
-    const v = p.updated_at || p.created_at || p.update_time || p.create_time
-    return v ? new Date(v).getTime() : 0
-  }
-  return [...list].sort((a, b) => ts(b) - ts(a))[0]
-}
-
-function saveRecorderConfig() {
-  try {
-    const payload: any = {}
-    CONFIG_FIELDS.forEach((key) => {
-      payload[key] = (form as any)[key]
-    })
-    localStorage.setItem(RECORDER_CONFIG_KEY, JSON.stringify(payload))
-    ElMessage.success('已保存当前配置')
-  } catch (e) {
-    ElMessage.error('保存配置失败')
-  }
-}
-
-function loadRecorderConfig() {
-  try {
-    const raw = localStorage.getItem(RECORDER_CONFIG_KEY)
-    if (!raw) return
-    const saved = JSON.parse(raw)
-    CONFIG_FIELDS.forEach((key) => {
-      if (saved[key] !== undefined) {
-        (form as any)[key] = saved[key]
-      }
-    })
-  } catch (e) {
-    console.error('读取录制配置失败', e)
-  }
-}
-
-// 录制/导入完成后自动跳转到对应的用例管理页并高亮新记录
-function syncToManage(caseId?: number) {
-  if (!form.projectId) return
-  router.push({
-    path: '/testing/ui-automation/manage',
-    query: { id: form.projectId, tab: 'testCases', caseId }
-  })
-}
+const route = useRoute()
+const pickText = ref('')
 
 // 前置环境检测弹窗
 const envCheckVisible = ref(false)
@@ -313,80 +250,18 @@ async function applyProjectConfig(pid: number | null) {
 
 watch(() => form.projectId, applyProjectConfig)
 
-const webMenuTree = ref<any[]>([])
-
-async function loadWebMenuTree() {
-  try {
-    const res: any = await web_menu({})
-    webMenuTree.value = res.data || []
-  } catch {
-    /* ignore */
-  }
-}
-
-const scriptLibraryOptions = computed(() => {
-  const flat: any[] = []
-  function walk(nodes: any[]) {
-    for (const n of nodes || []) {
-      if (n.type === 0 || n.type === 1) flat.push(n)
-      if (n.children?.length) walk(n.children)
-    }
-  }
-  walk(webMenuTree.value)
-  return flat
-})
-
-const scriptOptions = computed(() => {
-  if (!form.scriptMenuId) return []
-  const lib = scriptLibraryOptions.value.find((n) => n.id === form.scriptMenuId)
-  return (lib?.children || []).filter((n: any) => n.type === 2)
-})
-
-const canStart = computed(() => {
-  if (!form.projectId || !form.scriptMenuId || !form.scriptId || !form.browserType) return false
-  const url = (form.url || '').trim()
-  if (!url) return false
-  try {
-    new URL(url)
-    return true
-  } catch {
-    return false
-  }
-})
-
-watch(() => form.scriptMenuId, () => {
-  form.scriptId = null
-})
-
 onMounted(async () => {
   try {
     const res: any = await uiProjectApi.list({ page: 1, page_size: 200 })
     projects.value = res.data?.items || res.data || []
-    const projectIdSet = new Set(projects.value.map((p) => p.id).filter(Boolean))
-
-    // 先加载历史输入（可能包含上次使用的 projectId）
-    loadRecorderConfig()
-
-    // 决定默认 projectId：URL 参数 > 本地记忆 > 最近项目
-    let pid: number | null = null
     const rawQid = route.query.projectId
     if (rawQid) {
-      const qid = Number(rawQid)
-      if (!isNaN(qid) && qid > 0) pid = qid
+      const pid = Number(rawQid)
+      if (!isNaN(pid) && pid > 0) {
+        form.projectId = pid
+        await applyProjectConfig(pid)
+      }
     }
-    if (!pid && form.projectId && projectIdSet.has(form.projectId)) {
-      pid = form.projectId
-    }
-    if (!pid && projects.value.length) {
-      const latest = findLatestProject(projects.value)
-      pid = latest?.id ?? null
-    }
-
-    if (pid) {
-      form.projectId = pid
-      await applyProjectConfig(pid)
-    }
-    await loadWebMenuTree()
   } catch (e) {
     ElMessage.error('加载 UI 项目失败')
   }
@@ -406,29 +281,6 @@ function stepColor(t: string) {
 function openEnvCheck() {
   if (!form.projectId) {
     ElMessage.warning('请先选择 UI 项目')
-    return
-  }
-  if (!form.scriptMenuId) {
-    ElMessage.warning('请选择所属脚本库')
-    return
-  }
-  if (!form.scriptId) {
-    ElMessage.warning('请选择所属脚本')
-    return
-  }
-  if (!form.browserType) {
-    ElMessage.warning('请选择浏览器')
-    return
-  }
-  const url = (form.url || '').trim()
-  if (!url) {
-    ElMessage.warning('请填写起始 URL')
-    return
-  }
-  try {
-    new URL(url)
-  } catch {
-    ElMessage.warning('起始 URL 格式不正确，请以 http:// 或 https:// 开头')
     return
   }
   envCheckVisible.value = true
@@ -469,7 +321,10 @@ async function runEnvCheck() {
     }
   } catch (e: any) {
     check2.status = 'error'
-    check2.message = e?.response?.data?.message || '浏览器检测请求失败'
+    const timedOut = e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '')
+    check2.message = timedOut
+      ? '环境检测超时（>15s）：后端服务无法拉起 Playwright 浏览器，请检查后端日志/浏览器安装'
+      : (e?.response?.data?.message || '浏览器检测请求失败')
   }
 
   // 3. URL 格式
@@ -477,8 +332,8 @@ async function runEnvCheck() {
   check3.status = 'checking'
   const url = (form.url || '').trim()
   if (!url) {
-    check3.status = 'error'
-    check3.message = '未填写起始 URL'
+    check3.status = 'success'
+    check3.message = '未填写起始 URL，将使用 about:blank'
   } else {
     try {
       new URL(url)
@@ -513,17 +368,18 @@ async function doStartRecord() {
     color_scheme: form.colorScheme || undefined,
     locale: form.locale || undefined,
     timezone: form.timezone || undefined,
-    script_menu_id: form.scriptMenuId || undefined,
-    script_id: form.scriptId || undefined,
+    headless: form.headless,
   }
   try {
     const res: any = await uiRecordApi.start(form.projectId, payload)
     sessionId.value = res.data.session_id
     running.value = true
     paused.value = false
+    pickResult.value = null
     steps.value = []
     startPolling()
-    ElMessage.success('录制已启动，请在弹出的浏览器中操作')
+    const tip = form.headless ? '录制已启动（无头模式），请继续操作' : '录制已启动，请在弹出的浏览器中操作'
+    ElMessage.success(tip)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '启动录制失败')
   }
@@ -538,7 +394,6 @@ async function stopRecord() {
     if (pollTimer) clearInterval(pollTimer)
     await refreshSteps()
     ElMessage.success(`录制完成，已生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
-    syncToManage(res.data.test_case_id)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '停止录制失败')
   }
@@ -546,15 +401,7 @@ async function stopRecord() {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer)
-  pollTimer = setInterval(async () => {
-    await refreshSteps()
-    if (sessionId.value != null) {
-      try {
-        const r: any = await uiRecordApi.codegenScript(sessionId.value)
-        codegenScript.value = r?.data?.script || ''
-      } catch (e) { /* ignore */ }
-    }
-  }, 1000)
+  pollTimer = setInterval(refreshSteps, 1000)
 }
 
 async function refreshSteps() {
@@ -568,9 +415,51 @@ async function refreshSteps() {
   }
 }
 
+async function togglePause() {
+  if (sessionId.value == null) return
+  try {
+    if (paused.value) {
+      await uiRecordApi.resume(sessionId.value)
+      paused.value = false
+      ElMessage.success('已继续录制')
+    } else {
+      await uiRecordApi.pause(sessionId.value)
+      paused.value = true
+      ElMessage.info('已暂停录制，页面操作不再生成步骤')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '操作失败')
+  }
+}
+
+async function setAssert(mode: string) {
+  if (sessionId.value == null) return
+  await uiRecordApi.assertMode(sessionId.value, { mode })
+  ElMessage.info(`已开启「${mode}」断言，请在浏览器中点击目标元素`)
+}
+
 function openRecordedPage() {
   if (form.url) {
     window.open(form.url, '_blank')
+  }
+}
+
+async function startPick() {
+  if (sessionId.value == null) return
+  await uiRecordApi.pick(sessionId.value)
+  ElMessage.info('已开启拾取，请点击浏览器中的元素')
+  // 轮询拾取结果
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    try {
+      const res: any = await uiRecordApi.getPick(sessionId.value!)
+      if (res.data && res.data.locators && res.data.locators.length) {
+        pickResult.value = res.data
+        const top = res.data.locators[0]
+        pickText.value = `${top.strategy} = ${top.value}`
+        break
+      }
+    } catch (e) { /* ignore */ }
   }
 }
 
@@ -587,7 +476,6 @@ async function doImport(kind: 'codegen' | 'side') {
       ? await uiRecordApi.importCodegen(payload)
       : await uiRecordApi.importSide(payload)
     ElMessage.success(`导入成功，生成用例 #${res.data.test_case_id}，共 ${res.data.steps_count} 步`)
-    syncToManage(res.data.test_case_id)
     if (kind === 'codegen') importCode.value = ''
     else importSide.value = ''
   } catch (e: any) {
@@ -606,19 +494,6 @@ async function doImport(kind: 'codegen' | 'side') {
 .step-line { display: flex; align-items: center; gap: 8px; }
 .desc { color: #333; }
 .assert-info { margin-top: 4px; color: #67c23a; font-size: 12px; }
-.codegen-pre {
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-size: 12px;
-  line-height: 1.6;
-  max-height: 460px;
-  overflow: auto;
-  background: #0d1117;
-  color: #c9d1d9;
-  padding: 12px;
-  border-radius: 6px;
-  margin: 0;
-}
 .env-check-intro { color: #606266; font-size: 14px; }
 .env-check-list { display: flex; flex-direction: column; gap: 16px; }
 .env-check-item { display: flex; align-items: flex-start; gap: 12px; }

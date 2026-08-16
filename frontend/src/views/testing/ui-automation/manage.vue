@@ -68,7 +68,7 @@
 
             <!-- 测试用例 -->
             <el-tab-pane label="测试用例" name="testCases">
-              <TestCaseManage :ui-project-id="projectId" :highlight-case-id="Number(route.query.caseId) || undefined" />
+              <TestCaseManage :ui-project-id="projectId" />
             </el-tab-pane>
 
             <!-- 测试套件 -->
@@ -157,8 +157,7 @@ if (!projectId.value || isNaN(projectId.value)) {
 }
 
 const projectInfo = ref<any>({})
-const validTabs = ['elements', 'pageObjects', 'testCases', 'testSuites', 'executions']
-const activeTab = ref(validTabs.includes(route.query.tab as string) ? (route.query.tab as string) : 'elements')
+const activeTab = ref('elements')
 const selectedGroupId = ref<number | null>(null)
 const testSuiteManageRef = ref()
 
@@ -256,7 +255,7 @@ const selectFirstGroup = () => {
 
 // Tab切换
 const handleTabChange = (name: string) => {
-  router.replace({ query: { ...route.query, tab: name } })
+  console.log('切换到:', name)
 }
 
 // 新建分组
@@ -341,7 +340,7 @@ const handleExecute = () => {
   })
 }
 
-// 录制脚本（Selenium 入口：只展示 Selenium IDE 导入）
+// 录制脚本
 const goRecorder = () => {
   router.push({ path: '/web/automation/recorder', query: { projectId: projectId.value, engine: 'selenium' } })
 }

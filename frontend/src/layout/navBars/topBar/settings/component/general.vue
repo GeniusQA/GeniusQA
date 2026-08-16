@@ -2,8 +2,8 @@
 
 import {
   getThemeConfig,
-  onWartermarkChange,
-  onWartermarkTextInput,
+  onWatermarkChange,
+  onWatermarkTextInput,
   setLocalThemeConfig
 } from "/@/layout/navBars/topBar/settings/index";
 </script>
@@ -15,14 +15,14 @@ import {
   <div class="layout-breadcrumb-setting-bar-flex mt15">
     <div class="layout-breadcrumb-setting-bar-flex-label">开启水印</div>
     <div class="layout-breadcrumb-setting-bar-flex-value">
-      <el-switch v-model="getThemeConfig.isWartermark" size="small" @change="onWartermarkChange"></el-switch>
+      <el-switch v-model="getThemeConfig.isWatermark" size="small" @change="onWatermarkChange"></el-switch>
     </div>
   </div>
   <div class="layout-breadcrumb-setting-bar-flex mt14">
     <div class="layout-breadcrumb-setting-bar-flex-label">水印文案</div>
     <div class="layout-breadcrumb-setting-bar-flex-value">
-      <el-input v-model="getThemeConfig.wartermarkText" size="default" style="width: 90px"
-                @input="onWartermarkTextInput($event)"></el-input>
+      <el-input v-model="getThemeConfig.watermarkText" size="default" style="width: 90px"
+                @input="onWatermarkTextInput($event)"></el-input>
     </div>
   </div>
 

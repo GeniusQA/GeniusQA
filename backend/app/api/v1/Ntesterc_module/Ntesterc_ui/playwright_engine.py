@@ -344,13 +344,7 @@ class PlaywrightTestEngine:
             elif locator_strategy.lower() == 'placeholder':
                 locator = self.page.get_by_placeholder(locator_value)
             elif locator_strategy.lower() == 'role':
-                # codegen 产出的 role 形如 "button Submit"（role + name），
-                # 需拆开后传给 get_by_role 的 name 参数
-                _role_parts = locator_value.split(' ', 1)
-                if len(_role_parts) == 2:
-                    locator = self.page.get_by_role(_role_parts[0], name=_role_parts[1])
-                else:
-                    locator = self.page.get_by_role(locator_value)
+                locator = self.page.get_by_role(locator_value)
             elif locator_strategy.lower() == 'label':
                 locator = self.page.get_by_label(locator_value)
             elif locator_strategy.lower() == 'title':

@@ -62,7 +62,7 @@ import {
   onCopyConfigClick,
   onDrawerClose,
   onResetConfigClick,
-  onWartermarkChange
+  onWatermarkChange
 } from "/@/layout/navBars/topBar/settings/index";
 
 defineOptions({name: "layoutBreadcrumbSetting"})
@@ -101,7 +101,7 @@ onMounted(() => {
       // 深色模式
       if (getThemeConfig.value.isIsDark) onAddDarkChange('dark');
       // 开启水印
-      onWartermarkChange();
+      onWatermarkChange();
       // 初始化菜单样式等
       initSetStyle();
     }, 10);

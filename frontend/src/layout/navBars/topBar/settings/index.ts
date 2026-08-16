@@ -140,15 +140,15 @@ export const onAddFilterChange = (attr: string) => {
 };
 
 // 4、界面显示 --> 开启水印
-export const onWartermarkChange = () => {
-	getThemeConfig.value.isWartermark ? Watermark.set(getThemeConfig.value.wartermarkText) : Watermark.del();
+export const onWatermarkChange = () => {
+	getThemeConfig.value.isWatermark ? Watermark.set(getThemeConfig.value.watermarkText) : Watermark.del();
 	setLocalThemeConfig();
 };
 // 4、界面显示 --> 水印文案
-export const onWartermarkTextInput = (val: any) => {
-	getThemeConfig.value.wartermarkText = verifyAndSpace(val);
-	if (getThemeConfig.value.wartermarkText === '') return false;
-	if (getThemeConfig.value.isWartermark) Watermark.set(getThemeConfig.value.wartermarkText);
+export const onWatermarkTextInput = (val: any) => {
+	getThemeConfig.value.watermarkText = verifyAndSpace(val);
+	if (getThemeConfig.value.watermarkText === '') return false;
+	if (getThemeConfig.value.isWatermark) Watermark.set(getThemeConfig.value.watermarkText);
 	setLocalThemeConfig();
 };
 // 5、布局切换

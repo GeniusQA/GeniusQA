@@ -323,6 +323,13 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 						icon: 'ele-VideoCamera',
 					},
 				},
+				{
+					path: '/ai/ui-recorder',
+					redirect: '/web/automation/recorder',
+					meta: {
+						isHide: true,
+					},
+				},
 					{
 						path: '/ai/mcp-config',
 						name: 'aiMcpConfig',
