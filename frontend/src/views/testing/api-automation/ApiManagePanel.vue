@@ -808,7 +808,7 @@ const bindDsExisting = ref<Record<string, any> | null>(null);
 const dsSyncing = ref(false);
 
 const freqLabel = (v: string) =>
-	v === '30m' ? '30 分钟' : v === '1h' ? '1 小时' : v === '3h' ? '3 小时' : v === '6h' ? '6 小时' : v === '12h' ? '12 小时' : v === '24h' ? '每天' : (v || '-');
+	v === 'manual' ? '手动触发' : v === '30m' ? '每隔 30 分钟' : v === '1h' ? '每隔 1 小时' : v === '3h' ? '每隔 3 小时' : v === '6h' ? '每隔 6 小时' : v === '12h' ? '每隔 12 小时' : v === '24h' ? '每隔 24 小时' : (v || '-');
 
 const openBindDs = () => {
 	bindDsExisting.value = moduleSource.value.source_type ? { ...(moduleSource.value.data_source_config || {}), url: moduleSource.value.source_addr } : null;

@@ -1,34 +1,25 @@
 <template>
 	<el-dialog v-model="inner" title="绑定数据源" width="640px" destroy-on-close class="bind-ds-dialog" append-to-body>
 		<el-form label-width="110px" class="bd-form">
-			<el-form-item label="目标分支" required>
-				<el-input v-model="form.branch" placeholder="main" size="small" style="width: 200px" :disabled="form.data_source === 'url'" />
-				<span class="bd-hint" v-if="form.data_source === 'url'">URL 数据源无需分支</span>
-			</el-form-item>
 			<el-form-item label="模块" required>
 				<el-input :model-value="moduleName" size="small" style="width: 240px" disabled />
 			</el-form-item>
 			<el-form-item label="导入频率" required>
 				<el-select v-model="form.frequency" size="small" style="width: 200px">
-					<el-option label="每 30 分钟" value="30m" />
-					<el-option label="每 1 小时" value="1h" />
+					<el-option label="手动触发" value="manual" />
+					<el-option label="每隔 30 分钟" value="30m" />
+					<el-option label="每隔 1 小时" value="1h" />
 					<el-option label="每隔 3 小时" value="3h" />
 					<el-option label="每隔 6 小时" value="6h" />
 					<el-option label="每隔 12 小时" value="12h" />
-					<el-option label="每天" value="24h" />
+					<el-option label="每隔 24 小时" value="24h" />
 				</el-select>
 			</el-form-item>
 			<el-form-item label="数据源格式" required>
 				<el-radio-group v-model="form.data_source_type">
 					<el-radio-button value="swagger">OpenAPI (Swagger)</el-radio-button>
-					<el-radio-button value="apidoc">apiDoc</el-radio-button>
 					<el-radio-button value="apifox">Apifox</el-radio-button>
-					<el-radio-button value="knife4j">Knife4j</el-radio-button>
-					<el-radio-button value="yapi">YApi</el-radio-button>
 				</el-radio-group>
-				<div v-if="['apidoc', 'knife4j', 'yapi'].includes(form.data_source_type)" class="bd-warn" style="margin-top: 6px">
-					该格式暂不支持解析（当前支持 OpenAPI/Swagger 与 Apifox），保存后可配置但同步会提示
-				</div>
 			</el-form-item>
 			<el-form-item label="数据源名称" required>
 				<el-input v-model="form.name" placeholder="请输入名称" size="small" style="width: 320px" />
@@ -39,7 +30,7 @@
 					<el-radio value="git">Git 仓库</el-radio>
 				</el-radio-group>
 			</el-form-item>
-			<template v-if="form.data_source === 'url'">
+			<template v-if="form.data_source === 'url' && form.data_source_type === 'swagger'">
 				<el-form-item label="URL" required>
 					<el-input v-model="form.url" placeholder="输入 json 或 yaml 数据文件的 URL" size="small" style="width: 100%" />
 					<span style="margin-left: 8px; flex: 0 0 auto; display: flex; align-items: center; gap: 4px">
@@ -56,7 +47,12 @@
 					</el-form-item>
 				</template>
 			</template>
-			<template v-else>
+			<template v-if="form.data_source === 'url' && form.data_source_type === 'apifox'">
+				<el-form-item label="URL" required>
+					<el-input v-model="form.url" placeholder="https://app.apifox.com/project/xxx 或 s.apifox.cn 分享链接" size="small" style="width: 100%" />
+				</el-form-item>
+			</template>
+			<template v-else-if="form.data_source === 'git'">
 				<el-form-item label="仓库地址" required>
 					<el-input v-model="form.url" placeholder="https://git.example.com/group/repo.git" size="small" style="width: 100%" />
 				</el-form-item>
@@ -192,7 +188,6 @@ const saving = ref(false);
 const syncing = ref(false);
 
 const defaultForm = () => ({
-	branch: 'main',
 	frequency: '3h',
 	data_source_type: 'swagger',
 	name: '',
@@ -242,7 +237,6 @@ const buildConfig = () => {
 		name: f.name,
 		data_source: f.data_source,
 		url: f.url.trim(),
-		branch: f.branch.trim(),
 		frequency: f.frequency,
 		basic_auth: f.basic_auth.enabled ? { username: f.basic_auth.username.trim(), password: f.basic_auth.password } : null,
 		pid: f.pid || 0,

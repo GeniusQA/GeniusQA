@@ -37,6 +37,8 @@ async def sync_due_datasources() -> None:
                 if not isinstance(cfg, dict) or not cfg.get("url"):
                     continue
                 freq = str(cfg.get("frequency") or "3h")
+                if freq == "manual":
+                    continue  # 手动触发：不自动同步，仅由「立即导入」执行
                 interval = _FREQ_SECONDS.get(freq, 3 * 60 * 60)
                 last = str(cfg.get("last_sync_at") or "")
                 if last:
