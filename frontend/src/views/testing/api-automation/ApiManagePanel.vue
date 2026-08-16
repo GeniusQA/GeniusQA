@@ -59,8 +59,8 @@
 					<el-icon v-else-if="data.type===4" class="icon-dm"><Box /></el-icon>
 								<el-icon v-else-if="data.type===5" class="icon-folder" style="color:#7c3aed"><Grid /></el-icon>
 								<el-icon v-else-if="data.type===3" class="icon-case"><Link /></el-icon>
-								<span v-if="(data.type===2||data.type===3) && data.protocol !== 'websocket' && data.protocol !== 'webhook'" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
-								<span v-if="data.type===2 && data.protocol==='websocket'" class="proto-badge proto-ws">WS</span>
+								<span v-if="(data.type===2||data.type===3) && data.protocol !== 'websocket' && data.protocol !== 'socketio' && data.protocol !== 'webhook'" class="method-badge" :style="{background: methodColor(data.method)}">{{ methodLabel(data.method) }}</span>
+								<span v-if="data.type===2 && (data.protocol==='websocket' || data.protocol==='socketio')" class="proto-badge proto-ws">WS</span>
 								<span v-else-if="data.type===2 && data.protocol==='webhook'" class="proto-badge proto-wh">WH</span>
 								<span class="node-name">{{ data.name }}</span>
 							</div>
@@ -590,6 +590,7 @@
 					<el-select v-model="menuForm.protocol" style="width:100%">
 						<el-option label="HTTP" value="http" />
 						<el-option label="WebSocket" value="websocket" />
+						<el-option label="Socket.IO" value="socketio" />
 						<el-option label="Webhook" value="webhook" />
 					</el-select>
 				</el-form-item>
