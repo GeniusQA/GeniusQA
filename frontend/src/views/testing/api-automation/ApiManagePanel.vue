@@ -48,6 +48,7 @@
 					class="api-tree"
 					@node-click="onNodeClick"
 					@node-drop="handleNodeDrop"
+					empty-text="暂无模块，点击「添加 → 添加模块」创建"
 				>
 					<template #default="{ data }">
 						<div class="tree-node">
@@ -769,7 +770,7 @@ const loadTree = async () => {
 	} else if (selectedDir.value) {
 		treeRef.value?.setCurrentKey(selectedDir.value.id);
 	} else if (!apiTabs.value.length) {
-		const firstMod = treeData.value.find((n: any) => n.type === 0);
+		const firstMod = treeData.value.find((n: any) => n.type === 5);
 		if (firstMod) {
 			treeRef.value?.setCurrentKey(firstMod.id);
 			await loadModuleDetail(firstMod);
