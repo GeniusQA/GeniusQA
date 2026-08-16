@@ -298,6 +298,7 @@ const loadDirs = async () => {
 		const walk = (nodes: any[], rootName: string, depth: number) => {
 			for (const n of nodes || []) {
 				if (n.type === 0) {
+					rootDirName = n.name;
 					walk(n.children || [], n.name, 0);
 					continue;
 				}
