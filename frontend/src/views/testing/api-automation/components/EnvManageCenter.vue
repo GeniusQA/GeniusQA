@@ -357,8 +357,9 @@ defineExpose({ open });
 .env-detail-title { font-size: 16px; font-weight: 700; margin-right: auto; }
 .env-detail-head .env-del-btn { margin-left: auto; }
 .env-front-module {
-	flex: 1.2;
-	min-width: 0;
+	flex: 0 0 auto;
+	width: fit-content;
+	max-width: 200px;
 	display: inline-flex;
 	align-items: center;
 	padding: 0 10px;
