@@ -4164,6 +4164,40 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
+    async def _remove_env_front_url_protocol(db: AsyncSession, svc_id: int, protocol: str) -> None:
+        """移除所有环境中该服务的指定协议前置 URL 行（删除 WS 接口时联动清理）。"""
+        import json as _json
+        mid = f"svc_{int(svc_id)}"
+        protocol = str(protocol or "").lower()
+        envs = (
+            await db.execute(
+                select(ApiEnvironmentModel).where(ApiEnvironmentModel.enabled_flag == 1)
+            )
+        ).scalars().all()
+        for env in envs:
+            cfg = list(env.config or [])
+            for item in cfg:
+                if isinstance(item, dict) and str(item.get("name") or "") == "__front_urls__":
+                    try:
+                        fu = _json.loads(item.get("value") or "[]")
+                    except Exception:
+                        fu = []
+                    if not isinstance(fu, list):
+                        fu = []
+                    new_fu = [
+                        f for f in fu
+                        if not (str(f.get("menu_id") or "") == mid and str(f.get("protocol") or "http").lower() == protocol)
+                    ]
+                    if len(new_fu) != len(fu):
+                        item["value"] = _json.dumps(new_fu)
+                        await db.execute(
+                            update(ApiEnvironmentModel)
+                            .where(ApiEnvironmentModel.id == env.id)
+                            .values(config=cfg)
+                        )
+        await db.commit()
+
+    @staticmethod
     async def _sync_env_front_urls_for_protocol(db: AsyncSession, svc_id: int, protocol: str) -> None:
         """新建接口时联动：确保所有环境的 __front_urls__ 中存在该模块对应协议的前置 URL 行（url 空）。"""
         import json as _json
@@ -4388,6 +4422,27 @@ class ApiAutomationService:
             await db.execute(
                 update(ApiModel).where(ApiModel.id.in_(api_ids)).values(enabled_flag=0)
             )
+        # 删除 websocket/socketio 接口时：服务下若无其他同协议接口，联动移除环境的 WS 行
+        if to_del:
+            for m in mrows:
+                if int(m.type) == 2 and m.api_id and int(m.api_service_id or 0):
+                    _api_row = (
+                        await db.execute(select(ApiModel).where(ApiModel.id == int(m.api_id)))
+                    ).scalar_one_or_none()
+                    _proto = str((_api_row.req or {}).get("protocol") or "http").lower() if _api_row else "http"
+                    if _proto in ("websocket", "socketio"):
+                        _others = (
+                            await db.execute(
+                                select(func.count(ApiMenuModel.id)).where(
+                                    ApiMenuModel.api_service_id == int(m.api_service_id),
+                                    ApiMenuModel.enabled_flag == 1,
+                                    ApiMenuModel.type == 2,
+                                    ApiMenuModel.id.notin_(to_del),
+                                )
+                            )
+                        ).scalar()
+                        if not _others:
+                            await ApiAutomationService._remove_env_front_url_protocol(db, m.api_service_id, _proto)
         mod_ids = [f"svc_{int(m.id)}" for m in mrows if int(m.type) in (0, 5)] if to_del else []
         if mod_ids:
             await ApiAutomationService._sync_env_front_urls(db, mod_ids, remove=True)
