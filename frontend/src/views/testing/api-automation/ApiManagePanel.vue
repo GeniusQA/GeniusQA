@@ -190,7 +190,19 @@
 								</div>
 							</div>
 						</el-tab-pane>
-						<el-tab-pane label="全部接口" name="apis">
+						<el-tab-pane label="文档" name="docs">
+							<div class="dir-doc-head">
+								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
+								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
+								<el-radio-group v-model="dirDocMode" size="small" style="margin-left: 8px">
+									<el-radio-button value="edit">编辑</el-radio-button>
+									<el-radio-button value="preview">预览</el-radio-button>
+								</el-radio-group>
+							</div>
+							<el-input v-if="dirDocMode === 'edit'" v-model="dirDocContent" type="textarea" :rows="18" class="dir-doc-textarea" placeholder="请输入内容（支持 Markdown）" />
+							<div v-else class="dir-doc-preview markdown-body" v-html="dirDocHtml"></div>
+						</el-tab-pane>
+					<el-tab-pane label="全部接口" name="apis">
 							<div class="dd-apis">
 								<div v-if="dirApis.length" class="dd-apis-bar">
 									<span>已选 {{ dirChecked.length }}/{{ dirApis.length }} 项</span>
@@ -651,6 +663,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
+import { marked } from 'marked';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
 import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
@@ -886,6 +899,24 @@ const dirTitleText = computed(() => {
 const dirDetailTab = ref('settings');
 const dirConfig = ref<{ visibility: string; id_key: string }>({ visibility: 'shared', id_key: 'method_path' });
 const dirName = ref('');
+const dirDocTitle = ref('');
+const dirDocContent = ref('');
+const dirDocMode = ref<'edit' | 'preview'>('edit');
+const dirDocHtml = computed(() => {
+	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
+});
+const saveDirDoc = async () => {
+	if (!selectedDir.value) return;
+	try {
+		let cp: Record<string, any> = {};
+		try { cp = selectedDir.value.common_params ? JSON.parse(selectedDir.value.common_params) : {}; } catch { cp = {}; }
+		if (!cp || typeof cp !== 'object') cp = {};
+		cp.document = { title: dirDocTitle.value || selectedDir.value.name, content: dirDocContent.value };
+		await edit_menu({ id: selectedDir.value.id, name: selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
+		ElMessage.success('文档已保存');
+		await loadTree();
+	} catch (e: any) { ElMessage.error(e?.message || '保存失败'); }
+};
 const dirChecked = ref<number[]>([]);
 const dirBefore = ref<any[]>([]);
 const dirAfter = ref<any[]>([]);
@@ -1249,6 +1280,15 @@ const onNodeClick = async (data: any) => {
 			id_key: cp.id_key || 'method_path',
 		};
 		dirName.value = data.name || '';
+		const _doc = cp.document;
+		if (_doc && typeof _doc === 'object') {
+			dirDocTitle.value = _doc.title || '';
+			dirDocContent.value = _doc.content || '';
+		} else {
+			dirDocTitle.value = data.name || '';
+			dirDocContent.value = '';
+		}
+		dirDocMode.value = 'edit';
 		dirBefore.value = Array.isArray(cp.before) ? cp.before : [];
 		dirAfter.value = Array.isArray(cp.after) ? cp.after : [];
 		dirAuth.value = { ...dirAuth.value, ...(cp.auth && typeof cp.auth === 'object' ? cp.auth : {}) };
@@ -1963,4 +2003,7 @@ onMounted(() => {
 .tree-batch-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 6px 8px; background: #fef0f0; border-radius: 4px; margin-bottom: 4px; white-space: nowrap; }
 .batch-count { font-size: 12px; color: var(--el-color-danger); flex-shrink: 0; }
 .batch-delete-btn { margin-left: auto; }
+.dir-doc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.dir-doc-textarea :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; }
+.dir-doc-preview { min-height: 300px; padding: 12px 16px; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; background: #fff; overflow: auto; }
 </style>
