@@ -73,7 +73,7 @@
 							</div>
 							<div v-for="(f, fi) in g.rows" :key="'r' + fi" class="env-row env-row-indent">
 								<span class="proto-mini" :class="'proto-mini-' + (f.protocol || 'http')">{{ protoLabel(f.protocol) }}</span>
-								<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'wss:// 起始的 WebSocket 前置 URL' : (f.protocol || 'http') === 'socketio' ? 'wss:// 起始的 Socket.IO 前置 URL' : 'https:// 起始的前置 URL'" size="small" style="flex:1" />
+								<el-input v-model="f.url" :placeholder="(f.protocol || 'http') === 'websocket' ? 'ws:// 或 wss:// 起始的 WebSocket 前置 URL' : (f.protocol || 'http') === 'socketio' ? 'ws:// 或 wss:// 起始的 Socket.IO 前置 URL' : 'http:// 或 https:// 起始的前置 URL'" size="small" style="flex:1" />
 							</div>
 						</div>
 
