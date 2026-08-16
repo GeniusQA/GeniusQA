@@ -11,21 +11,6 @@
 						@keyup.enter="loadList"
 					/>
 				</el-form-item>
-				<el-form-item label="业务线">
-					<el-select
-						v-model="searchParams.business_id"
-						placeholder="请选择业务线"
-						clearable
-						style="width: 160px"
-					>
-						<el-option
-							v-for="b in businessOptions"
-							:key="b.id"
-							:label="b.name"
-							:value="b.id"
-						/>
-					</el-select>
-				</el-form-item>
 				<el-form-item label="负责人">
 					<el-select
 						v-model="searchParams.manager"
@@ -193,7 +178,7 @@ const tableData = ref<any[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
-const searchParams = reactive({ name: '', business_id: null as number | null, manager: null as number | null });
+const searchParams = reactive({ name: '', manager: null as number | null });
 
 // ---- 拖拽排序 ----
 const tableRef = ref<any>(null);
@@ -224,7 +209,6 @@ const initSortable = () => {
 
 // ---- 筛选选项 ----
 const userOptions = ref<any[]>([]);
-const businessOptions = ref<any[]>([]);
 
 const loadFilterOptions = async () => {
 	// 负责人下拉：项目成员并集（未加入任何项目的用户不显示）
@@ -250,8 +234,6 @@ const loadFilterOptions = async () => {
 	} catch {
 		userOptions.value = [];
 	}
-	// 业务线暂无独立接口，保持空列表（可后续扩展）
-	businessOptions.value = [];
 };
 
 // ---- 拉取状态 ----
@@ -292,7 +274,6 @@ const loadList = async () => {
 			search: {
 				name: searchParams.name || undefined,
 				manager: searchParams.manager ?? undefined,
-				business_id: searchParams.business_id ?? undefined,
 			},
 		});
 		const raw = res?.data;
@@ -318,7 +299,6 @@ const handleSearch = () => {
 
 const resetSearch = () => {
 	searchParams.name = '';
-	searchParams.business_id = null;
 	searchParams.manager = null;
 	currentPage.value = 1;
 	loadList();
