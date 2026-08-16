@@ -7,7 +7,9 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+import base64
+import secrets
 from fastapi.staticfiles import StaticFiles
 from app.core.logger import init_logger, logger
 from app.bootstrap.cors import init_cors
@@ -89,6 +91,26 @@ def create_app() -> FastAPI:
         redoc_url=None,  # 禁用默认的 /redoc
         openapi_url="/openapi.json",  # OpenAPI schema 路径
     )
+    # /openapi.json Basic Auth 保护（平台自身接口文档不公开暴露）
+    OPENAPI_BASIC_USER = "Genius"
+    OPENAPI_BASIC_PASS = "86340365"
+
+    @app.middleware("http")
+    async def openapi_basic_auth(request: Request, call_next):
+        if request.url.path == "/openapi.json":
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Basic "):
+                return JSONResponse({"detail": "Unauthorized"}, status_code=401, headers={"WWW-Authenticate": "Basic"})
+            try:
+                decoded = base64.b64decode(auth[6:]).decode("utf-8", "ignore")
+                user, _, pwd = decoded.partition(":")
+                ok = secrets.compare_digest(user, OPENAPI_BASIC_USER) and secrets.compare_digest(pwd, OPENAPI_BASIC_PASS)
+            except Exception:
+                ok = False
+            if not ok:
+                return JSONResponse({"detail": "Unauthorized"}, status_code=401, headers={"WWW-Authenticate": "Basic"})
+        return await call_next(request)
+
     init_exception(app)  # 注册捕获全局异常
     init_router(app)  # 注册路由
     init_middleware(app)  # 注册请求响应拦截
