@@ -595,22 +595,30 @@
 					</el-select>
 				</el-form-item>
 				<el-form-item v-if="menuForm.type === 2" label="父级目录">
-					<el-select v-model="menuForm.pid" style="width:100%" filterable clearable placeholder="选择父级目录（不选=根级）">
-						<el-option-group v-if="folderOptions.dirs.length" label="目录">
-							<el-option v-for="d in folderOptions.dirs" :key="d.id" :label="d.path" :value="d.id" />
-						</el-option-group>
-					</el-select>
+					<el-tree-select
+						v-model="menuForm.pid"
+						:data="folderTree"
+						node-key="id"
+						:props="{ label: 'name', children: 'children' }"
+						check-strictly
+						default-expand-all
+						filterable
+						placeholder="选择父级目录（选模块=默认根目录）"
+						style="width:100%"
+					/>
 				</el-form-item>
 				<el-form-item v-if="menuForm.type === 1" label="父级目录">
-					<el-select v-model="menuForm.pid" style="width:100%" filterable placeholder="选择父级目录（选模块=根级）">
-						<el-option-group v-if="folderOptions.mods.length" label="模块">
-							<el-option v-for="m in folderOptions.mods" :key="m.id" :label="m.path" :value="m.id" />
-						</el-option-group>
-						<el-option-group v-if="folderOptions.dirs.length" label="目录">
-							<el-option v-for="d in folderOptions.dirs" :key="d.id" :label="d.path" :value="d.id" />
-						</el-option-group>
-					</el-select>
-
+					<el-tree-select
+						v-model="menuForm.pid"
+						:data="folderTree"
+						node-key="id"
+						:props="{ label: 'name', children: 'children' }"
+						check-strictly
+						default-expand-all
+						filterable
+						placeholder="选择父级目录（选模块=默认根目录）"
+						style="width:100%"
+					/>
 				</el-form-item>
 			</el-form>
 			<template #footer>
@@ -1598,6 +1606,24 @@ const folderOptions = computed(() => {
 	return { mods, dirs }
 });
 
+// Apifox 树形：模块 + 子目录（「接口」根不展示，「接口」下的子目录提升到模块下；数据模型不参与）
+const folderTree = computed(() => {
+	const build = (nodes: any[]): any[] =>
+		(nodes || []).map((n: any) => {
+			if (n.type === 5) {
+				const iface = (n.children || []).find((c: any) => c.type === 1 && c.name === '接口');
+				const others = (n.children || []).filter((c: any) => c.type === 1 && c.name !== '接口' && c.name !== '数据模型');
+				const kids = [...((iface && iface.children) || []), ...others];
+				return { id: n.id, name: n.name, children: build(kids) };
+			}
+			if (n.type === 1 && n.name !== '接口' && n.name !== '数据模型') {
+				return { id: n.id, name: n.name, children: build(n.children || []) };
+			}
+			return null;
+		}).filter((x: any) => x !== null);
+	return build(treeData.value || []);
+});
+
 const menuDialogVisible = ref(false);
 const menuDialogTitle = ref('');
 const menuForm = ref({ name: '', type: 1, pid: 0, editId: 0, mode: 'add' as 'add' | 'edit', protocol: 'http' });
@@ -1617,7 +1643,7 @@ const handleAddCommand = (cmd: string) => {
 		menuDialogVisible.value = true;
 		return;
 	}
-	const _first = folderOptions.value.mods[0]?.id ?? folderOptions.value.dirs[0]?.id ?? 0;
+	const _first = folderTree.value[0]?.id ?? folderOptions.value.mods[0]?.id ?? 0;
 	menuForm.value = { name: '', type: cmd === 'add_folder' ? 1 : 2, pid: _first, editId: 0, mode: 'add', protocol: 'http' };
 	menuDialogTitle.value = cmd === 'add_folder' ? '添加目录' : '添加接口';
 	menuDialogVisible.value = true;
