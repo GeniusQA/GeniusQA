@@ -305,6 +305,10 @@ const loadDirs = async () => {
 						walkDir(n.children || [], 1);
 						continue;
 					}
+					if (n.type === 1 && n.name === '数据模型') {
+						// 数据模型不属于目录，不展示
+						continue;
+					}
 					if (n.type === 1) {
 						dirs.push({ id: n.id, path: '　'.repeat(depth) + n.name, pid: n.pid || 0, common_params: n.common_params || null, name: n.name });
 						walkDir(n.children || [], depth + 1);
@@ -314,12 +318,9 @@ const loadDirs = async () => {
 			walkDir(mod.children || [], 1);
 			dirs.push({ id: ifaceRootId, path: mod.name, pid: 0, common_params: mod.common_params || null, name: mod.name });
 		};
+		// 只展示当前关联模块，不匹配其他模块的目录
 		const cur = tree.find((n: any) => Number(n.id) === Number(props.moduleId || 0));
 		if (cur) walkMod(cur);
-		for (const m of tree) {
-			if (cur && Number(m.id) === Number(cur.id)) continue;
-			walkMod(m);
-		}
 		if (!dirs.length) dirs.push({ id: 0, path: props.moduleName || '根目录', pid: 0, common_params: null, name: props.moduleName || '根目录' });
 		dirList.value = dirs;
 		if (!form.value.pid && dirList.value.length) form.value.pid = dirList.value[0].id;

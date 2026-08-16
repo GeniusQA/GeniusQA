@@ -283,6 +283,9 @@ const loadDirs = async () => {
 						walkDir(n.children || [], 1);
 						continue;
 					}
+					if (n.type === 1 && n.name === '数据模型') {
+						continue;
+					}
 					if (n.type === 1) {
 						dirs.push({ id: n.id, path: '　'.repeat(depth) + n.name });
 						walkDir(n.children || [], depth + 1);
