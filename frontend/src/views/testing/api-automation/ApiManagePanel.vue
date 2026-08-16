@@ -1279,7 +1279,8 @@ const onNodeClick = async (data: any) => {
 		} catch { cp = {}; }
 		dirConfig.value = {
 			visibility: cp.visibility || 'shared',
-			id_key: cp.id_key || 'method_path',
+			// 子目录默认「继承父级」，根目录默认 Method & Path
+			id_key: cp.id_key || (data.name === '接口' ? 'method_path' : 'inherit'),
 		};
 		dirName.value = data.name || '';
 		const _doc = cp.document;
