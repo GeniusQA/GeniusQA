@@ -1480,7 +1480,7 @@ const handleAddCommand = (cmd: string) => {
 		return;
 	}
 	if (cmd === 'add_module') {
-		menuForm.value = { name: '', type: 5, pid: 0, editId: 0, mode: 'add_module' };
+		menuForm.value = { name: '', type: 0, pid: 0, editId: 0, mode: 'add_module' };
 		menuDialogTitle.value = '添加模块';
 		menuDialogVisible.value = true;
 		return;
@@ -1523,10 +1523,10 @@ const handleNodeCommand = (cmd: string, data: any) => {
 
 const confirmMenu = async () => {
 	if (menuForm.value.mode === 'add_module') {
-		// 模块 = 服务（项目）下的顶层目录分组（对齐 Apifox：模块不创建新服务）
+		// 模块 = 顶级模块节点（与现有模块平级，无子模块逻辑）
 		if (!menuForm.value.name.trim()) { ElMessage.warning('请输入模块名称'); return; }
 		try {
-			await add_menu({ name: menuForm.value.name.trim(), pid: 0, type: 5, api_service_id: props.serviceId, protocol: 'http' });
+			await add_api_service({ name: menuForm.value.name.trim(), api_project_id: props.serviceId || 0 });
 			ElMessage.success('模块已创建');
 			menuDialogVisible.value = false;
 			loadTree();
