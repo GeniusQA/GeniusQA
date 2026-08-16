@@ -689,10 +689,7 @@ const buildTreeTypeMap = () => {
 
 const onTreeCheck = () => {
 	const keys = treeRef.value?.getCheckedKeys() || [];
-	treeCheckedKeys.value = keys.filter((k: any) => {
-		const t = Number(treeTypeMap.value[String(k)]);
-		return t !== 0 && t !== 5;
-	});
+	treeCheckedKeys.value = keys;
 };
 
 const treeCheckAllByMode = (mode: string) => {
@@ -723,12 +720,21 @@ const treeBatchDelete = async () => {
 	if (!treeCheckedKeys.value.length) return;
 	try {
 		await ElMessageBox.confirm(
-			`将删除选中的 ${treeCheckedKeys.value.length} 个节点（目录会级联删除其下接口），确定？`,
+			`将删除选中的 ${treeCheckedKeys.value.length} 个节点（模块不计入，目录会级联删除其下接口），确定？`,
 			'批量删除确认',
 			{ type: 'warning' },
 		);
 	} catch { return; }
-	const ids = [...treeCheckedKeys.value].map((k) => Number(k));
+	const ids = [...treeCheckedKeys.value]
+		.filter((k: any) => {
+			const t = Number(treeTypeMap.value[String(k)]);
+			return t !== 0 && t !== 5;
+		})
+		.map((k) => Number(k));
+	if (!ids.length) {
+		ElMessage.warning('所选节点不含可删除项（模块/服务请走服务管理删除）');
+		return;
+	}
 	treeDeleting.value = true;
 	treeDeleteProgress.value = 0;
 	try {
