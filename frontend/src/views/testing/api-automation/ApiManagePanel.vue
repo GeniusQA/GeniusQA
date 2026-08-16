@@ -1201,6 +1201,12 @@ const onNodeClick = async (data: any) => {
 		return;
 	}
 	if (data.type === 1) {
+		if (data.name === '数据模型') {
+			// 数据模型目录：仅展开子级，不展示目录设置详情
+			selectedModule.value = null;
+			selectedDir.value = null;
+			return;
+		}
 		apiTabs.value = [];
 		dmModel.value = null;
 		selectedModule.value = null;
