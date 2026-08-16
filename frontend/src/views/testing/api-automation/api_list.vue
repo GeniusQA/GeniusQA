@@ -83,41 +83,16 @@
 				<el-table-column type="index" label="序号" width="60" align="center" />
 				<el-table-column prop="name" label="服务名称" min-width="140" show-overflow-tooltip />
 				<el-table-column prop="project_name" label="所属项目" min-width="120" show-overflow-tooltip />
-				<el-table-column prop="source_type" label="数据源" width="130" align="center">
-					<template #default="{ row }">
-						{{ row.source_type === 'swagger' ? 'OpenAPI/Swagger' : row.source_type === 'apifox' ? 'Apifox' : (row.source_type || '-') }}
-					</template>
-				</el-table-column>
-				<el-table-column prop="source_addr" label="接口文档地址" min-width="160" show-overflow-tooltip>
-					<template #default="{ row }">
-						{{ row.source_addr || '-' }}
-					</template>
-				</el-table-column>
-				<el-table-column label="拉取状态" width="110" align="center">
-					<template #default="{ row }">
-						<el-tag :type="pullStatusMeta(row.last_pull_status).type">
-							{{ pullStatusMeta(row.last_pull_status).text }}
-						</el-tag>
-					</template>
-				</el-table-column>
 				<el-table-column prop="manager_name" label="负责人" width="100" align="center" show-overflow-tooltip>
 					<template #default="{ row }">
 						{{ row.manager_name || '-' }}
 					</template>
 				</el-table-column>
-				<el-table-column label="操作" width="340" align="center" fixed="right">
+				<el-table-column label="操作" width="200" align="center" fixed="right">
 					<template #default="{ row }">
 						<span class="action-cell">
 							<el-button type="primary" size="small" plain @click.stop="openServiceDetail(row)">详情</el-button>
-							<el-button
-								v-if="row.source_addr"
-								type="primary"
-								size="small"
-								:loading="pullingIds.has(row.id)"
-								@click.stop="pullDoc(row)"
-							>拉取</el-button>
 							<el-button type="warning" size="small" @click.stop="openEditDialog(row)">修改</el-button>
-							<el-button type="success" size="small" @click.stop="openEnvCenter(row)">环境</el-button>
 							<el-button type="danger" size="small" @click.stop="deleteService(row)">删除</el-button>
 						</span>
 					</template>
@@ -159,15 +134,6 @@
 							:value="p.id"
 						/>
 					</el-select>
-				</el-form-item>
-				<el-form-item label="数据源">
-					<el-select v-model="formData.source_type" placeholder="请选择数据源" clearable style="width: 100%">
-						<el-option label="OpenAPI/Swagger" value="swagger" />
-						<el-option label="Apifox" value="apifox" />
-					</el-select>
-				</el-form-item>
-				<el-form-item label="文件 URL">
-					<el-input v-model="formData.source_addr" placeholder="请输入文件 URL" />
 				</el-form-item>
 				<el-form-item label="负责人">
 					<el-select v-model="formData.manager" placeholder="请选择负责人" clearable filterable style="width: 100%">
@@ -456,8 +422,6 @@ const submitForm = async () => {
 				id: formData.id,
 				name: formData.name,
 				api_project_id: formData.api_project_id!,
-				source_type: formData.source_type || undefined,
-				source_addr: formData.source_addr || undefined,
 				manager: formData.manager ?? undefined,
 			} as any);
 			ElMessage.success('修改成功');
@@ -465,8 +429,6 @@ const submitForm = async () => {
 			await add_api_service({
 				name: formData.name,
 				api_project_id: formData.api_project_id!,
-				source_type: formData.source_type || undefined,
-				source_addr: formData.source_addr || undefined,
 				manager: formData.manager ?? undefined,
 			} as any);
 			ElMessage.success('新增成功');
