@@ -2411,8 +2411,8 @@ class ApiAutomationService:
         imported_count = 0
         updated_count = 0
         unchanged_count = 0
-        unchanged_count = 0
         folder_count = 0
+        folder_unchanged_count = 0
         # 匹配范围限定目标目录子树：导入到模块时只与该目录下的接口比对（否则会误把服务下其他目录的接口算作修改）
         _sub_menu_ids = [int(target_pid)] if target_pid else []
         _frontier = [int(target_pid)] if target_pid else []
@@ -2451,7 +2451,7 @@ class ApiAutomationService:
         )
 
         async def get_or_create_folder(name: str, pid: int) -> int:
-            nonlocal folder_count
+            nonlocal folder_count, folder_unchanged_count
             key_name = (name or "").strip() or "默认分组"
             row = (
                 await db.execute(
@@ -2462,10 +2462,11 @@ class ApiAutomationService:
                         ApiMenuModel.type == 1,
                         ApiMenuModel.pid == pid,
                         ApiMenuModel.name == key_name,
-                    )
+                    ).order_by(ApiMenuModel.id.asc()).limit(1)
                 )
-            ).scalar_one_or_none()
+            ).scalars().first()
             if row:
+                folder_unchanged_count += 1
                 return int(row.id)
             menu = ApiMenuModel(
                 name=key_name,
@@ -2650,7 +2651,7 @@ class ApiAutomationService:
             .values(last_pull_status=1)
         )
         await db.commit()
-        return {"imported": imported_count, "updated": updated_count, "unchanged": unchanged_count, "folders": folder_count}
+        return {"imported": imported_count, "updated": updated_count, "unchanged": unchanged_count, "folders": folder_count, "folders_unchanged": folder_unchanged_count}
 
     @staticmethod
     async def _pull_apifox_project_and_import(
@@ -3107,6 +3108,7 @@ class ApiAutomationService:
                 await db.flush()
             target_pid = int(dm_dir.id)
         imported = 0
+        unchanged = 0
         for name, schema in schemas.items():
             if not isinstance(schema, dict):
                 continue
@@ -3121,6 +3123,9 @@ class ApiAutomationService:
             ).scalars().first()
             if existing is not None:
                 if model_match_mode == "skip":
+                    continue
+                if json.dumps(existing.schema or {}, sort_keys=True, ensure_ascii=False) == json.dumps(schema or {}, sort_keys=True, ensure_ascii=False):
+                    unchanged += 1
                     continue
                 if model_match_mode != "smart_merge":
                     existing.schema = schema
@@ -3153,7 +3158,7 @@ class ApiAutomationService:
             model.menu_id = int(menu.id)
             imported += 1
         await db.commit()
-        return imported
+        return imported, unchanged
 
     @staticmethod
     def _apply_openapi_auth(req: Dict[str, Any], scheme: Dict[str, Any]) -> None:
@@ -4214,7 +4219,8 @@ class ApiAutomationService:
             "updated": updated_count,
             "unchanged": unchanged_count,
             "folders": len(folder_names),
-            "models": _model_count,
+            "models": _model_count[0] if isinstance(_model_count, tuple) else _model_count,
+            "models_unchanged": _model_count[1] if isinstance(_model_count, tuple) else 0,
         }
 
     @staticmethod
