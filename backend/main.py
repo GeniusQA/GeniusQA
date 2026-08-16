@@ -109,6 +109,10 @@ def create_app() -> FastAPI:
                 ok = False
             if not ok:
                 return JSONResponse({"detail": "Unauthorized"}, status_code=401, headers={"WWW-Authenticate": "Basic"})
+        if request.url.path.startswith("/assets/"):
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            return response
         return await call_next(request)
 
     init_exception(app)  # 注册捕获全局异常
