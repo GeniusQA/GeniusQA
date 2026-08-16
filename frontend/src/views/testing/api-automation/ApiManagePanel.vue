@@ -198,8 +198,28 @@
 							<div class="dir-doc-head">
 								<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 								<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
+								<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
+									<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+									<template #dropdown>
+										<el-dropdown-menu>
+											<el-dropdown-item command="highlight">高亮块</el-dropdown-item>
+											<el-dropdown-item command="tip">提示语</el-dropdown-item>
+											<el-dropdown-item command="warning">告示</el-dropdown-item>
+											<el-dropdown-item command="collapse">折叠块</el-dropdown-item>
+											<el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
+											<el-dropdown-item command="formula">公式</el-dropdown-item>
+										</el-dropdown-menu>
+									</template>
+								</el-dropdown>
 							</div>
-							<MdEditor v-model="dirDocContent" :toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'table', 'revoke', 'next', '=', 'preview']" placeholder="请输入内容" style="height: 420px" />
+							<MdEditor
+								ref="mdEditorRef"
+								v-model="dirDocContent"
+								:toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'image', 'table', 'mermaid', 'katex', 'revoke', 'next', '=', 'preview']"
+								placeholder="请输入内容"
+								:on-upload-img="onDocUploadImg"
+								style="height: 460px"
+							/>
 						</el-tab-pane>
 					<el-tab-pane label="全部接口" name="apis">
 							<div class="dd-apis">
@@ -906,6 +926,33 @@ const dirDocMode = ref<'edit' | 'preview'>('edit');
 const dirDocHtml = computed(() => {
 	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
 });
+const mdEditorRef = ref<any>(null);
+
+const insertDocBlock = (type: string) => {
+	const snippets: Record<string, string> = {
+		highlight: '> [!NOTE] 高亮块\n> 在这里输入内容\n>\n',
+		tip: '> [!TIP] 提示\n> 在这里输入提示内容\n>\n',
+		warning: '> [!WARNING] 告示\n> 在这里输入告示内容\n>\n',
+		collapse: '<details>\n<summary>折叠块标题</summary>\n\n折叠内容\n</details>\n',
+		mermaid: '```mermaid\ngraph TD\nA[开始] --> B[结束]\n```\n',
+		formula: '$$\nE = mc^2\n$$\n',
+	};
+	mdEditorRef.value?.insert(() => ({ targetValue: snippets[type] || '' }));
+};
+
+const onDocUploadImg = async (files: File[], callback: (urls: string[]) => void) => {
+	const urls: string[] = [];
+	for (const file of files) {
+		const dataUrl = await new Promise<string>((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result));
+			reader.readAsDataURL(file);
+		});
+		urls.push(dataUrl);
+	}
+	callback(urls);
+};
+
 const saveDirDoc = async () => {
 	if (!selectedDir.value) return;
 	try {
