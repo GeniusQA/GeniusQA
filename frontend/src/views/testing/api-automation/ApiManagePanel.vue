@@ -2014,10 +2014,10 @@ onMounted(() => {
 .tree-panel { width: 320px; flex-shrink: 0; border-right: 1px solid var(--el-border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); }
 .tree-actions { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--el-border-color); flex-shrink: 0; }
 .api-tree { flex: 1; overflow-y: auto; padding: 4px 0; }
-.tree-node { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-right: 4px; }
-.node-left { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; overflow: hidden; }
+.tree-node { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 20px; position: relative; }
+.node-left { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
 .node-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-more { font-size: 14px; color: var(--el-text-color-placeholder); cursor: pointer; flex-shrink: 0; opacity: 0; }
+.node-more { font-size: 14px; color: var(--el-text-color-placeholder); cursor: pointer; flex-shrink: 0; opacity: 0; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .tree-node:hover .node-more { opacity: 1; }
 .icon-folder { color: #f39c12; font-size: 16px; flex-shrink: 0; }
 .icon-case { color: #e6a23c; font-size: 16px; flex-shrink: 0; }
