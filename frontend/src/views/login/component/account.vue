@@ -66,7 +66,7 @@ import {useRoute, useRouter} from 'vue-router';
 import {ElMessage} from 'element-plus';
 import Captcha from '/@/components/Captcha/index.vue';
 import {initBackEndControlRoutes} from '/@/router/backEnd';
-import {Session} from '/@/utils/storage';
+import { Session, Local } from '/@/utils/storage';
 import {formatAxis} from '/@/utils/formatTime';
 import {NextLoading} from '/@/utils/loading';
 import {useUserApi} from "/@/api/v1/system/user";
@@ -162,9 +162,9 @@ const onSignIn = async () => {
     useUserApi().signIn(payload)
         .then(async res => {
           const token = res.data.access_token || res.data.token;
-          Session.set('token', token);
+          Local.set('token', token);
           if (res.data.refresh_token) {
-            Session.set('refresh_token', res.data.refresh_token);
+            Local.set('refresh_token', res.data.refresh_token);
           }
           await useUserStore().setUserInfos();
           await initBackEndControlRoutes();
