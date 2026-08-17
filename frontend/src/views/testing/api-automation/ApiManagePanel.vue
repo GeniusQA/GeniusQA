@@ -215,15 +215,16 @@
 									</template>
 								</el-dropdown>
 								<el-button v-if="dirDocPreview" size="small" style="margin-left: 8px" @click="dirDocPreview = false">编辑</el-button>
+								<el-button v-else size="small" style="margin-left: 8px" @click="dirDocPreview = true">预览</el-button>
 								<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 								<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
 							</div>
+							<MdPreview v-if="dirDocPreview" :model-value="dirDocContent" class="dir-doc-preview" />
 							<MdEditor
+								v-else
 								ref="mdEditorRef"
 								v-model="dirDocContent"
-								:preview="dirDocPreview"
-								@on-preview-toggle="dirDocPreview = $event"
-								:toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'image', 'table', 'mermaid', 'katex', 'revoke', 'next', '=', 'preview']"
+								:toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'image', 'table', 'mermaid', 'katex', 'revoke', 'next']"
 								placeholder="请输入内容"
 								:on-upload-img="onDocUploadImg"
 								style="height: 460px"
@@ -691,7 +692,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
-import { MdEditor } from 'md-editor-v3';
+import { MdEditor, MdPreview } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
@@ -1019,6 +1020,7 @@ const saveDirDoc = async () => {
 		cp.document = { title: dirDocTitle.value || selectedDir.value.name, content: dirDocContent.value };
 		await edit_menu({ id: selectedDir.value.id, name: selectedDir.value.name, common_params: JSON.stringify(cp) } as any);
 		ElMessage.success('文档已保存');
+		dirDocPreview.value = true;
 		await loadTree();
 	} catch (e: any) { ElMessage.error(e?.message || '保存失败'); }
 };
@@ -2098,6 +2100,16 @@ onMounted(() => {
 .dd-op-wrap { max-height: 480px; overflow: auto; }
 .md-source-freq { font-size: 12px; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); border-radius: 4px; padding: 2px 8px; }
 .md-source-item { display: flex; align-items: center; gap: 12px; }
+
+/* AI 文档纯预览视图（对齐 Apifox 文档阅读体验） */
+.dir-doc-preview {
+	max-height: 520px;
+	overflow-y: auto;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 4px 20px;
+}
 .md-source-logo { width: 36px; height: 36px; border-radius: 8px; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex: 0 0 auto; }
 .md-source-info { flex: 1; min-width: 0; }
 .md-source-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
