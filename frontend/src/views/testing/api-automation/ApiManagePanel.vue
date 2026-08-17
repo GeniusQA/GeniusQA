@@ -2175,7 +2175,8 @@ onMounted(() => {
 .batch-delete-btn { margin-left: auto; }
 .dir-doc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .dir-doc-textarea :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; }
-.dir-doc-title { font-size: 20px; font-weight: 700; color: #1f2329; }
+.dir-doc-title { position: absolute; left: 50%; transform: translate(-50%); font-size: 20px; font-weight: 700; color: #1f2329; white-space: nowrap; }
+.dir-doc-head { position: relative; }
 .dir-doc-edit-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .dir-doc-mini-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
