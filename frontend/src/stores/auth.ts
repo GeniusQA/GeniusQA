@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useUserStore } from "/@/stores/user";
 import { useUserApi } from "/@/api/v1/system/user";
-import { Session } from "/@/utils/storage";
+import { Session, Local } from "/@/utils/storage";
 import { initBackEndControlRoutes } from "/@/router/backEnd";
 import { resetAllStores } from "/@/stores/setup";
 

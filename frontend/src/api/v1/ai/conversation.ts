@@ -2,7 +2,7 @@
  * 对话管理 API
  */
 import request from '/@/utils/request'
-import { Session } from '/@/utils/storage'
+import { Session, Local } from '/@/utils/storage'
 
 /**
  * 对话数据

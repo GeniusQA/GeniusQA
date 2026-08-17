@@ -1,7 +1,7 @@
 import {RouteRecordRaw} from 'vue-router';
 import {useUserStore} from '/@/stores/user';
 import {useRequestOldRoutes} from '/@/stores/requestOldRoutes';
-import {Session} from '/@/utils/storage';
+import {Session, Local} from '/@/utils/storage';
 import {NextLoading} from '/@/utils/loading';
 import {dynamicRoutes, notFoundAndNoPower} from '/@/router/route';
 import {formatFlatteningRoutes, formatTwoStageRoutes, router} from '/@/router';

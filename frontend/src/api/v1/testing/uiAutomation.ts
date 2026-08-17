@@ -4,7 +4,7 @@
 import request from '/@/utils/request'
 import axios from 'axios'
 import { getApiBaseUrl } from '/@/utils/config'
-import { Session } from '/@/utils/storage'
+import { Session, Local } from '/@/utils/storage'
 
 export function useUiAutomationApi() {
   const uiProjectApi = {

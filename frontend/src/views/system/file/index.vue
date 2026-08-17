@@ -274,6 +274,7 @@ import { useFileApi } from '/@/api/v1/common/file';
 import { useUserApi } from '/@/api/v1/system/user';
 import { formatDateTime } from '/@/utils/formatTime';
 import { Session } from '/@/utils/storage';
+import { Local } from '/@/utils/storage';
 
 // 数据
 const loading = ref(false);

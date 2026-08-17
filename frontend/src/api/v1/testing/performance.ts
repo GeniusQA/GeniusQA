@@ -1,5 +1,5 @@
 import request from '/@/utils/request';
-import { Session } from '/@/utils/storage';
+import { Session, Local } from '/@/utils/storage';
 import { getApiBaseUrl } from '/@/utils/config';
 
 export function usePerformanceApi() {
