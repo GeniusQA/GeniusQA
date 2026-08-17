@@ -244,7 +244,7 @@ export const useConversationApi = () => {
     onComplete?: () => void
   ): (() => void) => {
     const baseURL = import.meta.env.VITE_API_BASE_URL || ''
-    const token = Session.get('token') || ''
+    const token = Local.get('token') || ''
     
  
     const url = `${baseURL}/api/v1/Ntesterc_ai/conversation/${conversationId}/messages/stream`
@@ -345,7 +345,7 @@ export const useConversationApi = () => {
     onClose?: () => void,
     onOpen?: () => void
   ): { ws: WebSocket; send: (payload: Omit<WSMessageRequest, 'type'>) => void; close: () => void } => {
-    const token = Session.get('token') || ''
+    const token = Local.get('token') || ''
     
     // 构建 WebSocket URL
     let wsUrl: string

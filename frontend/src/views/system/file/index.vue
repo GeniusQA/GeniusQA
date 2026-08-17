@@ -329,7 +329,7 @@ const loadUserInfo = async (userIds: number[]) => {
 // 上传配置
 const uploadUrl = ref('http://127.0.0.1:8100/api/v1/system/file/upload');
 const uploadHeaders = ref({
-  Authorization: `Bearer ${Session.get('token') || 'test-token'}`,
+  Authorization: `Bearer ${Local.get('token') || 'test-token'}`,
 });
 const uploadData = ref({
   description: '前端上传文件',

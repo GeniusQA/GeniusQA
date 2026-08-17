@@ -13,7 +13,7 @@ export const useAuthStore = defineStore("auth", () => {
 		const { data } = await useUserApi().signIn(params)
 
 		const token = data?.access_token || data?.token
-		Session.set('token', token);
+		Local.set('token', token);
 		// 如果有refresh_token，也保存
 		if (data?.refresh_token) {
 			Session.set('refresh_token', data.refresh_token);

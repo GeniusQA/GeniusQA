@@ -57,7 +57,7 @@ export function usePerformanceApi() {
 		 * done 事件含 summary（JMX 摘要）、active_config（当前启用子配置）、inspect_params
 		 */
 		inspectScenarioStream: (scenarioId: number): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/scenario/${scenarioId}/inspect`, {
 				method: 'GET',
 				headers: { 'Authorization': `Bearer ${token}`, 'token': token ?? '' },
@@ -79,7 +79,7 @@ export function usePerformanceApi() {
 		 * 事件格式：{ type: 'stage'|'log'|'progress'|'done'|'error', ... }
 		 */
 		executeScenarioStream: (scenarioId: number, data: { action: 'inspect' | 'execute' | 'recover' }): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/scenario/${scenarioId}/execute`, {
 				method: 'POST',
 				headers: {
@@ -105,7 +105,7 @@ export function usePerformanceApi() {
 		 * 事件格式：{ type: 'log'|'progress'|'ping'|'done'|'error', ... }
 		 */
 		monitorScenarioStream: (scenarioId: number, offset = 0, signal?: AbortSignal): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/scenario/${scenarioId}/monitor?offset=${offset}`, {
 				method: 'GET',
 				headers: {
@@ -169,7 +169,7 @@ export function usePerformanceApi() {
 		 * 事件格式：{ step, pct, step_name, detail, status: 'running'|'done'|'failed' }
 		 */
 		collectProcessStream: (reportId: number, signal?: AbortSignal): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/reports/collectProcess?id=${reportId}`, {
 				method: 'GET',
 				headers: { 'Authorization': `Bearer ${token}`, 'token': token ?? '' },
@@ -244,7 +244,7 @@ export function usePerformanceApi() {
 		 * 返回原始 Response，调用方通过 response.body.getReader() 逐块读取 SSE 事件。
 		 */
 		shareDistributeStream: (data: { file_id: number; worker_count: number; machine_type: number }): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/files/distribute/share/stream`, {
 				method: 'POST',
 				headers: {
@@ -260,7 +260,7 @@ export function usePerformanceApi() {
 		 * 分割分发 SSE 流式接口（同共享分发，dist_status=2）。
 		 */
 		splitDistributeStream: (data: { file_id: number; worker_count: number; machine_type: number }): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/files/distribute/split/stream`, {
 				method: 'POST',
 				headers: {
@@ -276,7 +276,7 @@ export function usePerformanceApi() {
 		 * 清除分发 SSE 流式接口。
 		 */
 		clearDistributeStream: (data: { file_id: number; worker_count?: number }): Promise<Response> => {
-			const token = Session.get('token');
+			const token = Local.get('token');
 			return fetch(`${getApiBaseUrl()}/v1/Ntesterc_performance/files/distribute/clear/stream`, {
 				method: 'POST',
 				headers: {

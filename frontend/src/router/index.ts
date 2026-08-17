@@ -106,7 +106,7 @@ const {isRequestRoutes} = themeConfig.value;
 
 	NProgress.configure({showSpinner: false});
 	if (to.meta.title) NProgress.start();
-	const token = Session.get('token');
+	const token = Local.get('token');
 	// OAuth 回调路由不需要 token 验证
 	if (to.path.startsWith('/oauth/') && to.path.includes('/callback')) {
 		next();

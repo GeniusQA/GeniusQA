@@ -86,7 +86,7 @@ export function useUiAutomationApi() {
         baseURL: getApiBaseUrl(),
         timeout: 50000,
       })
-      const token = Session.get('token')
+      const token = Local.get('token')
       const headers: any = { Accept: 'text/html' }
       if (token) {
         headers['Authorization'] = `Bearer ${token}`

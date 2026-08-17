@@ -21,7 +21,7 @@ export async function initFrontEndControlRoutes() {
 	// 界面 loading 动画开始执行
 	if (window.nextLoading === undefined) NextLoading.start();
 	// 无 token 停止执行下一步
-	if (!Session.get('token')) return false;
+	if (!Local.get('token')) return false;
 	// 触发初始化用户信息 pinia
 	await useUserStore().setUserInfos();
 	// 无登录权限时，添加判断
