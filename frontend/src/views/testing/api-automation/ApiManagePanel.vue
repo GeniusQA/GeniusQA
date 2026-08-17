@@ -199,31 +199,40 @@
 								<!-- 预览态：只读标题 + 编辑入口（对齐 Apifox 文档视图） -->
 								<template v-if="dirDocPreview">
 									<span class="dir-doc-title">{{ dirDocTitle }}</span>
-									<el-button size="small" @click="dirDocPreview = false">编辑</el-button>
+									<div class="dir-doc-actions">
+										<el-button plain size="small" @click="enterEditMode">编辑</el-button>
+									</div>
 								</template>
-								<!-- 编辑态：完整编辑工具 -->
+								<!-- 编辑态：标题可编辑 + 退出编辑/保存 + 下方工具栏 -->
 								<template v-else>
-									<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
-									<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
-									<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block; margin-left: 8px">
-										<el-button size="small">上传 Markdown 文件</el-button>
-									</el-upload>
-									<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
-										<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-										<template #dropdown>
-											<el-dropdown-menu>
-												<el-dropdown-item command="highlight">高亮块</el-dropdown-item>
-												<el-dropdown-item command="tip">提示语</el-dropdown-item>
-												<el-dropdown-item command="warning">告示</el-dropdown-item>
-												<el-dropdown-item command="collapse">折叠块</el-dropdown-item>
-												<el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
-												<el-dropdown-item command="formula">公式</el-dropdown-item>
-											</el-dropdown-menu>
-										</template>
-									</el-dropdown>
-									<el-button size="small" style="margin-left: 8px" @click="dirDocPreview = true">预览</el-button>
-									<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
-									<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
+									<div class="dir-doc-edit-bar">
+										<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
+										<div class="dir-doc-actions">
+											<el-button plain size="small" @click="exitEditMode">退出编辑</el-button>
+											<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
+										</div>
+									</div>
+									<div class="dir-doc-toolbar">
+										<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block">
+											<el-button size="small">上传 Markdown 文件</el-button>
+										</el-upload>
+										<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
+											<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+											<template #dropdown>
+												<el-dropdown-menu>
+													<el-dropdown-item command="highlight">高亮块</el-dropdown-item>
+													<el-dropdown-item command="tip">提示语</el-dropdown-item>
+													<el-dropdown-item command="warning">告示</el-dropdown-item>
+													<el-dropdown-item command="collapse">折叠块</el-dropdown-item>
+													<el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
+													<el-dropdown-item command="formula">公式</el-dropdown-item>
+												</el-dropdown-menu>
+											</template>
+										</el-dropdown>
+										<el-button size="small" style="margin-left: 8px" @click="dirDocPreview = true">预览</el-button>
+										<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
+										<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
+									</div>
 								</template>
 							</div>
 							<MdPreview v-if="dirDocPreview" :model-value="dirDocContent" class="dir-doc-preview" />
@@ -940,6 +949,19 @@ const dirDocTitle = ref('');
 const dirDocContent = ref('');
 const dirDocMode = ref<'edit' | 'preview'>('edit');
 const dirDocPreview = ref(false);
+const dirDocBackup = { title: '', content: '' };
+
+const enterEditMode = () => {
+	dirDocBackup.title = dirDocTitle.value;
+	dirDocBackup.content = dirDocContent.value;
+	dirDocPreview.value = false;
+};
+
+const exitEditMode = () => {
+	dirDocTitle.value = dirDocBackup.title;
+	dirDocContent.value = dirDocBackup.content;
+	dirDocPreview.value = true;
+};
 const dirDocHtml = computed(() => {
 	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
 });
@@ -2144,5 +2166,8 @@ onMounted(() => {
 .dir-doc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .dir-doc-textarea :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; }
 .dir-doc-title { font-size: 20px; font-weight: 700; color: #1f2329; }
+.dir-doc-edit-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.dir-doc-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .dir-doc-preview { min-height: 300px; padding: 12px 16px; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; background: #fff; overflow: auto; }
 </style>
