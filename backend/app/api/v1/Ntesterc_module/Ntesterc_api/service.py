@@ -4237,27 +4237,20 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
-    async def _call_platform_llm(db: AsyncSession, query: str) -> str:
-        """复用平台 AI 助手配置（Dify）调用 LLM，返回文本"""
-        from app.api.v1.Ntesterc_module.Ntesterc_assistant.model import AIAssistantConfigModel
-        from app.api.v1.Ntesterc_module.Ntesterc_assistant.service import DifyService
-        from app.api.v1.Ntesterc_module.Ntesterc_assistant.schema import DifyChatRequest
-        cfg_row = (
-            await db.execute(
-                select(AIAssistantConfigModel)
-                .where(AIAssistantConfigModel.is_active == True)
-                .order_by(AIAssistantConfigModel.id.asc())
-                .limit(1)
-            )
-        ).scalars().first()
-        if cfg_row is None:
-            raise ValueError("未配置 AI 助手（请先在「AI 管理」配置 Dify 模型）")
-        resp = await DifyService.chat_with_dify(cfg_row, DifyChatRequest(query=query, user="system"))
-        return resp.answer or ""
+    async def _call_platform_llm(query: str, system_prompt: str = "") -> str:
+        """使用平台 LLM 配置（LLM 配置管理页的模型）调用 LLM，返回文本"""
+        from app.api.v1.Ntesterc_module.Ntesterc_ai.conversation.llm_service import get_llm_service, LLMMessage
+        service = await get_llm_service()
+        messages = []
+        if system_prompt:
+            messages.append(LLMMessage("system", system_prompt))
+        messages.append(LLMMessage("user", query))
+        resp = await service.chat_completion(messages)
+        return resp.content or ""
 
     @staticmethod
     async def generate_dir_doc(db: AsyncSession, menu_id: int, user_id: int) -> Dict[str, Any]:
-        """遍历目录下所有接口，AI 生成 Markdown 接口文档并保存到目录 document"""
+        """遍历目录下所有接口，AI 两阶段生成 Markdown 接口文档（V1 优化版）"""
         import json as _json
         menu = (
             await db.execute(
@@ -4289,28 +4282,87 @@ class ApiAutomationService:
                 )
             )
         ).scalars().all()
+        # 收集完整接口数据（含 description/params/body/response）
         apis = []
         for am in api_menus:
             row = (
                 await db.execute(select(ApiModel).where(ApiModel.id == int(am.api_id)))
             ).scalars().first() if am.api_id else None
             req = row.req if row and isinstance(row.req, dict) else {}
+            desc = (req.get("description") or "").strip()
             apis.append({
                 "name": am.name,
                 "method": str((req.get("method") or "GET")).upper(),
                 "url": row.url if row else (req.get("url") or ""),
+                "description": str(desc),
                 "params": req.get("params") or [],
                 "body": req.get("body") or {},
+                "headers": req.get("headers") or [],
+                "response": req.get("response") or {},
             })
         if not apis:
             raise ValueError("该目录下暂无接口")
-        prompt = (
-            "以下是某个目录下的接口列表（JSON）。请生成一份结构化的 Markdown 接口文档："
-            "包含「接口总览」（表格：名称/方法/路径）、每个接口的小节（请求参数、请求体、响应说明、调用示例）。"
-            "直接输出 Markdown 正文，不要用代码围栏包裹整个文档：\n"
-            + _json.dumps(apis, ensure_ascii=False)
+        api_json = _json.dumps(apis, ensure_ascii=False)
+        SYSTEM_PROMPT = (
+            "你是一个专业的 API 文档撰写助手。请严格遵守以下规则：
+"
+            "1. API 的路径、Method、参数名、参数类型、必填性必须严格来自输入数据，不得修改或新增
+"
+            "2. 不得虚构不存在的参数、业务规则、退款金额、到账时间等业务事实
+"
+            "3. 可以对已有接口描述（description）进行语言润色和总结
+"
+            "4. 可以根据接口名称和已有描述总结业务用途
+"
+            "5. 接口定义中不存在的信息，不要自行推测或编造
+"
         )
-        md = await ApiAutomationService._call_platform_llm(db, prompt)
+        # 两阶段生成：接口 > 8 个时先摘要后文档；否则直接生成
+        if len(apis) > 8:
+            summary_prompt = (
+                "请为以下接口列表生成业务摘要（JSON 数组格式，每个元素含 name/summary/business/input/output 字段），"
+                "用业务语言总结每个接口的用途：\n"
+                + api_json
+            )
+            summary = await ApiAutomationService._call_platform_llm(summary_prompt, SYSTEM_PROMPT)
+            doc_prompt = (
+                "请根据以下目录信息、接口列表和业务摘要，生成完整的 Markdown 接口文档。
+"
+                "结构要求：
+"
+                "## 1. 概述（目录的业务说明）
+"
+                "## 2. 接口总览（表格：名称 | 方法 | 路径 | 说明）
+"
+                "## 3. 接口详情（每个接口一小节：接口说明、请求参数表格、请求体、请求示例、响应示例）
+"
+                "直接输出 Markdown 正文，不要用代码围栏包裹整个文档。
+
+"
+                f"目录名：{menu.name}\n"
+                f"接口列表：\n{api_json}\n\n"
+                f"业务摘要：\n{summary}"
+            )
+            md = await ApiAutomationService._call_platform_llm(doc_prompt, SYSTEM_PROMPT)
+        else:
+            doc_prompt = (
+                "请根据以下目录信息、接口列表，生成完整的 Markdown 接口文档。
+"
+                "结构要求：
+"
+                "## 1. 概述（目录的业务说明）
+"
+                "## 2. 接口总览（表格：名称 | 方法 | 路径 | 说明）
+"
+                "## 3. 接口详情（每个接口一小节：接口说明、请求参数表格、请求体、请求示例、响应示例）
+"
+                "直接输出 Markdown 正文，不要用代码围栏包裹整个文档。
+
+"
+                f"目录名：{menu.name}\n"
+                f"接口列表：\n{api_json}"
+            )
+            md = await ApiAutomationService._call_platform_llm(doc_prompt, SYSTEM_PROMPT)
         if not md:
             raise ValueError("AI 生成失败：模型返回为空")
         cp = menu.common_params or {}
@@ -4329,43 +4381,6 @@ class ApiAutomationService:
         )
         await db.commit()
         return {"title": menu.name, "content": md}
-
-    @staticmethod
-    async def generate_logo(db: AsyncSession, api_service_id: int, user_id: int) -> Dict[str, Any]:
-        """AI 生成服务 Logo（SVG），保存到服务 common_params.logo_svg"""
-        import json as _json
-        svc = (
-            await db.execute(
-                select(ApiServiceModel).where(ApiServiceModel.id == int(api_service_id), ApiServiceModel.enabled_flag == 1)
-            )
-        ).scalar_one_or_none()
-        if svc is None:
-            raise ValueError("服务不存在")
-        prompt = (
-            f"请为一个名为「{svc.name}」的 API 服务生成一个简洁现代的 SVG logo："
-            "圆形图标、渐变配色、抽象几何图形或首字母组合，尺寸 64x64。"
-            "只输出纯 SVG 代码（<svg>...</svg>），不要任何解释或代码围栏。"
-        )
-        out = await ApiAutomationService._call_platform_llm(db, prompt)
-        import re as _re
-        m = _re.search(r"<svg[\s\S]*?</svg>", out)
-        svg = m.group(0) if m else out
-        cp = svc.common_params or {}
-        if isinstance(cp, str):
-            try:
-                cp = _json.loads(cp)
-            except Exception:
-                cp = {}
-        if not isinstance(cp, dict):
-            cp = {}
-        cp["logo_svg"] = svg
-        await db.execute(
-            update(ApiServiceModel)
-            .where(ApiServiceModel.id == int(api_service_id))
-            .values(common_params=_json.dumps(cp, ensure_ascii=False), updated_by=user_id)
-        )
-        await db.commit()
-        return {"logo_svg": svg}
 
     @staticmethod
     async def _remove_env_front_url_protocol(db: AsyncSession, svc_id: int, protocol: str) -> None:

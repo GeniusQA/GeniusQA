@@ -84,7 +84,6 @@ export function useApiAutomationApi() {
     deleteDataModel: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/delete_data_model', data),
     importDataModelJson: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/import_data_model_json', data),
     generate_dir_doc: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/generate_dir_doc', data),
-    generate_logo: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/generate_logo', data),
     curlImport: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/import_curl', data),
     wsTest: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/ws_test', data),
     saveDataSource: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/save_data_source', data),
