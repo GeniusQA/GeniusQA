@@ -2014,10 +2014,10 @@ onMounted(() => {
 .tree-panel { width: 320px; flex-shrink: 0; border-right: 1px solid var(--el-border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); }
 .tree-actions { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--el-border-color); flex-shrink: 0; }
 .api-tree { flex: 1; overflow-y: auto; padding: 4px 0; }
-.tree-node { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 20px; position: relative; }
-.node-left { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
+.tree-node { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-right: 4px; }
+.node-left { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; overflow: hidden; }
 .node-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-more { font-size: 14px; color: var(--el-text-color-placeholder); cursor: pointer; flex-shrink: 0; opacity: 0; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.node-more { font-size: 14px; color: var(--el-text-color-placeholder); cursor: pointer; flex-shrink: 0; opacity: 0; }
 .tree-node:hover .node-more { opacity: 1; }
 .icon-folder { color: #f39c12; font-size: 16px; flex-shrink: 0; }
 .icon-case { color: #e6a23c; font-size: 16px; flex-shrink: 0; }
@@ -2107,7 +2107,7 @@ onMounted(() => {
 .import-dropzone { width: 100%; }
 .import-dropzone :deep(.el-upload-dragger) { width: 100%; }
 .module-detail { padding: 4px 2px; }
-.module-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.module-detail-head { display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
 .module-detail-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); }
 .module-detail-tabs { }
 .md-stats { display: flex; gap: 12px; margin-bottom: 18px; }
@@ -2126,7 +2126,7 @@ onMounted(() => {
 .md-vars-row { margin-bottom: 6px; }
 .md-vars-actions { margin-top: 8px; display: flex; gap: 12px; }
 .dir-detail { padding: 4px 2px; }
-.dir-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.dir-detail-head { display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
 .dir-detail-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); }
 .dd-section { border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
 .dd-section-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
