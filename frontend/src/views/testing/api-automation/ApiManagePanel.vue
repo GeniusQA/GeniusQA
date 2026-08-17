@@ -976,8 +976,18 @@ const generateDirDoc = async () => {
 
 const scrollDocToTop = () => {
 	try {
-		const el = (mdEditorRef.value?.$el || document).querySelector('.md-editor-input-wrapper, .md-editor-preview-wrapper, .md-editor-input');
-		if (el) el.scrollTop = 0;
+		// 预览态：滚动纯预览容器；编辑态：编辑区 + 预览区两个滚动容器全部回顶
+		if (dirDocPreview.value) {
+			const root: any = (mdEditorRef.value?.$el || document);
+			const pv = root.querySelector('.dir-doc-preview');
+			if (pv) pv.scrollTop = 0;
+			const md = root.querySelector('.md-editor-preview');
+			if (md) md.scrollTop = 0;
+		} else {
+			const root: any = (mdEditorRef.value?.$el || document);
+			const els = root.querySelectorAll('.md-editor-input-wrapper, .md-editor-preview-wrapper, .md-editor-input, .md-editor-preview');
+			els.forEach((el: any) => { el.scrollTop = 0; });
+		}
 	} catch {}
 	window.scrollTo({ top: 0, behavior: 'smooth' });
 };
