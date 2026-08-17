@@ -234,7 +234,14 @@
 									</div>
 								</template>
 							</div>
-							<MdPreview v-if="dirDocPreview" :model-value="dirDocContent" class="dir-doc-preview" />
+							<div v-if="dirDocPreview" class="dir-doc-preview-wrap">
+								<div ref="docPreviewScroll" class="dir-doc-preview">
+									<MdPreview :id="mdPreviewId" :model-value="dirDocContent" />
+								</div>
+								<div class="dir-doc-toc">
+									<MdCatalog :editor-id="mdPreviewId" :scroll-element="docPreviewScroll" />
+								</div>
+							</div>
 							<MdEditor
 								v-else
 								ref="mdEditorRef"
@@ -710,7 +717,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
-import { MdEditor, MdPreview } from 'md-editor-v3';
+import { MdEditor, MdPreview, MdCatalog } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
@@ -968,6 +975,8 @@ const dirDocHtml = computed(() => {
 	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
 });
 const mdEditorRef = ref<any>(null);
+const docPreviewScroll = ref<HTMLElement | null>(null);
+const mdPreviewId = 'dir-doc-md-preview';
 
 const insertDocBlock = (type: string) => {
 	const snippets: Record<string, string> = {
@@ -2172,5 +2181,8 @@ onMounted(() => {
 .dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .dir-doc-mini-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .dir-doc-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; }
+.dir-doc-preview-wrap { display: flex; gap: 12px; align-items: flex-start; }
+.dir-doc-preview-wrap .dir-doc-preview { flex: 1; min-width: 0; }
+.dir-doc-toc { width: 208px; flex-shrink: 0; position: sticky; top: 8px; max-height: 520px; overflow-y: auto; border-left: 1px solid #e5e7eb; padding-left: 10px; }
 .dir-doc-preview { min-height: 300px; padding: 12px 16px; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; background: #fff; overflow: auto; }
 </style>
