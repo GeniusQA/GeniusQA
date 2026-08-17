@@ -203,16 +203,18 @@
 										<el-button plain size="small" @click="enterEditMode">编辑</el-button>
 									</div>
 								</template>
-								<!-- 编辑态：标题可编辑 + 退出编辑/保存 + 下方工具栏 -->
+								<!-- 编辑态：标题可编辑 + 退出编辑/保存/AI 生成 -->
 								<template v-else>
 									<div class="dir-doc-edit-bar">
 										<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 										<div class="dir-doc-actions">
+											<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 											<el-button plain size="small" @click="exitEditMode">退出编辑</el-button>
 											<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
 										</div>
 									</div>
-									<div class="dir-doc-toolbar">
+									<!-- 编辑区上方内嵌工具栏：上传文件 + 插入 -->
+									<div class="dir-doc-mini-toolbar">
 										<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block">
 											<el-button size="small">上传 Markdown 文件</el-button>
 										</el-upload>
@@ -229,9 +231,6 @@
 												</el-dropdown-menu>
 											</template>
 										</el-dropdown>
-										<el-button size="small" style="margin-left: 8px" @click="dirDocPreview = true">预览</el-button>
-										<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
-										<el-button link size="small" style="margin-left: 8px" @click="scrollDocToTop">回到顶部</el-button>
 									</div>
 								</template>
 							</div>
@@ -245,6 +244,9 @@
 								:on-upload-img="onDocUploadImg"
 								style="height: 460px"
 							/>
+							<div v-if="!dirDocPreview" class="dir-doc-footer">
+								<el-button link size="small" @click="scrollDocToTop">回到顶部</el-button>
+							</div>
 						</el-tab-pane>
 					<el-tab-pane label="全部接口" name="apis">
 							<div class="dd-apis">
@@ -2168,6 +2170,7 @@ onMounted(() => {
 .dir-doc-title { font-size: 20px; font-weight: 700; color: #1f2329; }
 .dir-doc-edit-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.dir-doc-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.dir-doc-mini-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dir-doc-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; }
 .dir-doc-preview { min-height: 300px; padding: 12px 16px; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; background: #fff; overflow: auto; }
 </style>
