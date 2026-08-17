@@ -236,7 +236,7 @@
 							</div>
 							<div v-if="dirDocPreview" class="dir-doc-preview-wrap">
 								<div class="dir-doc-preview">
-									<MdPreview :id="mdPreviewId" :model-value="dirDocContent" />
+									<MdPreview :id="mdPreviewId" :model-value="dirDocContent" style="height: 520px" />
 								</div>
 								<div class="dir-doc-toc">
 									<MdCatalog :editor-id="mdPreviewId" />
@@ -2182,7 +2182,6 @@ onMounted(() => {
 .dir-doc-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; }
 .dir-doc-preview-wrap { display: flex; gap: 12px; align-items: flex-start; }
 .dir-doc-preview-wrap .dir-doc-preview { flex: 1; min-width: 0; }
-.dir-doc-preview :deep(.md-editor) { height: 520px; }
 .dir-doc-toc { width: 208px; flex-shrink: 0; position: sticky; top: 8px; max-height: 520px; overflow-y: auto; border-left: 1px solid #e5e7eb; padding-left: 10px; }
 .dir-doc-preview { min-height: 300px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; background: #fff; overflow: hidden; }
 </style>
