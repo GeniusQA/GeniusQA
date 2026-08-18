@@ -203,12 +203,11 @@
 										<el-button plain size="small" @click="enterEditMode">编辑</el-button>
 									</div>
 								</template>
-								<!-- 编辑态：标题可编辑，操作按钮统一放右侧与保存按钮对齐 -->
+								<!-- 编辑态：标题可编辑，保存/退出编辑放右侧，AI 生成文档内嵌到工具栏 -->
 								<template v-else>
 									<div class="dir-doc-edit-bar">
 										<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 										<div class="dir-doc-actions">
-											<el-button type="primary" plain size="small" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 											<el-button plain size="small" @click="exitEditMode">退出编辑</el-button>
 											<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
 										</div>
@@ -234,13 +233,13 @@
 							>
 								<template #defToolbars>
 									<!-- 上传 Markdown -->
-									<NormalToolbar key="dir-doc-upload-md" title="上传 Markdown 文件">
+									<NormalToolbar key="dir-doc-upload-md" class="dir-doc-custom-tool" title="上传 Markdown 文件">
 										<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block">
 											<el-icon size="18"><Upload /></el-icon>
 										</el-upload>
 									</NormalToolbar>
 									<!-- 插入 -->
-									<DropdownToolbar key="dir-doc-insert" title="插入">
+									<DropdownToolbar key="dir-doc-insert" class="dir-doc-custom-tool" title="插入">
 										<template #overlay>
 											<el-dropdown-menu>
 												<el-dropdown-item command="highlight" @click="insertDocBlock('highlight')">高亮块</el-dropdown-item>
@@ -253,11 +252,15 @@
 										</template>
 										<el-icon size="18"><Plus /></el-icon>
 									</DropdownToolbar>
+									<!-- AI 生成文档 -->
+									<NormalToolbar key="dir-doc-ai" class="dir-doc-custom-tool dir-doc-ai-tool" title="AI 生成文档" @onClick="generateDirDoc">
+										<el-icon size="18"><Opportunity /></el-icon>
+									</NormalToolbar>
 									<!-- 回到顶部 -->
-									<NormalToolbar key="dir-doc-scroll-top" title="回到顶部" @onClick="scrollDocToTop">
+									<NormalToolbar key="dir-doc-scroll-top" class="dir-doc-custom-tool" title="回到顶部" @onClick="scrollDocToTop">
 										<el-icon size="18"><Top /></el-icon>
 									</NormalToolbar>
-								</template>
+									</template>
 								</MdEditor>
 						</el-tab-pane>
 					<el-tab-pane label="全部接口" name="apis">
@@ -720,7 +723,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, Top, Upload, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Opportunity, Plus, Top, Upload, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
 import { MdEditor, MdPreview, MdCatalog, NormalToolbar, DropdownToolbar } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
@@ -983,7 +986,7 @@ const mdEditorRef = ref<any>(null);
 const dirDocPreviewRef = ref<HTMLElement>();
 const mdPreviewId = 'dir-doc-md-preview';
 
-// 编辑态工具栏：内置工具放左侧，自定义上传/插入/回到顶部放右侧（对齐 Apifox）
+// 编辑态工具栏：内置工具放左侧，自定义上传/插入/AI生成/回到顶部放右侧（对齐 Apifox）
 const dirDocToolbars = [
 	'bold', 'italic', 'strikeThrough', 'title', '-',
 	'quote', 'unorderedList', 'orderedList', 'task', '-',
@@ -993,6 +996,8 @@ const dirDocToolbars = [
 	0, // 上传 Markdown
 	'-',
 	1, // 插入
+	'-',
+	3, // AI 生成文档
 	'-',
 	2, // 回到顶部
 ];
@@ -2205,6 +2210,8 @@ onMounted(() => {
 :deep(.md-editor-toolbar) .dir-doc-custom-tool { display: inline-flex; align-items: center; justify-content: center; }
 :deep(.md-editor-toolbar) .dir-doc-custom-tool .el-icon { color: var(--el-text-color-regular); }
 :deep(.md-editor-toolbar) .dir-doc-custom-tool:hover .el-icon { color: var(--el-color-primary); }
+:deep(.md-editor-toolbar) .dir-doc-ai-tool .el-icon { color: #8b5cf6; }
+:deep(.md-editor-toolbar) .dir-doc-ai-tool:hover .el-icon { color: #7c3aed; }
 .dir-doc-preview-wrap { display: flex; gap: 12px; align-items: flex-start; }
 .dir-doc-preview-wrap .dir-doc-preview { flex: 1; min-width: 0; }
 .dir-doc-toc { width: 208px; flex-shrink: 0; position: sticky; top: 8px; max-height: 520px; overflow-y: auto; border-left: 1px solid #e5e7eb; padding-left: 10px; }
