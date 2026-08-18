@@ -238,27 +238,29 @@
 											<el-icon size="18"><Upload /></el-icon>
 										</el-upload>
 									</NormalToolbar>
-									<!-- 插入 -->
-									<DropdownToolbar key="dir-doc-insert" class="dir-doc-custom-tool" title="插入">
-										<template #overlay>
-											<el-dropdown-menu>
-												<el-dropdown-item command="highlight" @click="insertDocBlock('highlight')">高亮块</el-dropdown-item>
-												<el-dropdown-item command="tip" @click="insertDocBlock('tip')">提示语</el-dropdown-item>
-												<el-dropdown-item command="warning" @click="insertDocBlock('warning')">告示</el-dropdown-item>
-												<el-dropdown-item command="collapse" @click="insertDocBlock('collapse')">折叠块</el-dropdown-item>
-												<el-dropdown-item command="mermaid" @click="insertDocBlock('mermaid')">Mermaid 图表</el-dropdown-item>
-												<el-dropdown-item command="formula" @click="insertDocBlock('formula')">公式</el-dropdown-item>
-											</el-dropdown-menu>
-										</template>
-										<el-icon size="18"><Plus /></el-icon>
-									</DropdownToolbar>
-									<!-- AI 生成文档 -->
-									<NormalToolbar key="dir-doc-ai" class="dir-doc-custom-tool dir-doc-ai-tool" title="AI 生成文档" @onClick="generateDirDoc">
-										<el-icon size="18"><Opportunity /></el-icon>
+									<!-- 插入：使用 el-dropdown 避免 MdEditor cloneVNode 覆盖 visible prop -->
+									<NormalToolbar key="dir-doc-insert" class="dir-doc-custom-tool" title="插入">
+										<el-dropdown trigger="click" @command="insertDocBlock">
+											<el-icon size="18" @click.stop><Plus /></el-icon>
+											<template #dropdown>
+												<el-dropdown-menu>
+													<el-dropdown-item command="highlight">高亮块</el-dropdown-item>
+													<el-dropdown-item command="tip">提示语</el-dropdown-item>
+													<el-dropdown-item command="warning">告示</el-dropdown-item>
+													<el-dropdown-item command="collapse">折叠块</el-dropdown-item>
+													<el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
+													<el-dropdown-item command="formula">公式</el-dropdown-item>
+												</el-dropdown-menu>
+											</template>
+										</el-dropdown>
 									</NormalToolbar>
-									<!-- 回到顶部 -->
-									<NormalToolbar key="dir-doc-scroll-top" class="dir-doc-custom-tool" title="回到顶部" @onClick="scrollDocToTop">
-										<el-icon size="18"><Top /></el-icon>
+									<!-- AI 生成文档：事件绑定到内部图标，避免 cloneVNode 覆盖 onClick prop -->
+									<NormalToolbar key="dir-doc-ai" class="dir-doc-custom-tool dir-doc-ai-tool" title="AI 生成文档">
+										<el-icon size="18" @click.stop="generateDirDoc"><Opportunity /></el-icon>
+									</NormalToolbar>
+									<!-- 回到顶部：事件绑定到内部图标，避免 cloneVNode 覆盖 onClick prop -->
+									<NormalToolbar key="dir-doc-scroll-top" class="dir-doc-custom-tool" title="回到顶部">
+										<el-icon size="18" @click.stop="scrollDocToTop"><Top /></el-icon>
 									</NormalToolbar>
 									</template>
 								</MdEditor>
@@ -987,6 +989,7 @@ const dirDocPreviewRef = ref<HTMLElement>();
 const mdPreviewId = 'dir-doc-md-preview';
 
 // 编辑态工具栏：内置工具放左侧，自定义上传/插入/AI生成/回到顶部放右侧（对齐 Apifox）
+// 注意：数字对应 defToolbars 插槽中子元素的索引，不是组件的 key
 const dirDocToolbars = [
 	'bold', 'italic', 'strikeThrough', 'title', '-',
 	'quote', 'unorderedList', 'orderedList', 'task', '-',
@@ -997,9 +1000,9 @@ const dirDocToolbars = [
 	'-',
 	1, // 插入
 	'-',
-	3, // AI 生成文档
+	2, // AI 生成文档
 	'-',
-	2, // 回到顶部
+	3, // 回到顶部
 ];
 
 const insertDocBlock = (type: string) => {
