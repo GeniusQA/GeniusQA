@@ -861,7 +861,13 @@ async def generate_dir_doc(
     """遍历目录下所有接口，AI 生成 Markdown 接口文档"""
     try:
         body = await body_to_json(request)
-        data = await ApiAutomationService.generate_dir_doc(db, int(body.get("menu_id") or 0), current_user_id)
+        llm_config_id = body.get("llm_config_id")
+        data = await ApiAutomationService.generate_dir_doc(
+            db,
+            int(body.get("menu_id") or 0),
+            current_user_id,
+            llm_config_id=int(llm_config_id) if llm_config_id else None,
+        )
         return success_response(data, message="文档生成成功")
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")

@@ -743,6 +743,7 @@ import {
 	api_tree, api_info, add_menu, del_menu, edit_menu, copy_menu, useApiAutomationApi, api_service_list,
 	pull_api_doc, edit_api_service, add_api_service, del_api_service, sort_menu,
 } from '/@/api/v1/testing/apiAutomation';
+import { useLLMConfigApi } from '/@/api/v1/ai/llmConfig';
 
 const props = defineProps<{
 	serviceId: number;
@@ -1025,7 +1026,19 @@ const generateDirDoc = async () => {
 	} catch { return; }
 	dirDocGenerating.value = true;
 	try {
-		const r: any = await useApiAutomationApi().generate_dir_doc({ menu_id: Number(selectedDir.value.id) });
+		// 获取默认 LLM 配置；用户未配置时让后端兜底报错
+		let llmConfigId: number | undefined;
+		try {
+			const llmRes: any = await useLLMConfigApi().getDefault();
+			if (llmRes?.code === 200 && llmRes.data?.id) {
+				llmConfigId = Number(llmRes.data.id);
+			}
+		} catch {
+			// 保持静默，后端会兜底
+		}
+		const payload: any = { menu_id: Number(selectedDir.value.id) };
+		if (llmConfigId) payload.llm_config_id = llmConfigId;
+		const r: any = await useApiAutomationApi().generate_dir_doc(payload);
 		if (r?.code === 200 && r.data) {
 			dirDocTitle.value = r.data.title || selectedDir.value.name;
 			dirDocContent.value = r.data.content || '';

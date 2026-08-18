@@ -4237,10 +4237,10 @@ class ApiAutomationService:
 
     @staticmethod
     @staticmethod
-    async def _call_platform_llm(query: str, system_prompt: str = "") -> str:
+    async def _call_platform_llm(query: str, system_prompt: str = "", llm_config_id: Optional[int] = None) -> str:
         """使用平台 LLM 配置（LLM 配置管理页的模型）调用 LLM，返回文本"""
         from app.api.v1.Ntesterc_module.Ntesterc_ai.conversation.llm_service import get_llm_service, LLMMessage
-        service = await get_llm_service()
+        service = await get_llm_service(llm_config_id)
         messages = []
         if system_prompt:
             messages.append(LLMMessage("system", system_prompt))
@@ -4249,7 +4249,7 @@ class ApiAutomationService:
         return resp.content or ""
 
     @staticmethod
-    async def generate_dir_doc(db: AsyncSession, menu_id: int, user_id: int) -> Dict[str, Any]:
+    async def generate_dir_doc(db: AsyncSession, menu_id: int, user_id: int, llm_config_id: Optional[int] = None) -> Dict[str, Any]:
         """遍历目录下所有接口，AI 两阶段生成 Markdown 接口文档（V1 优化版）"""
         import json as _json
         menu = (
@@ -4318,7 +4318,7 @@ class ApiAutomationService:
                 "用业务语言总结每个接口的用途：\n"
                 + api_json
             )
-            summary = await ApiAutomationService._call_platform_llm(summary_prompt, SYSTEM_PROMPT)
+            summary = await ApiAutomationService._call_platform_llm(summary_prompt, SYSTEM_PROMPT, llm_config_id)
             doc_prompt = (
                 "请根据以下目录信息、接口列表，生成完整的 Markdown 接口文档。\n"
                 "结构要求：\n"
@@ -4329,7 +4329,19 @@ class ApiAutomationService:
                 f"目录名：{menu.name}\n"
                 f"接口列表：\n{api_json}"
             )
-            md = await ApiAutomationService._call_platform_llm(doc_prompt, SYSTEM_PROMPT)
+            md = await ApiAutomationService._call_platform_llm(doc_prompt, SYSTEM_PROMPT, llm_config_id)
+        else:
+            doc_prompt = (
+                "请根据以下目录信息、接口列表，生成完整的 Markdown 接口文档。\n"
+                "结构要求：\n"
+                "## 1. 概述（目录的业务说明）\n"
+                "## 2. 接口总览（表格：名称 | 方法 | 路径 | 说明）\n"
+                "## 3. 接口详情（每个接口一小节：接口说明、请求参数表格、请求体、请求示例、响应示例）\n"
+                "直接输出 Markdown 正文，不要用代码围栏包裹整个文档。\n\n"
+                f"目录名：{menu.name}\n"
+                f"接口列表：\n{api_json}"
+            )
+            md = await ApiAutomationService._call_platform_llm(doc_prompt, SYSTEM_PROMPT, llm_config_id)
         if not md:
             raise ValueError("AI 生成失败：模型返回为空")
         cp = menu.common_params or {}
