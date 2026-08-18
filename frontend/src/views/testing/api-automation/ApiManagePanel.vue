@@ -101,7 +101,7 @@
 							<div class="md-section">
 								<div class="md-section-head">
 									<span class="md-section-title">绑定数据源</span>
-									<el-button v-if="!bindDsExisting?.url" link type="primary" size="small" @click="openBindDs">+ 添加数据源</el-button>
+									<el-button link type="primary" size="small" @click="openBindDs">+ 添加数据源</el-button>
 								</div>
 								<div v-if="bindDsExisting?.url" class="md-source-item">
 									<span class="md-source-logo">{{ dsNameLetter }}</span>
