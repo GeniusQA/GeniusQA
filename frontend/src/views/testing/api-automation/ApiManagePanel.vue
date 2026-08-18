@@ -2221,7 +2221,7 @@ onMounted(() => {
 .dir-doc-title { position: absolute; left: 50%; transform: translate(-50%); font-size: 20px; font-weight: 700; color: #1f2329; white-space: nowrap; }
 .dir-doc-head { position: relative; }
 .dir-doc-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.dir-doc-actions { display: flex; align-items: center; gap: 8px; }
+.dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 /* 自定义工具栏按钮样式 */
 :deep(.md-editor-toolbar) .dir-doc-custom-tool { display: inline-flex; align-items: center; justify-content: center; }
 :deep(.md-editor-toolbar) .dir-doc-custom-tool .el-icon { color: var(--el-text-color-regular); }
