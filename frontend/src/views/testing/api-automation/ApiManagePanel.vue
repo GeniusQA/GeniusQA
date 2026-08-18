@@ -203,57 +203,62 @@
 										<el-button plain size="small" @click="enterEditMode">编辑</el-button>
 									</div>
 								</template>
-								<!-- 编辑态：标题可编辑 + 退出编辑/保存/AI 生成 -->
+								<!-- 编辑态：标题可编辑，操作按钮统一放右侧与保存按钮对齐 -->
 								<template v-else>
 									<div class="dir-doc-edit-bar">
 										<el-input v-model="dirDocTitle" size="small" placeholder="文档标题（默认目录名）" style="width: 320px" />
 										<div class="dir-doc-actions">
-											<el-button type="primary" plain size="small" style="margin-left: 8px" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
+											<el-button type="primary" plain size="small" :loading="dirDocGenerating" @click="generateDirDoc">AI 生成文档</el-button>
 											<el-button plain size="small" @click="exitEditMode">退出编辑</el-button>
 											<el-button type="primary" size="small" @click="saveDirDoc">保存</el-button>
 										</div>
 									</div>
-									<!-- 编辑区上方内嵌工具栏：上传文件 + 插入 -->
-									<div class="dir-doc-mini-toolbar">
-										<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block">
-											<el-button size="small">上传 Markdown 文件</el-button>
-										</el-upload>
-										<el-dropdown @command="insertDocBlock" trigger="click" style="margin-left: 8px">
-											<el-button type="success" size="small">插入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-											<template #dropdown>
-												<el-dropdown-menu>
-													<el-dropdown-item command="highlight">高亮块</el-dropdown-item>
-													<el-dropdown-item command="tip">提示语</el-dropdown-item>
-													<el-dropdown-item command="warning">告示</el-dropdown-item>
-													<el-dropdown-item command="collapse">折叠块</el-dropdown-item>
-													<el-dropdown-item command="mermaid">Mermaid 图表</el-dropdown-item>
-													<el-dropdown-item command="formula">公式</el-dropdown-item>
-												</el-dropdown-menu>
-											</template>
-										</el-dropdown>
-									</div>
 								</template>
 							</div>
 							<div v-if="dirDocPreview" class="dir-doc-preview-wrap">
-								<div class="dir-doc-preview">
-									<MdPreview :id="mdPreviewId" :model-value="dirDocContent" style="height: 520px" />
+								<div ref="dirDocPreviewRef" class="dir-doc-preview">
+									<MdPreview :id="mdPreviewId" :model-value="dirDocContent" />
 								</div>
 								<div class="dir-doc-toc">
-									<MdCatalog :editor-id="mdPreviewId" />
+									<MdCatalog :editor-id="mdPreviewId" :scroll-element="dirDocPreviewRef" sync-with="preview" />
 								</div>
 							</div>
 							<MdEditor
 								v-else
 								ref="mdEditorRef"
 								v-model="dirDocContent"
-								:toolbars="['bold', 'italic', 'strikeThrough', 'title', 'quote', 'unorderedList', 'orderedList', 'task', 'code', 'codeRow', 'link', 'image', 'table', 'mermaid', 'katex', 'revoke', 'next']"
+								:toolbars="dirDocToolbars"
 								placeholder="请输入内容"
 								:on-upload-img="onDocUploadImg"
 								style="height: 460px"
-							/>
-							<div v-if="!dirDocPreview" class="dir-doc-footer">
-								<el-button link size="small" @click="scrollDocToTop">回到顶部</el-button>
-							</div>
+							>
+								<template #defToolbars>
+									<!-- 上传 Markdown -->
+									<NormalToolbar key="dir-doc-upload-md" title="上传 Markdown 文件">
+										<el-upload :auto-upload="false" :show-file-list="false" accept=".md,.markdown" :on-change="onImportMd" style="display: inline-block">
+											<el-icon size="18"><Upload /></el-icon>
+										</el-upload>
+									</NormalToolbar>
+									<!-- 插入 -->
+									<DropdownToolbar key="dir-doc-insert" title="插入">
+										<template #overlay>
+											<el-dropdown-menu>
+												<el-dropdown-item command="highlight" @click="insertDocBlock('highlight')">高亮块</el-dropdown-item>
+												<el-dropdown-item command="tip" @click="insertDocBlock('tip')">提示语</el-dropdown-item>
+												<el-dropdown-item command="warning" @click="insertDocBlock('warning')">告示</el-dropdown-item>
+												<el-dropdown-item command="collapse" @click="insertDocBlock('collapse')">折叠块</el-dropdown-item>
+												<el-dropdown-item command="mermaid" @click="insertDocBlock('mermaid')">Mermaid 图表</el-dropdown-item>
+												<el-dropdown-item command="formula" @click="insertDocBlock('formula')">公式</el-dropdown-item>
+											</el-dropdown-menu>
+										</template>
+										<el-icon size="18"><Plus /></el-icon>
+									</DropdownToolbar>
+									<!-- 回到顶部 -->
+									<NormalToolbar key="dir-doc-scroll-top" title="回到顶部" @onClick="scrollDocToTop">
+										<el-icon size="18"><Top /></el-icon>
+									</NormalToolbar>
+								</template>
+								</MdEditor>
 						</el-tab-pane>
 					<el-tab-pane label="全部接口" name="apis">
 							<div class="dd-apis">
@@ -715,9 +720,9 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Plus, Top, Upload, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
-import { MdEditor, MdPreview, MdCatalog } from 'md-editor-v3';
+import { MdEditor, MdPreview, MdCatalog, NormalToolbar, DropdownToolbar } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
 import ApiDetail from './api_detail.vue';
 import ApiDbPopover from './components/ApiDbPopover.vue';
@@ -975,7 +980,22 @@ const dirDocHtml = computed(() => {
 	try { return marked.parse(dirDocContent.value || '') as string; } catch { return ''; }
 });
 const mdEditorRef = ref<any>(null);
+const dirDocPreviewRef = ref<HTMLElement>();
 const mdPreviewId = 'dir-doc-md-preview';
+
+// 编辑态工具栏：内置工具放左侧，自定义上传/插入/回到顶部放右侧（对齐 Apifox）
+const dirDocToolbars = [
+	'bold', 'italic', 'strikeThrough', 'title', '-',
+	'quote', 'unorderedList', 'orderedList', 'task', '-',
+	'codeRow', 'code', 'link', 'image', 'table', 'mermaid', 'katex', '-',
+	'revoke', 'next',
+	'=',
+	0, // 上传 Markdown
+	'-',
+	1, // 插入
+	'-',
+	2, // 回到顶部
+];
 
 const insertDocBlock = (type: string) => {
 	const snippets: Record<string, string> = {
@@ -2152,7 +2172,9 @@ onMounted(() => {
 
 /* AI 文档纯预览视图（对齐 Apifox 文档阅读体验） */
 .dir-doc-preview {
+	position: relative;
 	max-height: 520px;
+	min-height: 300px;
 	overflow-y: auto;
 	background: #fff;
 	border: 1px solid #e5e7eb;
@@ -2177,12 +2199,13 @@ onMounted(() => {
 .dir-doc-textarea :deep(textarea) { font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; }
 .dir-doc-title { position: absolute; left: 50%; transform: translate(-50%); font-size: 20px; font-weight: 700; color: #1f2329; white-space: nowrap; }
 .dir-doc-head { position: relative; }
-.dir-doc-edit-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.dir-doc-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.dir-doc-mini-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.dir-doc-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; }
+.dir-doc-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.dir-doc-actions { display: flex; align-items: center; gap: 8px; }
+/* 自定义工具栏按钮样式 */
+:deep(.md-editor-toolbar) .dir-doc-custom-tool { display: inline-flex; align-items: center; justify-content: center; }
+:deep(.md-editor-toolbar) .dir-doc-custom-tool .el-icon { color: var(--el-text-color-regular); }
+:deep(.md-editor-toolbar) .dir-doc-custom-tool:hover .el-icon { color: var(--el-color-primary); }
 .dir-doc-preview-wrap { display: flex; gap: 12px; align-items: flex-start; }
 .dir-doc-preview-wrap .dir-doc-preview { flex: 1; min-width: 0; }
 .dir-doc-toc { width: 208px; flex-shrink: 0; position: sticky; top: 8px; max-height: 520px; overflow-y: auto; border-left: 1px solid #e5e7eb; padding-left: 10px; }
-.dir-doc-preview { min-height: 300px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; background: #fff; overflow: hidden; }
 </style>
