@@ -5,12 +5,40 @@
 			<div class="dsd-head">
 				<div class="dsd-version old">
 					<el-tag type="danger">前一个版本</el-tag>
-					<span class="dsd-time">{{ diffData.history_a?.created_at || '-' }}</span>
+					<el-select
+						v-model="selectedLeftId"
+						:teleported="false"
+						popper-class="dsd-select-popper"
+						size="small"
+						class="dsd-select"
+						@change="onLeftChange"
+					>
+						<el-option
+							v-for="item in leftOptions"
+							:key="item.id"
+							:label="item.created_at"
+							:value="item.id"
+						/>
+					</el-select>
 				</div>
 				<div class="dsd-arrow">→</div>
 				<div class="dsd-version new">
 					<el-tag type="success">该版本</el-tag>
-					<span class="dsd-time">{{ diffData.history_b?.created_at || '-' }}</span>
+					<el-select
+						v-model="selectedRightId"
+						:teleported="false"
+						popper-class="dsd-select-popper"
+						size="small"
+						class="dsd-select"
+						@change="onRightChange"
+					>
+						<el-option
+							v-for="item in rightOptions"
+							:key="item.id"
+							:label="item.created_at"
+							:value="item.id"
+						/>
+					</el-select>
 				</div>
 			</div>
 			<div class="dsd-summary">
@@ -80,6 +108,7 @@ const props = defineProps<{
 	modelValue: boolean;
 	historyA?: Record<string, any> | null;
 	historyB?: Record<string, any> | null;
+	historyList?: Record<string, any>[];
 }>();
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>();
@@ -92,6 +121,32 @@ const inner = computed({
 const loading = ref(false);
 const diffData = ref<any>(null);
 const activeNames = ref(['added', 'removed', 'modified']);
+
+const selectedLeftId = ref<number | null>(null);
+const selectedRightId = ref<number | null>(null);
+
+const allHistory = computed(() => props.historyList || []);
+
+const leftIndex = computed(() => allHistory.value.findIndex((h) => h.id === selectedLeftId.value));
+const rightIndex = computed(() => allHistory.value.findIndex((h) => h.id === selectedRightId.value));
+
+// 历史列表按时间从新到旧排列（index 越小越新）
+// 左侧（旧版本）只能选比右侧更旧的版本：index > rightIndex
+const leftOptions = computed(() => {
+	const ri = rightIndex.value;
+	if (ri < 0) return allHistory.value.slice(1);
+	return allHistory.value.filter((_, idx) => idx > ri);
+});
+
+// 右侧（新版本）只能选比左侧更新的版本：index < leftIndex
+const rightOptions = computed(() => {
+	const li = leftIndex.value;
+	if (li < 0) return allHistory.value.slice(0, -1);
+	return allHistory.value.filter((_, idx) => idx < li);
+});
+
+const selectedLeft = computed(() => allHistory.value.find((h) => h.id === selectedLeftId.value));
+const selectedRight = computed(() => allHistory.value.find((h) => h.id === selectedRightId.value));
 
 const methodClass = (m: string) => {
 	const t = String(m || '').toLowerCase();
@@ -127,12 +182,12 @@ const formatValue = (v: any) => {
 };
 
 const loadDiff = async () => {
-	if (!props.historyA?.id || !props.historyB?.id) return;
+	if (!selectedLeftId.value || !selectedRightId.value) return;
 	loading.value = true;
 	try {
 		const r: any = await useApiAutomationApi().dataSourceHistoryDiff({
-			history_id_a: props.historyA.id,
-			history_id_b: props.historyB.id,
+			history_id_a: selectedLeftId.value,
+			history_id_b: selectedRightId.value,
 		});
 		if (r?.code === 200) {
 			diffData.value = r.data || null;
@@ -146,11 +201,56 @@ const loadDiff = async () => {
 	}
 };
 
+const onLeftChange = (val: number) => {
+	selectedLeftId.value = val;
+	// 右侧必须比左侧新；若当前右侧不在新选项中，重置为可选的最新版本
+	const opts = rightOptions.value;
+	if (!opts.find((h) => h.id === selectedRightId.value)) {
+		selectedRightId.value = opts[0]?.id || null;
+	}
+	loadDiff();
+};
+
+const onRightChange = (val: number) => {
+	selectedRightId.value = val;
+	// 左侧必须比右侧旧；若当前左侧不在新选项中，重置为可选的最早版本
+	const opts = leftOptions.value;
+	if (!opts.find((h) => h.id === selectedLeftId.value)) {
+		selectedLeftId.value = opts[opts.length - 1]?.id || null;
+	}
+	loadDiff();
+};
+
+const resetSelection = () => {
+	const a = props.historyA;
+	const b = props.historyB;
+	const list = allHistory.value;
+	if (!list.length) {
+		selectedLeftId.value = a?.id || null;
+		selectedRightId.value = b?.id || null;
+		return;
+	}
+	// 默认：右侧为最新版本，左侧为传入的 historyA（或紧邻最新的下一个版本）
+	selectedRightId.value = b?.id ?? list[0]?.id ?? null;
+	selectedLeftId.value = a?.id ?? null;
+	// 校验并修正：左侧必须比右侧旧
+	const ri = list.findIndex((h) => h.id === selectedRightId.value);
+	const li = list.findIndex((h) => h.id === selectedLeftId.value);
+	if (li >= 0 && ri >= 0 && li <= ri) {
+		// 传入的左侧不比右侧旧，取右侧之后第一个作为左侧
+		selectedLeftId.value = list[ri + 1]?.id ?? null;
+	}
+	if (selectedLeftId.value == null) {
+		selectedLeftId.value = list[ri + 1]?.id ?? list[list.length - 1]?.id ?? null;
+	}
+};
+
 watch(
-	() => [props.modelValue, props.historyA?.id, props.historyB?.id],
+	() => [props.modelValue, props.historyA?.id, props.historyB?.id, props.historyList?.length],
 	() => {
 		if (props.modelValue && props.historyA?.id && props.historyB?.id) {
 			diffData.value = null;
+			resetSelection();
 			loadDiff();
 		}
 	},
@@ -179,9 +279,8 @@ watch(
 	align-items: center;
 	gap: 8px;
 }
-.dsd-time {
-	font-size: 13px;
-	color: var(--el-text-color-regular);
+.dsd-select {
+	width: 180px;
 }
 .dsd-arrow {
 	font-size: 18px;
@@ -270,5 +369,11 @@ watch(
 	white-space: pre-wrap;
 	word-break: break-all;
 	font-family: inherit;
+}
+</style>
+
+<style>
+.dsd-select-popper {
+	max-width: 260px;
 }
 </style>

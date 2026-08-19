@@ -39,6 +39,7 @@
 			v-model="diffVisible"
 			:history-a="diffHistoryA"
 			:history-b="diffHistoryB"
+			:history-list="historyList"
 		/>
 	</el-dialog>
 </template>
