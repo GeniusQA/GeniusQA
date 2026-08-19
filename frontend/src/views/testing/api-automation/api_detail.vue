@@ -5,6 +5,7 @@
 			<el-tabs v-if="!props.embedded" v-model="mainTab" class="main-tabs">
 				<el-tab-pane label="调试" name="debug" />
 				<el-tab-pane label="接口文档" name="doc" />
+				<el-tab-pane label="导入历史" name="importHistory" />
 				<el-tab-pane label="调试记录" name="history" />
 				<el-tab-pane v-if="req.protocol !== 'websocket'" label="Mock" name="mock" />
 			</el-tabs>
@@ -880,6 +881,11 @@ mode="assert"
 				<ApiDocPanel :api-data="apiData" :api-id="Number(apiId || 0)" />
 			</div>
 
+			<!-- 导入历史面板 -->
+			<div v-if="mainTab==='importHistory'" class="side-panel history-side-panel">
+				<DataSourceHistoryPanel :api-data="apiData" />
+			</div>
+
 			<!-- 调试记录面板 -->
 			<div v-if="mainTab==='history'" class="side-panel history-side-panel">
 				<ApiHistoryPanel :api-data="apiData" />
@@ -1033,6 +1039,7 @@ import { api_send, save_api, save_api_case, edit_history, apiAutomationApi } fro
 import { useFileApi } from '/@/api/v1/common/file';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
+import DataSourceHistoryPanel from './components/DataSourceHistoryPanel.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { getBaseApiUrl } from '/@/utils/config';

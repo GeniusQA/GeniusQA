@@ -109,14 +109,13 @@
 									<el-button link type="primary" size="small" @click="openBindDs">+ 添加数据源</el-button>
 								</div>
 								<div v-if="bindDsExisting?.url" class="md-source-item">
-									<span class="md-source-logo">{{ dsNameLetter }}</span>
+									<span class="md-source-logo ds-history-logo" @click="openDsHistory" title="查看数据源导入历史">{{ dsNameLetter }}</span>
 									<div class="md-source-info">
 										<div class="md-source-name">{{ bindDsExisting.name || moduleSource.source_addr || '数据源' }}</div>
 										<div class="md-source-meta">{{ sourceTypeLabel(moduleSource.source_type) }} · {{ freqLabel(bindDsExisting.frequency) }}</div>
 									</div>
 									<el-button link type="primary" size="small" @click="openBindDs">编辑</el-button>
 									<el-button link type="primary" size="small" @click="syncBoundDs" :loading="dsSyncing">立即导入</el-button>
-									<el-button link type="primary" size="small" @click="openDsHistory">历史记录</el-button>
 								</div>
 								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」配置数据源（支持定时自动同步更新接口）</div>
 							</div>
@@ -2247,7 +2246,8 @@ onMounted(() => {
 	border-radius: 8px;
 	padding: 4px 20px;
 }
-.md-source-logo { width: 36px; height: 36px; border-radius: 8px; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex: 0 0 auto; }
+.md-source-logo { width: 36px; height: 36px; border-radius: 8px; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex: 0 0 auto; cursor: pointer; transition: opacity .15s; }
+.md-source-logo:hover { opacity: .85; }
 .md-source-info { flex: 1; min-width: 0; }
 .md-source-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .md-source-meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
