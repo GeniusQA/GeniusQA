@@ -89,7 +89,12 @@
 				<div v-if="selectedModule && !apiTabs.length" class="module-detail">
 					<div class="module-detail-head">
 						<h3 class="module-detail-title">{{ selectedModule.name }}</h3>
-						<el-button type="primary" size="small" @click="saveModuleVars">保存</el-button>
+						<div class="module-detail-actions">
+							<el-tooltip content="其他项目成员更新接口后，可点此刷新当前模块数据" placement="top">
+								<el-button :icon="Refresh" size="small" @click="refreshModuleDetail" :loading="moduleRefreshing">更新接口</el-button>
+							</el-tooltip>
+							<el-button type="primary" size="small" @click="saveModuleVars">保存</el-button>
+						</div>
 					</div>
 					<el-tabs v-model="moduleDetailTab" class="module-detail-tabs">
 						<el-tab-pane label="概览" name="overview">
@@ -733,7 +738,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import type { UploadFile, UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
-import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Opportunity, Plus, Top, Upload, UploadFilled } from '@element-plus/icons-vue';
+import { ArrowDown, Box, Coin, FolderOpened, Link, MoreFilled, Document, Grid, Opportunity, Plus, Refresh, Top, Upload, UploadFilled } from '@element-plus/icons-vue';
 import { marked } from 'marked';
 import { MdEditor, MdPreview, MdCatalog, NormalToolbar, DropdownToolbar } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
@@ -1277,6 +1282,7 @@ const moduleVars = ref<{ key: string; remote: string; local: string }[]>([]);
 const moduleSource = ref<{ source_type: string; source_addr: string }>({ source_type: '', source_addr: '' });
 const moduleVarsBulkVisible = ref(false);
 const moduleVarsBulkText = ref('');
+const moduleRefreshing = ref(false);
 
 const moduleStats = computed(() => {
 	const children = selectedModule.value?.children || [];
@@ -1440,6 +1446,30 @@ const saveModuleVars = async () => {
 		ElMessage.success('模块变量已保存');
 	} catch (e: any) {
 		ElMessage.error(e?.message || '保存失败');
+	}
+};
+
+const refreshModuleDetail = async () => {
+	if (!selectedModule.value) return;
+	moduleRefreshing.value = true;
+	try {
+		await loadTree();
+		// 重新从树中定位当前模块的最新数据，再刷新详情
+		const findModule = (nodes: any[]): any => {
+			for (const n of nodes || []) {
+				if (Number(n.id) === Number(selectedModule.value.id)) return n;
+				const found = findModule(n.children || []);
+				if (found) return found;
+			}
+			return null;
+		};
+		const latest = findModule(treeData.value);
+		await loadModuleDetail(latest || selectedModule.value);
+		ElMessage.success('接口信息已更新');
+	} catch (e: any) {
+		ElMessage.error(e?.message || '刷新失败');
+	} finally {
+		moduleRefreshing.value = false;
 	}
 };
 
@@ -2164,6 +2194,7 @@ onMounted(() => {
 .module-detail { padding: 4px 2px; }
 .module-detail-head { position: relative; display: flex; align-items: center; justify-content: flex-end; margin-bottom: 10px; }
 .module-detail-title { position: absolute; left: 50%; transform: translateX(-50%); margin: 0; font-size: 18px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; }
+.module-detail-actions { display: flex; align-items: center; gap: 8px; }
 .module-detail-tabs { }
 .md-stats { display: flex; gap: 12px; margin-bottom: 18px; }
 .md-stat-card { flex: 1; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; text-align: center; background: var(--el-bg-color); }
