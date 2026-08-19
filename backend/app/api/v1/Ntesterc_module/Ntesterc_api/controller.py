@@ -448,6 +448,64 @@ async def sync_data_source(
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
 
+@router.post("/data_source_history")
+async def data_source_history(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """获取数据源导入历史列表"""
+    try:
+        body = await body_to_json(request) or {}
+        data = await ApiAutomationService.get_data_source_history(
+            db,
+            int(body.get("api_service_id") or body.get("service_id") or 0),
+            module_id=int(body.get("module_id")) if body.get("module_id") else None,
+            page=int(body.get("page") or 1),
+            page_size=int(body.get("pageSize") or 20),
+        )
+        return success_response(data, message="请求成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/data_source_history_diff")
+async def data_source_history_diff(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """对比两次数据源导入历史"""
+    try:
+        body = await body_to_json(request) or {}
+        data = await ApiAutomationService.diff_data_source_history(
+            db,
+            int(body.get("history_id_a") or 0),
+            int(body.get("history_id_b") or 0),
+            current_user_id,
+        )
+        return success_response(data, message="请求成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/data_source_history_delete")
+async def data_source_history_delete(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """删除数据源导入历史"""
+    try:
+        body = await body_to_json(request) or {}
+        await ApiAutomationService.delete_data_source_history(
+            db, int(body.get("id") or 0), current_user_id
+        )
+        return success_response({}, message="删除成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/api_send")
 async def api_send(
     request: Request,

@@ -88,6 +88,9 @@ export function useApiAutomationApi() {
     wsTest: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/ws_test', data),
     saveDataSource: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/save_data_source', data),
     syncDataSource: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/sync_data_source', data),
+    dataSourceHistory: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/data_source_history', data),
+    dataSourceHistoryDiff: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/data_source_history_diff', data),
+    dataSourceHistoryDelete: (data: { id: number }) => postApiAutomation('/v1/Ntesterc_api/data_source_history_delete', data),
     pull_api_doc: (data: {
       api_service_id: number;
       source_type: 'swagger' | 'apifox' | 'postman';

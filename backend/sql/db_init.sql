@@ -515,6 +515,33 @@ CREATE TABLE `api_automation_edits`  (
 
 
 -- ----------------------------
+-- Table structure for api_automation_data_source_history
+-- ----------------------------
+DROP TABLE IF EXISTS `api_automation_data_source_history`;
+CREATE TABLE `api_automation_data_source_history`  (
+  `api_service_id` bigint NOT NULL COMMENT '服务ID',
+  `module_id` bigint NULL DEFAULT NULL COMMENT '模块ID',
+  `source_type` varchar(50) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '数据源类型：swagger/apifox',
+  `source_url` varchar(500) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '数据源地址',
+  `config` json NULL COMMENT '数据源配置快照',
+  `stats` json NULL COMMENT '导入统计：imported/updated/unchanged/folders/models',
+  `apis_snapshot` json NULL COMMENT '接口快照列表，用于差异对比',
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `creation_date` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `created_by` bigint NULL DEFAULT NULL COMMENT '创建人ID',
+  `updation_date` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `updated_by` bigint NULL DEFAULT NULL COMMENT '更新人ID',
+  `enabled_flag` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否删除, 0 删除 1 非删除',
+  `trace_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT 'trace_id',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of api_automation_data_source_history
+-- ----------------------------
+
+
+-- ----------------------------
 -- Table structure for api_automation_environments
 -- ----------------------------
 DROP TABLE IF EXISTS `api_automation_environments`;

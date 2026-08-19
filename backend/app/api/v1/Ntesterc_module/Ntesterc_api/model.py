@@ -243,3 +243,17 @@ class NtestScriptModel(Base):
     code_map = Column(Text, nullable=True, comment='按语言分槽代码 JSON：{python:.., javascript:..}')
     external_files = Column(Text, nullable=True, comment='关联的外部程序文件 JSON：[{name, path, rel_path}]')
     api_service_id = Column(BigInteger, nullable=False, comment='所属服务ID')
+
+
+class ApiDataSourceHistoryModel(Base):
+    """数据源导入历史记录（用于版本对比与回滚）"""
+    __tablename__ = 'api_automation_data_source_history'
+
+    api_service_id = Column(BigInteger, nullable=False, comment='服务ID')
+    module_id = Column(BigInteger, nullable=True, comment='模块ID（模块级数据源时使用）')
+    source_type = Column(String(50), comment='数据源类型：swagger/apifox')
+    source_url = Column(String(500), comment='数据源地址')
+    config = Column(JSON, comment='数据源配置快照')
+    stats = Column(JSON, comment='导入统计：imported/updated/unchanged/folders/models')
+    apis_snapshot = Column(JSON, comment='接口快照列表，用于差异对比')
+    created_by = Column(BigInteger, comment='创建人ID')

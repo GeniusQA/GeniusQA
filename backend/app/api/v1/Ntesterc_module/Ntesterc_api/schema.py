@@ -112,6 +112,25 @@ class EditHistoryRequest(BaseModel):
     api_id: int = Field(..., description="接口ID")
 
 
+class DataSourceHistoryRequest(BaseModel):
+    """数据源导入历史列表"""
+    api_service_id: int = Field(..., description="服务ID")
+    module_id: Optional[int] = Field(None, description="模块ID")
+    page: Optional[int] = Field(1, description="页码")
+    pageSize: Optional[int] = Field(20, description="每页条数")
+
+
+class DataSourceHistoryDiffRequest(BaseModel):
+    """数据源导入历史差异对比"""
+    history_id_a: int = Field(..., description="前一次历史记录ID")
+    history_id_b: int = Field(..., description="后一次历史记录ID")
+
+
+class DataSourceHistoryDeleteRequest(BaseModel):
+    """删除数据源导入历史"""
+    id: int = Field(..., description="历史记录ID")
+
+
 # ---------- 环境 ----------
 class EnvInfoRequest(BaseModel):
     """获取环境详情"""

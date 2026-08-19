@@ -111,6 +111,7 @@
 									</div>
 									<el-button link type="primary" size="small" @click="openBindDs">编辑</el-button>
 									<el-button link type="primary" size="small" @click="syncBoundDs" :loading="dsSyncing">立即导入</el-button>
+									<el-button link type="primary" size="small" @click="openDsHistory">历史记录</el-button>
 								</div>
 								<div v-else class="md-source-empty">尚未绑定数据源，点击「+ 添加数据源」配置数据源（支持定时自动同步更新接口）</div>
 							</div>
@@ -666,6 +667,13 @@
 		/>
 		<SyncResultDialog v-model="syncResultVisible" :result="syncResult" />
 
+		<!-- 数据源导入历史 -->
+		<DataSourceHistoryDialog
+			v-model="dsHistoryVisible"
+			:service-id="props.serviceId"
+			:module-id="selectedModule?.id || 0"
+		/>
+
 		<!-- 模块变量批量编辑 -->
 		<BatchEditDialog v-model="moduleVarsBulkVisible" :target="'module_vars'" :initial-text="moduleVarsBulkText" @apply="applyModuleVarsBulk" />
 
@@ -735,6 +743,7 @@ import ImportPreviewDialog from './components/ImportPreviewDialog.vue';
 import BatchEditDialog from './components/BatchEditDialog.vue';
 import BindDataSourceDialog from './components/BindDataSourceDialog.vue';
 import SyncResultDialog from './components/SyncResultDialog.vue';
+import DataSourceHistoryDialog from './components/DataSourceHistoryDialog.vue';
 import OperationPanel from './components/OperationPanel.vue';
 import ApiDocPanel from './components/ApiDocPanel.vue';
 import ApiHistoryPanel from './components/ApiHistoryPanel.vue';
@@ -1212,6 +1221,7 @@ const bindDsVisible = ref(false);
 const bindDsExisting = ref<Record<string, any> | null>(null);
 const syncResult = ref<Record<string, any> | null>(null);
 const syncResultVisible = ref(false);
+const dsHistoryVisible = ref(false);
 const onDsSyncOk = (result: any) => {
 	syncResult.value = result || null;
 	syncResultVisible.value = true;
@@ -1237,6 +1247,10 @@ const openBindDs = () => {
 const onBindDsSaved = () => {
 	loadModuleDetail(selectedModule.value);
 	loadTree();
+};
+
+const openDsHistory = () => {
+	dsHistoryVisible.value = true;
 };
 
 const syncBoundDs = async () => {

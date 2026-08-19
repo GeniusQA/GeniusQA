@@ -36,6 +36,7 @@ from .model import (
     ApiScriptResultListModel,
     ApiScriptResultModel,
     ApiUpdateModel,
+    ApiDataSourceHistoryModel,
 )
 
 from config import config as app_config
@@ -871,6 +872,33 @@ class ApiAutomationService:
             await db.rollback()
 
     @staticmethod
+    async def _ensure_data_source_history_table(db: AsyncSession) -> None:
+        """兼容旧库：数据源导入历史记录表"""
+        try:
+            await db.execute(text(
+                """CREATE TABLE IF NOT EXISTS api_automation_data_source_history (
+                    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+                    api_service_id BIGINT NOT NULL COMMENT '服务ID',
+                    module_id BIGINT NULL DEFAULT NULL COMMENT '模块ID',
+                    source_type VARCHAR(50) NULL DEFAULT NULL COMMENT '数据源类型：swagger/apifox',
+                    source_url VARCHAR(500) NULL DEFAULT NULL COMMENT '数据源地址',
+                    config JSON NULL COMMENT '数据源配置快照',
+                    stats JSON NULL COMMENT '导入统计',
+                    apis_snapshot JSON NULL COMMENT '接口快照列表',
+                    creation_date DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                    created_by BIGINT NULL DEFAULT NULL COMMENT '创建人ID',
+                    updation_date DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                    updated_by BIGINT NULL DEFAULT NULL COMMENT '更新人ID',
+                    enabled_flag TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否删除, 0 删除 1 非删除',
+                    trace_id VARCHAR(255) NULL DEFAULT NULL COMMENT 'trace_id',
+                    PRIMARY KEY (id) USING BTREE
+                ) ENGINE=InnoDB CHARACTER SET=utf8mb3 COLLATE=utf8mb3_general_ci ROW_FORMAT=Dynamic"""
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
     async def save_data_source(db: AsyncSession, body: Dict[str, Any], user_id: int) -> None:
         """保存服务绑定的数据源配置（含定时同步频率与高级设置）"""
         await ApiAutomationService._ensure_data_source_config_column(db)
@@ -1070,8 +1098,76 @@ class ApiAutomationService:
                     .where(ApiServiceModel.id == int(service_id))
                     .values(data_source_config=cfg2)
                 )
+            # 保存导入历史记录（含接口快照，用于版本对比）
+            try:
+                await ApiAutomationService._save_data_source_history(
+                    db, int(service_id), int(module_id or 0), cfg2, result, user_id
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[datasource-history] 保存导入历史失败: {e}")
         await db.commit()
         return result
+
+    @staticmethod
+    async def _save_data_source_history(
+        db: AsyncSession, service_id: int, module_id: int, cfg: Dict[str, Any],
+        result: Dict[str, Any], user_id: int
+    ) -> None:
+        """保存数据源导入历史记录（仅非临时导入）"""
+        await ApiAutomationService._ensure_data_source_history_table(db)
+        # 生成当前服务下接口快照
+        snapshot = await ApiAutomationService._snapshot_service_apis(db, service_id)
+        history = ApiDataSourceHistoryModel(
+            api_service_id=int(service_id),
+            module_id=int(module_id) if module_id else None,
+            source_type=str(cfg.get("data_source_type") or ""),
+            source_url=str(cfg.get("url") or ""),
+            config=cfg,
+            stats={
+                "imported": int(result.get("imported") or 0),
+                "updated": int(result.get("updated") or 0),
+                "unchanged": int(result.get("unchanged") or 0),
+                "folders": int(result.get("folders") or 0),
+                "models": int(result.get("models") or 0),
+            },
+            apis_snapshot=snapshot,
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        db.add(history)
+
+    @staticmethod
+    async def _snapshot_service_apis(db: AsyncSession, service_id: int) -> List[Dict[str, Any]]:
+        """生成服务下所有接口的精简快照，用于差异对比"""
+        rows = (
+            await db.execute(
+                select(ApiModel).where(
+                    ApiModel.api_service_id == int(service_id), ApiModel.enabled_flag == 1
+                )
+            )
+        ).scalars().all()
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            req = row.req if isinstance(row.req, dict) else {}
+            document = row.document if isinstance(row.document, dict) else {}
+            method_num = int(req.get("method") or 2)
+            method_map = {1: "GET", 2: "POST", 3: "PUT", 4: "DELETE", 5: "PATCH", 6: "OPTIONS"}
+            method = method_map.get(method_num, "POST")
+            url = str(row.url or req.get("url") or "")
+            out.append({
+                "id": int(row.id),
+                "name": str(row.name or ""),
+                "method": method,
+                "url": url,
+                "description": str(row.description or ""),
+                "params": req.get("params") or [],
+                "body": req.get("body") or {},
+                "body_type": int(req.get("body_type") or 1),
+                "header": req.get("header") or [],
+                "operation_id": str(document.get("operationId") or ""),
+                "tags": document.get("tags") or [],
+            })
+        return out
 
     @staticmethod
     def _empty_common_params() -> Dict[str, List[Dict[str, Any]]]:
@@ -8258,4 +8354,140 @@ class ApiAutomationService:
             return [{"name": r[0], "type": "table", "isLeaf": True} for r in rows]
         finally:
             conn.close()
+
+    # ─── 数据源导入历史与差异对比 ──────────────────────────────────────────────
+
+    @staticmethod
+    async def get_data_source_history(
+        db: AsyncSession, service_id: int, module_id: Optional[int] = None,
+        page: int = 1, page_size: int = 20
+    ) -> Dict[str, Any]:
+        """获取数据源导入历史列表"""
+        await ApiAutomationService._ensure_data_source_history_table(db)
+        stmt = select(ApiDataSourceHistoryModel).where(
+            ApiDataSourceHistoryModel.api_service_id == int(service_id),
+            ApiDataSourceHistoryModel.enabled_flag == 1,
+        )
+        if module_id:
+            stmt = stmt.where(ApiDataSourceHistoryModel.module_id == int(module_id))
+        stmt = stmt.order_by(ApiDataSourceHistoryModel.id.desc())
+        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+        rows = (
+            await db.execute(
+                stmt.offset((page - 1) * page_size).limit(page_size)
+            )
+        ).scalars().all()
+        items = []
+        for r in rows:
+            stats = r.stats if isinstance(r.stats, dict) else {}
+            cfg = r.config if isinstance(r.config, dict) else {}
+            items.append({
+                "id": int(r.id),
+                "api_service_id": int(r.api_service_id),
+                "module_id": int(r.module_id) if r.module_id else None,
+                "source_type": str(r.source_type or ""),
+                "source_url": str(r.source_url or ""),
+                "frequency": str(cfg.get("frequency") or ""),
+                "stats": stats,
+                "created_by": int(r.created_by) if r.created_by else None,
+                "created_at": r.creation_date.strftime("%Y-%m-%d %H:%M:%S") if r.creation_date else "",
+            })
+        total_page = int(ceil(float(total) / page_size)) if total else 0
+        return {
+            "rowTotal": total,
+            "pageSize": page_size,
+            "page": page,
+            "pageTotal": total_page,
+            "rows": items,
+        }
+
+    @staticmethod
+    async def diff_data_source_history(
+        db: AsyncSession, history_id_a: int, history_id_b: int, user_id: int
+    ) -> Dict[str, Any]:
+        """对比两次数据源导入历史，返回接口级差异"""
+        await ApiAutomationService._ensure_data_source_history_table(db)
+
+        async def _get_hist(hid: int) -> Optional[ApiDataSourceHistoryModel]:
+            return (
+                await db.execute(
+                    select(ApiDataSourceHistoryModel).where(
+                        ApiDataSourceHistoryModel.id == hid,
+                        ApiDataSourceHistoryModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+
+        ha = await _get_hist(history_id_a)
+        hb = await _get_hist(history_id_b)
+        if not ha or not hb:
+            raise ValueError("历史记录不存在")
+        if int(ha.api_service_id) != int(hb.api_service_id):
+            raise ValueError("只能对比同一服务下的历史记录")
+
+        snap_a = ha.apis_snapshot if isinstance(ha.apis_snapshot, list) else []
+        snap_b = hb.apis_snapshot if isinstance(hb.apis_snapshot, list) else []
+
+        def _api_key(item: Dict[str, Any]) -> str:
+            return f"{str(item.get('method') or '').upper()} {str(item.get('url') or '')}"
+
+        map_a = {(_api_key(x), int(x.get("id") or 0)): x for x in snap_a}
+        map_b = {(_api_key(x), int(x.get("id") or 0)): x for x in snap_b}
+
+        # 优先按 method+url 匹配；如果 id 相同也视为同一接口
+        keys_a = set(map_a.keys())
+        keys_b = set(map_b.keys())
+
+        added: List[Dict[str, Any]] = []
+        removed: List[Dict[str, Any]] = []
+        modified: List[Dict[str, Any]] = []
+
+        for k in keys_b - keys_a:
+            added.append({"key": _api_key(map_b[k]), **map_b[k]})
+        for k in keys_a - keys_b:
+            removed.append({"key": _api_key(map_a[k]), **map_a[k]})
+        for k in keys_a & keys_b:
+            item_a = map_a[k]
+            item_b = map_b[k]
+            changes: List[Dict[str, Any]] = []
+            fields = ["name", "description", "method", "url", "params", "body", "body_type", "header", "operation_id", "tags"]
+            for field in fields:
+                va = item_a.get(field)
+                vb = item_b.get(field)
+                if va != vb:
+                    changes.append({"field": field, "old": va, "new": vb})
+            if changes:
+                modified.append({"key": _api_key(item_b), "id": item_b.get("id"), "changes": changes, **item_b})
+
+        return {
+            "history_a": {
+                "id": int(ha.id),
+                "created_at": ha.creation_date.strftime("%Y-%m-%d %H:%M:%S") if ha.creation_date else "",
+                "stats": ha.stats if isinstance(ha.stats, dict) else {},
+            },
+            "history_b": {
+                "id": int(hb.id),
+                "created_at": hb.creation_date.strftime("%Y-%m-%d %H:%M:%S") if hb.creation_date else "",
+                "stats": hb.stats if isinstance(hb.stats, dict) else {},
+            },
+            "summary": {
+                "added": len(added),
+                "removed": len(removed),
+                "modified": len(modified),
+            },
+            "added": added,
+            "removed": removed,
+            "modified": modified,
+        }
+
+    @staticmethod
+    async def delete_data_source_history(db: AsyncSession, history_id: int, user_id: int) -> None:
+        """删除单条数据源导入历史（逻辑删除）"""
+        await ApiAutomationService._ensure_data_source_history_table(db)
+        await db.execute(
+            update(ApiDataSourceHistoryModel)
+            .where(ApiDataSourceHistoryModel.id == int(history_id))
+            .values(enabled_flag=0, updated_by=user_id)
+        )
+        await db.commit()
 
