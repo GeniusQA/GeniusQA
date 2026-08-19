@@ -8,6 +8,51 @@ import {handlerRedirectUrl} from "/@/utils/urlHandler";
 // 防止重复弹窗
 let isShowingAuthDialog = false;
 
+// 防止并发 401 导致重复刷新 token：同一时间只刷新一次，其余请求排队等待
+let isRefreshing = false;
+const pendingRequests: Array<() => void> = [];
+
+/**
+ * 用 refresh_token 换取新的 access_token，并自动重试原请求。
+ * 后端 /v1/system/auth/refresh 仅依赖 body 中的 refresh_token，不校验过期 access_token。
+ */
+const refreshAndRetry = async (originalConfig: any): Promise<any> => {
+	const refreshToken = Local.get('refresh_token');
+	if (!refreshToken) throw new Error('NO_REFRESH_TOKEN');
+
+	// 已有刷新在途，排队等待新 token 就绪后重试
+	if (isRefreshing) {
+		return new Promise((resolve) => {
+			pendingRequests.push(() => resolve(service(originalConfig)));
+		});
+	}
+
+	isRefreshing = true;
+	try {
+		const res: any = await service({
+			url: '/v1/system/auth/refresh',
+			method: 'POST',
+			data: { refresh_token: refreshToken },
+		});
+		const newToken = res?.data?.access_token || res?.data?.token;
+		const newRefresh = res?.data?.refresh_token;
+		if (!newToken) throw new Error('REFRESH_FAILED');
+		// 写入最新 token，重试请求会经请求拦截器自动带上新 Authorization
+		Local.set('token', newToken);
+		if (newRefresh) Local.set('refresh_token', newRefresh);
+		// 释放等待队列中的请求
+		pendingRequests.forEach((cb) => cb());
+		pendingRequests.length = 0;
+		// 重试当前原请求
+		return service(originalConfig);
+	} catch (e) {
+		pendingRequests.length = 0;
+		throw e;
+	} finally {
+		isRefreshing = false;
+	}
+};
+
 // 配置新建一个 axios 实例
 const service: AxiosInstance = axios.create({
 	baseURL: getApiBaseUrl(),
@@ -171,7 +216,7 @@ service.interceptors.response.use(
 			return response.data;
 		}
 	},
-	(error) => {
+	async (error) => {
 		// 对响应错误做点什么
 		if (error.message.indexOf('timeout') != -1) {
 			ElMessage.error('网络超时');
@@ -187,6 +232,18 @@ service.interceptors.response.use(
 				
 				// 处理 401 未授权错误
 				if (error.response.status === 401) {
+					// 刷新令牌接口自身 401（refresh_token 也过期）或无刷新令牌时，不再重试，直接弹窗
+					const reqUrl = error.config?.url || '';
+					const isRefreshReq = reqUrl.includes('/v1/system/auth/refresh');
+					const hasToken = !!Local.get('token') && !!Local.get('refresh_token');
+					if (!isRefreshReq && hasToken) {
+						try {
+							const retryResp = await refreshAndRetry(error.config);
+							return retryResp;
+						} catch {
+							// 刷新失败，落到下面的统一弹窗处理
+						}
+					}
 					// 统一处理 token 过期
 					if (isShowingAuthDialog) {
 						return Promise.reject(error);
