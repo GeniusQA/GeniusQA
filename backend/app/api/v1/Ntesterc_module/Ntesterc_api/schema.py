@@ -112,6 +112,24 @@ class EditHistoryRequest(BaseModel):
     api_id: int = Field(..., description="接口ID")
 
 
+class ApiDocHistoryRequest(BaseModel):
+    """接口文档历史版本列表"""
+    api_id: int = Field(..., description="接口ID")
+    page: Optional[int] = Field(1, description="页码")
+    pageSize: Optional[int] = Field(20, description="每页条数")
+
+
+class ApiDocHistoryDiffRequest(BaseModel):
+    """接口文档历史版本差异对比"""
+    history_id_a: int = Field(..., description="前一个版本ID")
+    history_id_b: int = Field(..., description="后一个版本ID")
+
+
+class ApiDocHistoryRestoreRequest(BaseModel):
+    """还原接口文档到指定历史版本"""
+    id: int = Field(..., description="历史版本ID")
+
+
 class DataSourceHistoryRequest(BaseModel):
     """数据源导入历史列表"""
     api_service_id: int = Field(..., description="服务ID")

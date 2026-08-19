@@ -91,6 +91,9 @@ export function useApiAutomationApi() {
     dataSourceHistory: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/data_source_history', data),
     dataSourceHistoryDiff: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/data_source_history_diff', data),
     dataSourceHistoryDelete: (data: { id: number }) => postApiAutomation('/v1/Ntesterc_api/data_source_history_delete', data),
+    apiDocHistory: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/api_doc_history', data),
+    apiDocHistoryDiff: (data: Record<string, any>) => postApiAutomation('/v1/Ntesterc_api/api_doc_history_diff', data),
+    apiDocHistoryRestore: (data: { id: number }) => postApiAutomation('/v1/Ntesterc_api/api_doc_history_restore', data),
     pull_api_doc: (data: {
       api_service_id: number;
       source_type: 'swagger' | 'apifox' | 'postman';

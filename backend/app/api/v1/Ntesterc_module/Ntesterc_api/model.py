@@ -190,6 +190,19 @@ class ApiEditModel(Base):
     edit = Column(JSON, comment="变更内容")
 
 
+class ApiDocHistoryModel(Base):
+    """接口文档历史版本"""
+    __tablename__ = "api_automation_doc_history"
+
+    api_id = Column(BigInteger, nullable=False, comment="接口ID")
+    api_service_id = Column(BigInteger, nullable=True, comment="服务ID")
+    document = Column(JSON, comment="文档内容快照")
+    name = Column(String(255), comment="接口名称快照")
+    description = Column(Text, comment="接口描述快照")
+    operation_type = Column(String(50), default="edit", comment="操作类型：create/edit/restore")
+    created_by = Column(BigInteger, comment="创建人ID")
+
+
 class ApiFunctionModel(Base):
     """公共函数"""
     __tablename__ = "api_automation_functions"

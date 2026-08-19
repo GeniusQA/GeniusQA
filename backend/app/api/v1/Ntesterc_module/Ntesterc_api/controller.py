@@ -577,6 +577,65 @@ async def edit_history(
     except Exception as e:
         return error_response(f"接口请求异常，原因是：{str(e)}")
 
+
+@router.post("/api_doc_history")
+async def api_doc_history(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """获取接口文档历史版本列表"""
+    try:
+        body = await body_to_json(request) or {}
+        data = await ApiAutomationService.get_doc_history(
+            db,
+            int(body.get("api_id") or 0),
+            current_user_id,
+            page=int(body.get("page") or 1),
+            page_size=int(body.get("pageSize") or 20),
+        )
+        return success_response(data, message="请求成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/api_doc_history_diff")
+async def api_doc_history_diff(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """对比两个接口文档历史版本"""
+    try:
+        body = await body_to_json(request) or {}
+        data = await ApiAutomationService.diff_doc_history(
+            db,
+            int(body.get("history_id_a") or 0),
+            int(body.get("history_id_b") or 0),
+            current_user_id,
+        )
+        return success_response(data, message="请求成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
+@router.post("/api_doc_history_restore")
+async def api_doc_history_restore(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """将接口文档还原到指定历史版本"""
+    try:
+        body = await body_to_json(request) or {}
+        await ApiAutomationService.restore_doc_history(
+            db, int(body.get("id") or 0), current_user_id
+        )
+        return success_response({}, message="还原成功")
+    except Exception as e:
+        return error_response(f"接口请求异常，原因是：{str(e)}")
+
+
 @router.post("/get_api_case")
 async def get_api_case(
     request: Request,

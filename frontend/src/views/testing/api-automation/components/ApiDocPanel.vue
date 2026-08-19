@@ -13,6 +13,7 @@
 				<template v-else>
 					<el-button size="small" type="primary" plain @click="startEdit">编辑</el-button>
 					<el-button size="small" type="success" plain @click="createFromScratch" v-if="!hasDocument">新建文档</el-button>
+					<el-button size="small" @click="openHistory">历史记录</el-button>
 					<el-button size="small" @click="exportOpenApi" :disabled="!hasDocument">导出 OpenAPI</el-button>
 				</template>
 			</div>
@@ -262,14 +263,22 @@
 			<p>暂无接口文档</p>
 			<el-button type="primary" size="small" style="margin-top:8px" @click="createFromScratch">新建文档</el-button>
 		</div>
-	</div>
-</template>
+
+		<ApiDocHistoryDialog
+			v-model="historyVisible"
+			:api-id="apiId"
+			:api-data="apiData"
+			@restore="onDocRestored"
+		/>
+		</div>
+		</template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Document } from '@element-plus/icons-vue';
 import { save_api } from '/@/api/v1/testing/apiAutomation';
+import ApiDocHistoryDialog from './ApiDocHistoryDialog.vue';
 
 const props = defineProps<{ apiData: any; apiId?: number | null }>();
 const emit = defineEmits<{ (e: 'updated', document: Record<string, any>): void }>();
@@ -661,6 +670,24 @@ const normalizeExportPath = (raw: string) => {
 	u = u.split('?')[0] || '/';
 	if (!u.startsWith('/')) u = `/${u}`;
 	return u || '/';
+};
+
+const historyVisible = ref(false);
+const openHistory = () => {
+	if (!apiId.value) {
+		ElMessage.warning('无法获取接口 ID');
+		return;
+	}
+	historyVisible.value = true;
+};
+const onDocRestored = (document: Record<string, any>) => {
+	localDoc.value = document;
+	if (props.apiData?.api_info) {
+		props.apiData.api_info.document = document;
+	} else if (props.apiData) {
+		props.apiData.document = document;
+	}
+	emit('updated', document);
 };
 
 const exportOpenApi = () => {

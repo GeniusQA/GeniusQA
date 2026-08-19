@@ -37,6 +37,7 @@ from .model import (
     ApiScriptResultModel,
     ApiUpdateModel,
     ApiDataSourceHistoryModel,
+    ApiDocHistoryModel,
 )
 
 from config import config as app_config
@@ -4849,6 +4850,13 @@ class ApiAutomationService:
             edits = ApiAutomationService._compare_data(old_req, values.get("req") or {})
             if edits:
                 db.add(ApiEditModel(api_id=api_id, edit=edits, created_by=user_id, updated_by=user_id))
+        # 文档变更时保存文档历史版本
+        if "document" in body or body.get("name") is not None or body.get("description") is not None:
+            await ApiAutomationService._save_doc_history(
+                db, api_id, int(row.api_service_id), values.get("document") or row.document or {},
+                values.get("name") or row.name, values.get("description") or row.description,
+                "edit", user_id
+            )
         await db.commit()
 
     @staticmethod
@@ -4916,7 +4924,171 @@ class ApiAutomationService:
         d.pop("_sa_instance_state", None)
         return d
 
-  
+    @staticmethod
+    async def _ensure_doc_history_table(db: AsyncSession) -> None:
+        """兼容旧库：接口文档历史版本表"""
+        try:
+            await db.execute(text(
+                """CREATE TABLE IF NOT EXISTS api_automation_doc_history (
+                    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+                    api_id BIGINT NOT NULL COMMENT '接口ID',
+                    api_service_id BIGINT NULL DEFAULT NULL COMMENT '服务ID',
+                    document JSON NULL COMMENT '文档内容快照',
+                    name VARCHAR(255) NULL DEFAULT NULL COMMENT '接口名称快照',
+                    description TEXT NULL DEFAULT NULL COMMENT '接口描述快照',
+                    operation_type VARCHAR(50) NULL DEFAULT 'edit' COMMENT '操作类型：create/edit/restore',
+                    creation_date DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                    created_by BIGINT NULL DEFAULT NULL COMMENT '创建人ID',
+                    updation_date DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                    updated_by BIGINT NULL DEFAULT NULL COMMENT '更新人ID',
+                    enabled_flag TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否删除, 0 删除 1 非删除',
+                    trace_id VARCHAR(255) NULL DEFAULT NULL COMMENT 'trace_id',
+                    PRIMARY KEY (id) USING BTREE
+                ) ENGINE=InnoDB CHARACTER SET=utf8mb3 COLLATE=utf8mb3_general_ci ROW_FORMAT=Dynamic"""
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    @staticmethod
+    async def _save_doc_history(
+        db: AsyncSession, api_id: int, api_service_id: int, document: Any,
+        name: Any, description: Any, operation_type: str, user_id: int
+    ) -> None:
+        await ApiAutomationService._ensure_doc_history_table(db)
+        db.add(ApiDocHistoryModel(
+            api_id=int(api_id),
+            api_service_id=int(api_service_id) if api_service_id else None,
+            document=document if isinstance(document, dict) else {},
+            name=str(name or ''),
+            description=str(description or ''),
+            operation_type=str(operation_type or 'edit'),
+            created_by=user_id,
+            updated_by=user_id,
+        ))
+
+    @staticmethod
+    async def get_doc_history(
+        db: AsyncSession, api_id: int, user_id: int,
+        page: int = 1, page_size: int = 20
+    ) -> Dict[str, Any]:
+        """获取接口文档历史版本列表"""
+        await ApiAutomationService._ensure_doc_history_table(db)
+        stmt = (
+            select(ApiDocHistoryModel)
+            .where(
+                ApiDocHistoryModel.enabled_flag == 1,
+                ApiDocHistoryModel.api_id == int(api_id),
+            )
+            .order_by(ApiDocHistoryModel.id.desc())
+        )
+        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+        rows = (await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+        user_ids = [int(r.created_by) for r in rows if r.created_by]
+        user_map = await _get_username_map(db, user_ids)
+        items = []
+        for r in rows:
+            items.append({
+                "id": int(r.id),
+                "api_id": int(r.api_id),
+                "api_service_id": int(r.api_service_id) if r.api_service_id else None,
+                "operation_type": str(r.operation_type or 'edit'),
+                "operation_label": {"create": "新建", "edit": "编辑", "restore": "还原"}.get(str(r.operation_type or ''), str(r.operation_type or '')),
+                "name": str(r.name or ''),
+                "description": str(r.description or ''),
+                "created_by": int(r.created_by) if r.created_by else None,
+                "created_by_name": user_map.get(int(r.created_by)) if r.created_by else '',
+                "created_at": r.creation_date.strftime("%Y-%m-%d %H:%M:%S") if r.creation_date else '',
+            })
+        return {
+            "rowTotal": total,
+            "pageSize": page_size,
+            "page": page,
+            "pageTotal": int(ceil(float(total) / page_size)) if total else 0,
+            "rows": items,
+        }
+
+    @staticmethod
+    async def diff_doc_history(
+        db: AsyncSession, history_id_a: int, history_id_b: int, user_id: int
+    ) -> Dict[str, Any]:
+        """对比两个文档历史版本"""
+        await ApiAutomationService._ensure_doc_history_table(db)
+
+        async def _get(hid: int) -> Optional[ApiDocHistoryModel]:
+            return (
+                await db.execute(
+                    select(ApiDocHistoryModel).where(
+                        ApiDocHistoryModel.id == hid,
+                        ApiDocHistoryModel.enabled_flag == 1,
+                    )
+                )
+            ).scalar_one_or_none()
+
+        ha = await _get(history_id_a)
+        hb = await _get(history_id_b)
+        if not ha or not hb:
+            raise ValueError("历史版本不存在")
+        if int(ha.api_id) != int(hb.api_id):
+            raise ValueError("只能对比同一接口的文档版本")
+        doc_a = ha.document if isinstance(ha.document, dict) else {}
+        doc_b = hb.document if isinstance(hb.document, dict) else {}
+        changes = ApiAutomationService._compare_data(doc_a, doc_b)
+        return {
+            "history_a": {
+                "id": int(ha.id),
+                "api_id": int(ha.api_id),
+                "created_at": ha.creation_date.strftime("%Y-%m-%d %H:%M:%S") if ha.creation_date else '',
+                "operation_type": str(ha.operation_type or 'edit'),
+                "name": str(ha.name or ''),
+            },
+            "history_b": {
+                "id": int(hb.id),
+                "api_id": int(hb.api_id),
+                "created_at": hb.creation_date.strftime("%Y-%m-%d %H:%M:%S") if hb.creation_date else '',
+                "operation_type": str(hb.operation_type or 'edit'),
+                "name": str(hb.name or ''),
+            },
+            "changes": changes,
+            "summary": {
+                "add": len([c for c in changes if c.get("type") == "add"]),
+                "delete": len([c for c in changes if c.get("type") == "delete"]),
+                "edit": len([c for c in changes if c.get("type") == "edit"]),
+            },
+        }
+
+    @staticmethod
+    async def restore_doc_history(db: AsyncSession, history_id: int, user_id: int) -> None:
+        """将接口文档还原到指定历史版本"""
+        await ApiAutomationService._ensure_doc_history_table(db)
+        row = (
+            await db.execute(
+                select(ApiDocHistoryModel).where(
+                    ApiDocHistoryModel.id == int(history_id),
+                    ApiDocHistoryModel.enabled_flag == 1,
+                )
+            )
+        ).scalar_one_or_none()
+        if not row:
+            raise ValueError("历史版本不存在")
+        api_id = int(row.api_id)
+        await db.execute(
+            update(ApiModel)
+            .where(ApiModel.id == api_id, ApiModel.enabled_flag == 1)
+            .values(
+                document=row.document if isinstance(row.document, dict) else {},
+                name=str(row.name or '') or None,
+                description=str(row.description or '') or None,
+                updated_by=user_id,
+            )
+        )
+        await ApiAutomationService._save_doc_history(
+            db, api_id, int(row.api_service_id) if row.api_service_id else 0,
+            row.document if isinstance(row.document, dict) else {},
+            str(row.name or ''), str(row.description or ''), "restore", user_id
+        )
+        await db.commit()
+
     @staticmethod
     async def get_request_history(
         db: AsyncSession,

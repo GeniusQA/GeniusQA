@@ -515,6 +515,32 @@ CREATE TABLE `api_automation_edits`  (
 
 
 -- ----------------------------
+-- Table structure for api_automation_doc_history
+-- ----------------------------
+DROP TABLE IF EXISTS `api_automation_doc_history`;
+CREATE TABLE `api_automation_doc_history`  (
+  `api_id` bigint NOT NULL COMMENT '接口ID',
+  `api_service_id` bigint NULL DEFAULT NULL COMMENT '服务ID',
+  `document` json NULL COMMENT '文档内容快照',
+  `name` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '接口名称快照',
+  `description` text CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT '接口描述快照',
+  `operation_type` varchar(50) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT 'edit' COMMENT '操作类型：create/edit/restore',
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `creation_date` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `created_by` bigint NULL DEFAULT NULL COMMENT '创建人ID',
+  `updation_date` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `updated_by` bigint NULL DEFAULT NULL COMMENT '更新人ID',
+  `enabled_flag` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否删除, 0 删除 1 非删除',
+  `trace_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NULL DEFAULT NULL COMMENT 'trace_id',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb3 COLLATE = utf8mb3_general_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of api_automation_doc_history
+-- ----------------------------
+
+
+-- ----------------------------
 -- Table structure for api_automation_data_source_history
 -- ----------------------------
 DROP TABLE IF EXISTS `api_automation_data_source_history`;
