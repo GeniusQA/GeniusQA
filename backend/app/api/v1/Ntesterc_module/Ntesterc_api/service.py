@@ -4954,15 +4954,57 @@ class ApiAutomationService:
     @staticmethod
     async def _save_doc_history(
         db: AsyncSession, api_id: int, api_service_id: int, document: Any,
-        name: Any, description: Any, operation_type: str, user_id: int
+        name: Any, description: Any, operation_type: str, user_id: int,
+        url: Any = None, req: Any = None
     ) -> None:
         await ApiAutomationService._ensure_doc_history_table(db)
+
+        norm_doc = document if isinstance(document, dict) else {}
+        norm_name = str(name or '')
+        norm_desc = str(description or '')
+        norm_url = str(url or '')
+        norm_req = req if isinstance(req, dict) else {}
+
+        def _same_json(a: Any, b: Any) -> bool:
+            return json.dumps(a, sort_keys=True, ensure_ascii=False) == json.dumps(b, sort_keys=True, ensure_ascii=False)
+
+        last_row = (
+            await db.execute(
+                select(ApiDocHistoryModel)
+                .where(
+                    ApiDocHistoryModel.enabled_flag == 1,
+                    ApiDocHistoryModel.api_id == int(api_id),
+                )
+                .order_by(ApiDocHistoryModel.id.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+
+        if last_row is not None:
+            if (
+                str(last_row.name or '') == norm_name and
+                str(last_row.description or '') == norm_desc and
+                str(last_row.url or '') == norm_url and
+                _same_json(last_row.document if isinstance(last_row.document, dict) else {}, norm_doc) and
+                _same_json(last_row.req if isinstance(last_row.req, dict) else {}, norm_req)
+            ):
+                # 快照完全一致：不新增记录，仅更新 updation_date 与 updated_by
+                await db.execute(
+                    update(ApiDocHistoryModel)
+                    .where(ApiDocHistoryModel.id == last_row.id)
+                    .values(updated_by=user_id)
+                    # updation_date 由 ON UPDATE CURRENT_TIMESTAMP 自动刷新
+                )
+                return
+
         db.add(ApiDocHistoryModel(
             api_id=int(api_id),
             api_service_id=int(api_service_id) if api_service_id else None,
-            document=document if isinstance(document, dict) else {},
-            name=str(name or ''),
-            description=str(description or ''),
+            document=norm_doc,
+            name=norm_name,
+            description=norm_desc,
+            url=norm_url,
+            req=norm_req,
             operation_type=str(operation_type or 'edit'),
             created_by=user_id,
             updated_by=user_id,
