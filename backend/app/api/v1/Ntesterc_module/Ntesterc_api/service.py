@@ -41,7 +41,7 @@ from .model import (
     ApiDocHistoryModel,
 )
 
-from config import config as app_config
+from app.config.setting import config as app_config
 
 from pathlib import Path
 import os
