@@ -44,7 +44,24 @@ jobs:
           # -X ours        : 冲突段保留本地(你的定制)，非冲突段(上游新功能)照常合入
           # --allow-unrelated-histories : 首次合并两独立历史仓库时必须
           # --no-edit      : 自动生成合并信息，不弹编辑器
-          git merge "upstream/$UPSTREAM_BRANCH" -X ours --allow-unrelated-histories --no-edit
+          if git merge "upstream/$UPSTREAM_BRANCH" -X ours --allow-unrelated-histories --no-edit; then
+            echo "合并成功（-X ours 已自动裁决普通冲突）"
+          else
+            echo "::warning::-X ours 无法自动解决的冲突(modify/delete、rename/rename 等)，一律按本地版本(ours)裁决："
+            # 对所有仍处于未合并状态的路径，按“本地版本”解决：
+            #   本地已删除的文件 -> 保持删除(git rm)
+            #   本地仍存在的文件 -> 取 ours 版本(git checkout --ours)
+            git diff --name-only --diff-filter=U | while IFS= read -r p; do
+              if git cat-file -e "HEAD:$p" 2>/dev/null; then
+                git checkout --ours -- "$p" && git add -- "$p"
+                echo "  保留本地版本: $p"
+              else
+                git rm -f -- "$p"
+                echo "  保持删除(本地已删): $p"
+              fi
+            done
+            git commit --no-edit || echo "无需要提交的冲突裁决，继续推送"
+          fi
 
           echo "== 推送到 origin/main =="
           git push origin main
